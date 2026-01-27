@@ -1,0 +1,31 @@
+# Example: XLM-RoBERTa-Large → XLM-RoBERTa-Base
+# Multilingual model distillation
+
+inherit: ../base.yaml
+
+model:
+  teacher: xlm-roberta-large       # 550M parameters, 100 languages
+  student: xlm-roberta-base        # 270M parameters, 100 languages
+  student_init: pretrained
+
+data:
+  task: multilingual_classification
+  dataset: xnli                     # Cross-lingual NLI
+  languages: [ en, fr, de, es ]       # Subset of languages
+  max_length: 128
+
+training:
+  num_epochs: 3
+  batch_size: 24
+  learning_rate: 2e-5
+  warmup_steps: 200
+
+distillation:
+  temperature: 2.5
+  alpha: 0.6
+
+checkpointing:
+  save_steps: 500
+
+evaluation:
+  eval_steps: 1000

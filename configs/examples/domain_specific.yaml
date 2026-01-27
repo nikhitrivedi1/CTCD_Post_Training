@@ -1,0 +1,36 @@
+# Example: Fine-tuned Domain Expert → Smaller Model
+# Demonstrates distilling domain-specific knowledge
+
+inherit: ../base.yaml
+
+model:
+  # Use your own fine-tuned models
+  teacher: your-org/finetuned-bert-medical    # Your domain expert
+  student: distilbert-base-uncased             # Smaller general model
+  student_init: fresh                          # Start from scratch
+
+data:
+  task: medical_classification                 # Custom task
+  dataset: your_medical_dataset
+  max_length: 256
+  num_labels: 10                               # Task-specific
+
+training:
+  num_epochs: 5
+  batch_size: 16
+  learning_rate: 2e-5
+  warmup_steps: 300
+
+distillation:
+  temperature: 4.0    # Higher for complex domain knowledge
+  alpha: 0.8          # Heavy emphasis on teacher
+
+checkpointing:
+  save_steps: 200
+
+logging:
+  report_to: wandb
+  logging_steps: 50
+
+evaluation:
+  eval_steps: 500

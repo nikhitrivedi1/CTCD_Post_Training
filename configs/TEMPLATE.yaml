@@ -1,0 +1,130 @@
+# Generic Configuration Template
+# Use this as a starting point for your own distillation experiments
+
+inherit: base.yaml  # Inherit defaults from base config
+
+# ====================================
+# MODEL CONFIGURATION
+# ====================================
+model:
+  # Any HuggingFace model name or local path
+  teacher: your-org/your-teacher-model  # e.g., bert-large-uncased, gpt2-large, t5-base
+  student: your-org/your-student-model  # e.g., bert-base-uncased, gpt2, t5-small
+
+  # Student initialization:
+  #   - 'fresh': Random initialization from config (harder, but compresses better)
+  #   - 'pretrained': Use pretrained weights (easier, faster convergence)
+  student_init: pretrained
+
+# ====================================
+# DATA CONFIGURATION
+# ====================================
+data:
+  # Task type determines dataset loader and metrics
+  # Built-in: 'mnli', 'qqp', 'translation'
+  # Custom: Add your own in src/data/datasets.py
+  task: your_task_name
+
+  # Dataset-specific parameters
+  dataset: your_dataset_name  # HuggingFace dataset or custom
+  max_length: 128             # Maximum sequence length
+
+  # For translation tasks:
+  # source_lang: en
+  # target_lang: fr
+  # max_samples: 10000
+
+# ====================================
+# TRAINING CONFIGURATION
+# ====================================
+training:
+  num_epochs: 3
+  batch_size: 16
+  learning_rate: 2e-5
+
+  # Learning rate schedule
+  warmup_steps: 200
+
+  # Regularization
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+
+  # For large models or limited memory
+  gradient_accumulation_steps: 1  # Increase for larger effective batch size
+  fp16: true                       # Use mixed precision (CUDA only)
+
+  # For very large models (Llama, GPT-3, etc.)
+  use_lora: false
+  # lora:
+  #   r: 16
+  #   alpha: 16
+  #   dropout: 0.05
+  #   target_modules: ["q_proj", "v_proj"]  # Model-specific, check model architecture
+
+# ====================================
+# DISTILLATION CONFIGURATION
+# ====================================
+distillation:
+  # Temperature: Higher = softer distributions, easier for student
+  # Typical range: 1.0-20.0
+  # Paper found: 2.0 for BERT, 11.0 for QQP
+  temperature: 2.0
+
+  # Alpha: Weight between distillation (KL) and task (CE) loss
+  # 0.0 = only task loss (no distillation)
+  # 1.0 = only distillation loss (ignore labels)
+  # 0.5 = balanced (typical)
+  # Paper used: 0.5 for BERT, 1.0 for Llama
+  alpha: 0.5
+
+# ====================================
+# CHECKPOINTING
+# ====================================
+checkpointing:
+  save_steps: 500           # Save checkpoint every N steps
+  save_total_limit: 3       # Keep only last N checkpoints
+
+# ====================================
+# LOGGING & EVALUATION
+# ====================================
+logging:
+  report_to: wandb          # 'wandb', 'tensorboard', or 'none'
+  logging_steps: 100        # Log metrics every N steps
+
+evaluation:
+  eval_steps: 500           # Evaluate every N steps
+  eval_strategy: steps      # 'steps', 'epoch', or 'no'
+
+# ====================================
+# HYPERPARAMETER SEARCH (Optional)
+# ====================================
+# Uncomment to enable hyperparameter tuning
+# hyperparameter_search:
+#   temperature: [1.0, 2.0, 5.0, 10.0]
+#   alpha: [0.25, 0.5, 0.75, 1.0]
+#   learning_rate: [1e-5, 2e-5, 5e-5]
+
+# ====================================
+# NOTES
+# ====================================
+# 1. Model compatibility: Teacher and student must have same output structure
+#    - Both seq classification OR both causal LM OR both seq2seq
+#    - Same number of labels for classification
+#    - Compatible tokenizers (or student can use teacher's tokenizer)
+#
+# 2. Memory optimization:
+#    - Reduce batch_size
+#    - Increase gradient_accumulation_steps
+#    - Enable fp16
+#    - Use LoRA for student
+#    - Use smaller max_length
+#
+# 3. Finding good hyperparameters:
+#    - Temperature: Start with 2.0, increase if student struggles
+#    - Alpha: Start with 0.5, increase for more teacher influence
+#    - Learning rate: Use same as original student training, or slightly lower
+#
+# 4. Common issues:
+#    - NaN loss: Lower learning rate or temperature
+#    - No improvement: Increase alpha or temperature
+#    - Overfitting: Add weight decay, reduce epochs

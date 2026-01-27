@@ -1,0 +1,30 @@
+# Example: RoBERTa-Large → RoBERTa-Base
+# Sentiment analysis distillation
+
+inherit: ../base.yaml
+
+model:
+  teacher: roberta-large           # 355M parameters
+  student: roberta-base            # 125M parameters
+  student_init: pretrained
+
+data:
+  task: sentiment_analysis         # You'd need to implement this loader
+  dataset: imdb                    # Or any sentiment dataset
+  max_length: 256
+
+training:
+  num_epochs: 4
+  batch_size: 32
+  learning_rate: 3e-5
+  warmup_steps: 100
+
+distillation:
+  temperature: 3.0
+  alpha: 0.5
+
+checkpointing:
+  save_steps: 250
+
+evaluation:
+  eval_steps: 500

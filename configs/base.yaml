@@ -1,0 +1,29 @@
+# Base configuration with default hyperparameters
+# Task-specific configs inherit from this and override as needed
+
+training:
+  num_epochs: 10
+  batch_size: 16
+  learning_rate: 2e-5
+  warmup_steps: 200
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  gradient_accumulation_steps: 1
+  fp16: true
+  dataloader_num_workers: 4
+
+distillation:
+  temperature: 2.0
+  alpha: 0.5  # Weight for distillation loss vs task loss
+
+checkpointing:
+  save_steps: 500
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 10
+
+evaluation:
+  eval_steps: 500
+  eval_strategy: steps
