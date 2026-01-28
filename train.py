@@ -2,6 +2,11 @@
 
 import argparse
 import os
+import sys
+
+# Add project root to path if src is not installed as a package
+if not any('src' in p for p in sys.path):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from transformers import TrainingArguments
 
