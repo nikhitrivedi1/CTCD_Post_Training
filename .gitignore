@@ -68,9 +68,9 @@ wandb/
 *.ckpt
 *.safetensors
 
-# Data
-data/
-datasets/
+# Data (root level only, not src/data/)
+/data/
+/datasets/
 *.csv
 *.json.gz
 *.tar.gz
