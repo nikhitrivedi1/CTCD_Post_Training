@@ -5,7 +5,11 @@ import os
 import sys
 
 # Add project root to path for running without package install
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_project_root = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _project_root)
+print(f"[DEBUG] Project root: {_project_root}")
+print(f"[DEBUG] src exists: {os.path.exists(os.path.join(_project_root, 'src'))}")
+print(f"[DEBUG] src/__init__.py exists: {os.path.exists(os.path.join(_project_root, 'src', '__init__.py'))}")
 
 from transformers import TrainingArguments
 
