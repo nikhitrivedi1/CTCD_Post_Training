@@ -13,12 +13,6 @@ Supports:
 
 __version__ = "1.0.0"
 
-from . import data
-from . import evaluation
-from . import models
-from . import training
-from . import utils
-
 __all__ = [
     "data",
     "models",
