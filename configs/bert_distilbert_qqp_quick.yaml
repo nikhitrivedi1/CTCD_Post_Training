@@ -1,0 +1,19 @@
+# BERT → DistilBERT on QQP - Quick version (~30-45 min on A100)
+# For rapid iteration and testing on Google Colab
+# Full version: bert_distilbert_qqp.yaml (3 epochs, ~2-3 hours)
+
+inherit: bert_distilbert_qqp.yaml
+
+training:
+  num_epochs: 1          # 1 epoch instead of 3
+  batch_size: 64         # Larger batch = fewer steps (A100 can handle this easily)
+
+checkpointing:
+  save_steps: 1000
+  save_total_limit: 2
+
+evaluation:
+  eval_steps: 1000
+
+logging:
+  logging_steps: 100
