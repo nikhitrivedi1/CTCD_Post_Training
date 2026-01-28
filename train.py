@@ -70,9 +70,15 @@ def main():
     if resume_checkpoint:
         print(f"\nResuming from checkpoint: {resume_checkpoint}")
 
-    # Setup W&B
+    # Setup W&B (respect WANDB_MODE if set)
     os.environ.setdefault("WANDB_PROJECT", "knowledge-distillation")
     run_name = f"{config['model']['teacher']}_to_{config['model']['student']}_{task}"
+
+    # Determine report_to based on WANDB_MODE
+    report_to = config["logging"]["report_to"]
+    if os.environ.get("WANDB_MODE") == "disabled":
+        report_to = "none"
+        print("W&B disabled - logging to console only")
 
     # Training arguments
     training_args = TrainingArguments(
@@ -90,7 +96,7 @@ def main():
         save_total_limit=config["checkpointing"]["save_total_limit"],
         eval_strategy=config.get("evaluation", {}).get("eval_strategy", "steps"),
         eval_steps=config.get("evaluation", {}).get("eval_steps", 500),
-        report_to=config["logging"]["report_to"],
+        report_to=report_to,
         fp16=config["training"].get("fp16", True) if device == "cuda" else False,
         dataloader_num_workers=config["training"].get("dataloader_num_workers", 4),
         run_name=run_name,
