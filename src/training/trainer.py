@@ -52,7 +52,7 @@ class DistillationTrainer(Trainer):
         print(f"  Alpha: {alpha}")
         print(f"  Teacher frozen: {not any(p.requires_grad for p in self.teacher.parameters())}")
 
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         """
         Compute distillation loss combining KL divergence and cross-entropy.
 
@@ -67,6 +67,7 @@ class DistillationTrainer(Trainer):
             model: Student model
             inputs: Batch of inputs
             return_outputs: Whether to return model outputs
+            num_items_in_batch: Number of items in batch (for gradient accumulation)
 
         Returns:
             Loss tensor, or (loss, outputs) if return_outputs=True
