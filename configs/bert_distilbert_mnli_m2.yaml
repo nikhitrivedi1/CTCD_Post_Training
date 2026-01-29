@@ -1,0 +1,41 @@
+# BERT → DistilBERT on MNLI - Optimized for Apple M2 (MPS)
+# Uses fp32 (MPS doesn't support fp16 well)
+# Batch size: 64 (4× base) - conservative for unified memory
+# Expected time: ~2-3 hours (M2 is ~3-5x slower than T4)
+
+inherit: base.yaml
+
+model:
+  teacher: bert-base-uncased
+  student: distilbert-base-uncased
+  student_init: fresh
+
+data:
+  task: mnli
+  max_length: 128
+
+training:
+  num_epochs: 3
+  batch_size: 64           # 4× base (conservative for unified memory)
+  learning_rate: 0.00008   # 4× base (linear scaling rule)
+  warmup_steps: 300        # Slightly increased for larger batch
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: false              # MPS doesn't support fp16 training well
+  dataloader_num_workers: 0  # MPS works better with 0 workers
+
+distillation:
+  temperature: 2
+  alpha: 0.5
+
+checkpointing:
+  save_steps: 500
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 100
+
+evaluation:
+  eval_steps: 500  # Must match save_steps for load_best_model_at_end
+  eval_strategy: steps

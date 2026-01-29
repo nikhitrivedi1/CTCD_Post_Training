@@ -33,5 +33,5 @@ logging:
   logging_steps: 100
 
 evaluation:
-  eval_steps: 1000
+  eval_steps: 500  # Must match save_steps for load_best_model_at_end
   eval_strategy: steps

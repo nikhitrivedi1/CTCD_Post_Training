@@ -2,12 +2,32 @@
 
 import argparse
 import os
+import random
 import sys
+
+import numpy as np
+import torch
 
 # Add project root to path for running without package install
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from transformers import TrainingArguments
+# Import environment first - this auto-loads .env file if it exists
+# (override=False means Colab/HPC env vars take precedence)
+from src.utils.environment import detect_environment, get_device
+
+from transformers import TrainingArguments, set_seed
+
+
+def set_reproducibility_seed(seed: int = 42):
+    """Set seeds for reproducibility across all libraries."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    set_seed(seed)  # HuggingFace transformers seed
+    # For fully deterministic behavior (may impact performance)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 from src.data.datasets import load_dataset_for_task
 from src.evaluation.metrics import get_compute_metrics
@@ -16,7 +36,6 @@ from src.training.callbacks import SLURMSignalCallback
 from src.training.trainer import DistillationTrainer
 from src.utils.checkpoint import TrainingState
 from src.utils.config import load_config
-from src.utils.environment import detect_environment, get_device
 
 
 def main():
@@ -24,7 +43,12 @@ def main():
     parser.add_argument("--config", type=str, required=True, help="Path to config file")
     parser.add_argument("--output_dir", type=str, default="./outputs", help="Output directory")
     parser.add_argument("--max_steps", type=int, default=-1, help="Max training steps (for testing)")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     args = parser.parse_args()
+
+    # Set reproducibility seed early
+    set_reproducibility_seed(args.seed)
+    print(f"Random seed set to: {args.seed}")
 
     # Load configuration
     print(f"Loading config from {args.config}")
@@ -103,6 +127,8 @@ def main():
         max_steps=args.max_steps if args.max_steps > 0 else -1,
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
+        seed=args.seed,
+        data_seed=args.seed,
     )
 
     # Get compute metrics function

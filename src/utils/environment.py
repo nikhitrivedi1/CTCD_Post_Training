@@ -1,6 +1,33 @@
 """Environment detection for local/Colab/SLURM platforms."""
 
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+def load_env():
+    """
+    Load environment variables from .env file if it exists.
+
+    Uses override=False so existing env vars (from Colab userdata,
+    SLURM modules, or shell) take precedence over .env file.
+
+    Returns:
+        bool: True if .env file was loaded, False otherwise
+    """
+    # Look for .env in project root (parent of src/)
+    project_root = Path(__file__).parent.parent.parent
+    env_file = project_root / ".env"
+
+    if env_file.exists():
+        load_dotenv(env_file, override=False)
+        return True
+    return False
+
+
+# Auto-load .env when module is imported
+_env_loaded = load_env()
 
 
 def detect_environment():

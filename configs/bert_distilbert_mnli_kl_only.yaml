@@ -1,0 +1,39 @@
+# BERT → DistilBERT on MNLI - KL Only (Pure Distillation)
+# Alpha = 1.0 means only KL divergence loss, no cross-entropy with labels
+# Tests whether soft labels alone are sufficient for learning
+# Expected: Slightly lower than α=0.5 (missing hard label signal)
+
+inherit: base.yaml
+
+model:
+  teacher: bert-base-uncased
+  student: distilbert-base-uncased
+  student_init: fresh
+
+data:
+  task: mnli
+  max_length: 128
+
+training:
+  num_epochs: 3
+  batch_size: 16
+  learning_rate: 0.00002
+  warmup_steps: 200
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+
+distillation:
+  temperature: 2
+  alpha: 1.0  # KL ONLY: Pure distillation, no CE loss
+
+checkpointing:
+  save_steps: 500
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 100
+
+evaluation:
+  eval_steps: 500
+  eval_strategy: steps

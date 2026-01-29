@@ -49,6 +49,7 @@ conda activate distill
 # Configuration
 CONFIG=${1:-configs/llama_3b_1b_translation.yaml}
 OUTPUT_DIR=${2:-./outputs/slurm_run}
+SEED=${3:-42}
 STATE_FILE="$OUTPUT_DIR/training_state.json"
 
 # Create logs directory
@@ -94,12 +95,14 @@ echo "========================================="
 echo "Starting training..."
 echo "Config: $CONFIG"
 echo "Output: $OUTPUT_DIR"
+echo "Seed: $SEED"
 echo "========================================="
 echo ""
 
 python train.py \
     --config "$CONFIG" \
-    --output_dir "$OUTPUT_DIR"
+    --output_dir "$OUTPUT_DIR" \
+    --seed "$SEED"
 
 EXIT_CODE=$?
 
@@ -123,8 +126,8 @@ except:
         echo "Training incomplete. Resubmitting job..."
         echo "========================================="
 
-        # Resubmit with same W&B run ID
-        sbatch --export=WANDB_RUN_ID=$WANDB_RUN_ID "$0" "$CONFIG" "$OUTPUT_DIR"
+        # Resubmit with same W&B run ID and seed
+        sbatch --export=WANDB_RUN_ID=$WANDB_RUN_ID "$0" "$CONFIG" "$OUTPUT_DIR" "$SEED"
     else
         echo ""
         echo "========================================="

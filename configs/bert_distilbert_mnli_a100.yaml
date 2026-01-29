@@ -1,0 +1,42 @@
+# BERT → DistilBERT on MNLI - Optimized for A100 (40-80 GB)
+# Batch size: 256 (16× base) with scaled learning rate
+# Expected memory: ~13 GB (fits easily on 40 GB)
+# Expected time: ~20 min on A100 40GB, ~15 min on A100 80GB
+# Note: On A100 80GB, you can push batch_size to 512 with lr=6.4e-4
+
+inherit: base.yaml
+
+model:
+  teacher: bert-base-uncased
+  student: distilbert-base-uncased
+  student_init: fresh
+
+data:
+  task: mnli
+  max_length: 128
+
+training:
+  num_epochs: 3
+  batch_size: 256          # 16× base
+  learning_rate: 0.00032   # 16× base (linear scaling rule)
+  warmup_steps: 500        # Increased for larger batch
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  dataloader_num_workers: 8
+  dataloader_pin_memory: true
+
+distillation:
+  temperature: 2
+  alpha: 0.5
+
+checkpointing:
+  save_steps: 500
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 100
+
+evaluation:
+  eval_steps: 500  # Must match save_steps for load_best_model_at_end
+  eval_strategy: steps
