@@ -17,9 +17,9 @@ data:
 
 training:
   num_epochs: 3
-  batch_size: 512          # 32× base - H200 can handle it
-  learning_rate: 0.00064   # 32× base (linear scaling rule)
-  warmup_steps: 600        # More warmup for very large batch
+  batch_size: 256          # 16× base - same as A100, proven to work
+  learning_rate: 0.00032   # 16× base (linear scaling rule)
+  warmup_steps: 500        # Same as A100 config
   weight_decay: 0.01
   max_grad_norm: 2.0
   fp16: true               # bf16 would be better but fp16 is safer
