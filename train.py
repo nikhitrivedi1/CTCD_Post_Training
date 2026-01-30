@@ -52,7 +52,7 @@ def main():
     # configs/mnli/bert_distilbert/h200.yaml → mnli_bert_distilbert_h200
     config_path_parts = Path(args.config).with_suffix("").parts
     config_id = "_".join(config_path_parts[1:]) if config_path_parts[0] == "configs" else "_".join(config_path_parts)
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%MZ")
 
     if args.output_dir is None:
         args.output_dir = f"./outputs/{config_id}_{timestamp}"
