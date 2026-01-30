@@ -134,11 +134,12 @@ def main():
     # Get compute metrics function
     compute_metrics = get_compute_metrics(task, tokenizer=tokenizer)
 
-    # Initialize trainer
+    # Initialize trainer with configurable loss strategy
     trainer = DistillationTrainer(
         teacher_model=teacher,
         temperature=config["distillation"]["temperature"],
         alpha=config["distillation"]["alpha"],
+        loss_type=config["distillation"].get("loss_type", "kl_divergence"),
         model=student,
         args=training_args,
         train_dataset=train_dataset,

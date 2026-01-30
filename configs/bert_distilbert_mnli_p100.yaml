@@ -23,7 +23,7 @@ training:
   weight_decay: 0.01
   max_grad_norm: 2.0
   fp16: true               # Helps with memory even without tensor cores
-  dataloader_num_workers: 8
+  dataloader_num_workers: 4
   dataloader_pin_memory: true
 
 distillation:

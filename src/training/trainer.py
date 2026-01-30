@@ -1,8 +1,11 @@
 """DistillationTrainer: HuggingFace Trainer subclass for knowledge distillation."""
 
+from typing import Optional
+
 import torch
-import torch.nn.functional as F
 from transformers import Trainer
+
+from .losses import DistillationLossStrategy, KLDivergenceLoss, get_loss_strategy
 
 
 class DistillationTrainer(Trainer):
@@ -11,17 +14,20 @@ class DistillationTrainer(Trainer):
 
     Extends HuggingFace Trainer to:
     1. Maintain a teacher model (frozen, eval mode)
-    2. Compute combined loss (KL divergence + cross-entropy)
-    3. Log both loss components separately for monitoring
+    2. Compute combined loss using pluggable loss strategies
+    3. Log loss components separately for monitoring
 
-    Based on the "Less is More" paper implementation.
+    Uses Strategy Pattern for loss functions - swap loss strategies
+    without modifying this class.
     """
 
     def __init__(
             self,
             teacher_model: torch.nn.Module,
-            temperature: float,
-            alpha: float,
+            temperature: float = 2.0,
+            alpha: float = 0.5,
+            loss_strategy: Optional[DistillationLossStrategy] = None,
+            loss_type: Optional[str] = None,
             *args,
             **kwargs
     ):
@@ -32,6 +38,8 @@ class DistillationTrainer(Trainer):
             teacher_model: Pretrained teacher model (will be frozen)
             temperature: Temperature for softening distributions
             alpha: Weight for distillation loss (0=only CE, 1=only KL)
+            loss_strategy: Pre-configured loss strategy instance (takes precedence)
+            loss_type: Name of loss strategy to use (e.g., "kl_divergence", "mse_logits")
             *args: Additional arguments for Trainer
             **kwargs: Additional keyword arguments for Trainer
         """
@@ -47,21 +55,33 @@ class DistillationTrainer(Trainer):
         self.temperature = temperature
         self.alpha = alpha
 
+        # Set up loss strategy (Strategy Pattern)
+        if loss_strategy is not None:
+            # Use provided strategy instance
+            self.loss_strategy = loss_strategy
+        elif loss_type is not None:
+            # Create strategy from name
+            self.loss_strategy = get_loss_strategy(
+                loss_type,
+                temperature=temperature,
+                alpha=alpha
+            )
+        else:
+            # Default to KL divergence
+            self.loss_strategy = KLDivergenceLoss(
+                temperature=temperature,
+                alpha=alpha
+            )
+
         print(f"DistillationTrainer initialized:")
+        print(f"  Loss strategy: {self.loss_strategy.name}")
         print(f"  Temperature: {temperature}")
         print(f"  Alpha: {alpha}")
         print(f"  Teacher frozen: {not any(p.requires_grad for p in self.teacher.parameters())}")
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         """
-        Compute distillation loss combining KL divergence and cross-entropy.
-
-        This is the core of knowledge distillation. We:
-        1. Get student predictions (with gradients)
-        2. Get teacher predictions (no gradients, frozen)
-        3. Compute task loss (cross-entropy with true labels)
-        4. Compute distillation loss (KL divergence with teacher)
-        5. Combine with alpha weighting
+        Compute distillation loss using the configured strategy.
 
         Args:
             model: Student model
@@ -82,24 +102,23 @@ class DistillationTrainer(Trainer):
             teacher_logits = teacher_outputs.logits
 
         # Task loss (cross-entropy with labels)
-        # This is computed internally by the model when labels are provided
         ce_loss = outputs.loss
 
-        # Distillation loss (KL divergence)
-        kl_loss = F.kl_div(
-            F.log_softmax(student_logits / self.temperature, dim=-1),
-            F.softmax(teacher_logits / self.temperature, dim=-1),
-            reduction='batchmean'
-        ) * (self.temperature ** 2)
+        # Get labels if available
+        labels = inputs.get("labels", None)
 
-        # Combined loss
-        loss = (1 - self.alpha) * ce_loss + self.alpha * kl_loss
+        # Compute loss using strategy
+        loss_output = self.loss_strategy.compute(
+            student_logits=student_logits,
+            teacher_logits=teacher_logits,
+            ce_loss=ce_loss,
+            labels=labels
+        )
 
         # Log individual components for monitoring
-        self.log({
-            "loss_ce": ce_loss.item(),
-            "loss_kl": kl_loss.item(),
-            "loss_total": loss.item(),
-        })
+        log_dict = {"loss_total": loss_output.total_loss.item()}
+        for name, value in loss_output.components.items():
+            log_dict[name] = value.item() if torch.is_tensor(value) else value
+        self.log(log_dict)
 
-        return (loss, outputs) if return_outputs else loss
+        return (loss_output.total_loss, outputs) if return_outputs else loss_output.total_loss

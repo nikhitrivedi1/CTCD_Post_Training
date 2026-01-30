@@ -1,12 +1,32 @@
 """Training modules for knowledge distillation."""
 
 from .callbacks import SLURMSignalCallback
-from .losses import distillation_loss, kl_divergence_loss
+from .losses import (
+    DistillationLossStrategy,
+    KLDivergenceLoss,
+    MSELogitsLoss,
+    CosineEmbeddingLoss,
+    SoftTargetLoss,
+    CombinedLoss,
+    LossOutput,
+    get_loss_strategy,
+    LOSS_REGISTRY,
+)
 from .trainer import DistillationTrainer
 
 __all__ = [
+    # Trainer
     "DistillationTrainer",
-    "distillation_loss",
-    "kl_divergence_loss",
+    # Loss strategies
+    "DistillationLossStrategy",
+    "KLDivergenceLoss",
+    "MSELogitsLoss",
+    "CosineEmbeddingLoss",
+    "SoftTargetLoss",
+    "CombinedLoss",
+    "LossOutput",
+    "get_loss_strategy",
+    "LOSS_REGISTRY",
+    # Callbacks
     "SLURMSignalCallback",
 ]
