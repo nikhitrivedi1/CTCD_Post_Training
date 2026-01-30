@@ -1,53 +1,42 @@
 #!/bin/bash
 #SBATCH --job-name=distill
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:h200:1
+#SBATCH --partition=courses-gpu
+#SBATCH --gres=gpu:1
 #SBATCH --time=08:00:00
-#SBATCH --mem=128G
+#SBATCH --mem=64G
 #SBATCH --cpus-per-task=8
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
 #SBATCH --signal=SIGUSR1@120
 
-# SLURM auto-requeue script for knowledge distillation
-# Handles 8-hour job limits by automatically resubmitting incomplete jobs
+# SLURM script for knowledge distillation on Explorer HPC
+# Handles job limits by automatically resubmitting incomplete jobs
+#
+# Usage:
+#   sbatch scripts/run_slurm.sh [config] [output_dir] [seed]
+#   sbatch scripts/run_slurm.sh configs/bert_distilbert_mnli_a100.yaml ./outputs/hpc_run 42
+#
+# First-time setup:
+#   ssh login.explorer.northeastern.edu
+#   module load anaconda3/2024.06
+#   conda env create -f environment.yml
+#   conda activate distillation
 
 set -e  # Exit on error
 
 echo "========================================="
 echo "SLURM Job: $SLURM_JOB_ID"
 echo "Node: $SLURM_NODELIST"
-echo "GPU: $SLURM_JOB_GPUS"
+echo "GPU: $CUDA_VISIBLE_DEVICES"
 echo "========================================="
 
-# ========================================
-# SETUP METHOD: Choose one
-# ========================================
-
-# Method 1: Conda (RECOMMENDED for HPC)
-# Setup (first time only):
-#   module load anaconda3/2023.03
-#   conda env create -f environment.yml
-#
-# Then use:
+# Load modules and activate environment
 module load cuda/12.1
-module load anaconda3/2023.03
-conda activate distill
-
-# Method 2: venv + pip (Alternative)
-# Setup (first time only):
-#   module load python/3.10
-#   python -m venv venv
-#   source venv/bin/activate
-#   pip install -r requirements.txt
-#
-# Then use:
-# module load cuda/12.1
-# module load python/3.10
-# source venv/bin/activate
+module load anaconda3/2024.06
+source activate distillation
 
 # Configuration
-CONFIG=${1:-configs/llama_3b_1b_translation.yaml}
+CONFIG=${1:-configs/bert_distilbert_mnli_a100.yaml}
 OUTPUT_DIR=${2:-./outputs/slurm_run}
 SEED=${3:-42}
 STATE_FILE="$OUTPUT_DIR/training_state.json"

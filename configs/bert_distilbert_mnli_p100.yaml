@@ -1,0 +1,43 @@
+# BERT → DistilBERT on MNLI - Optimized for P100 (12 GB)
+# Batch size: 64 (4× base) - conservative for 12 GB memory
+# Expected memory: ~8 GB (leaves ~4 GB headroom)
+# Expected time: ~1.5-2 hours on P100
+# Note: P100 lacks tensor cores, but fp16 still helps with memory
+
+inherit: base.yaml
+
+model:
+  teacher: bert-base-uncased
+  student: distilbert-base-uncased
+  student_init: fresh
+
+data:
+  task: mnli
+  max_length: 128
+
+training:
+  num_epochs: 3
+  batch_size: 64           # 4× base (conservative for 12 GB)
+  learning_rate: 0.00008   # 4× base (linear scaling rule)
+  warmup_steps: 300        # Increased for larger batch
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: true               # Helps with memory even without tensor cores
+  dataloader_num_workers: 8
+  dataloader_pin_memory: true
+
+distillation:
+  temperature: 2
+  alpha: 0.5
+
+checkpointing:
+  save_steps: 500
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 100
+
+evaluation:
+  eval_steps: 500  # Must match save_steps for load_best_model_at_end
+  eval_strategy: steps
