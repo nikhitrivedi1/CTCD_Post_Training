@@ -48,11 +48,14 @@ def main():
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     args = parser.parse_args()
 
-    # Generate output directory from config name + UTC timestamp if not specified
+    # Generate config identifier and timestamp for output dir and W&B run name
+    # configs/mnli/bert_distilbert/h200.yaml → mnli_bert_distilbert_h200
+    config_path_parts = Path(args.config).with_suffix("").parts
+    config_id = "_".join(config_path_parts[1:]) if config_path_parts[0] == "configs" else "_".join(config_path_parts)
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
+
     if args.output_dir is None:
-        config_name = Path(args.config).stem  # e.g., "h200" from "configs/mnli/bert_distilbert/h200.yaml"
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H-%M")
-        args.output_dir = f"./outputs/{config_name}_{timestamp}"
+        args.output_dir = f"./outputs/{config_id}_{timestamp}"
 
     # Set reproducibility seed early
     set_reproducibility_seed(args.seed)
@@ -105,7 +108,7 @@ def main():
 
     # Setup W&B (respect WANDB_MODE if set)
     os.environ.setdefault("WANDB_PROJECT", "knowledge-distillation")
-    run_name = f"{config['model']['teacher']}_to_{config['model']['student']}_{task}"
+    run_name = f"{config_id}_{timestamp}"
 
     # Determine report_to based on WANDB_MODE
     report_to = config["logging"]["report_to"]
