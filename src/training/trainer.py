@@ -13,9 +13,13 @@ class DistillationTrainer(Trainer):
     Custom Trainer for knowledge distillation.
 
     Extends HuggingFace Trainer to:
-    1. Maintain a teacher model (frozen, eval mode)
+    1. Maintain a teacher model (frozen or co-trained)
     2. Compute combined loss using pluggable loss strategies
     3. Log loss components separately for monitoring
+
+    Supports two modes:
+    - Traditional distillation: Teacher is frozen, provides fixed soft labels
+    - Co-training: Teacher trains alongside student, soft labels improve over time
 
     Uses Strategy Pattern for loss functions - swap loss strategies
     without modifying this class.
@@ -26,6 +30,7 @@ class DistillationTrainer(Trainer):
             teacher_model: torch.nn.Module,
             temperature: float = 2.0,
             alpha: float = 0.5,
+            freeze_teacher: bool = True,
             loss_strategy: Optional[DistillationLossStrategy] = None,
             loss_type: Optional[str] = None,
             *args,
@@ -35,9 +40,11 @@ class DistillationTrainer(Trainer):
         Initialize DistillationTrainer.
 
         Args:
-            teacher_model: Pretrained teacher model (will be frozen)
+            teacher_model: Pretrained teacher model
             temperature: Temperature for softening distributions
             alpha: Weight for distillation loss (0=only CE, 1=only KL)
+            freeze_teacher: If True, freeze teacher (traditional distillation).
+                           If False, train teacher alongside student (co-training).
             loss_strategy: Pre-configured loss strategy instance (takes precedence)
             loss_type: Name of loss strategy to use (e.g., "kl_divergence", "mse_logits")
             *args: Additional arguments for Trainer
@@ -46,11 +53,14 @@ class DistillationTrainer(Trainer):
         super().__init__(*args, **kwargs)
 
         self.teacher = teacher_model
-        self.teacher.eval()  # Always in evaluation mode
+        self.freeze_teacher = freeze_teacher
 
-        # Freeze teacher parameters
-        for param in self.teacher.parameters():
-            param.requires_grad = False
+        if freeze_teacher:
+            self.teacher.eval()  # Evaluation mode (no dropout)
+            for param in self.teacher.parameters():
+                param.requires_grad = False
+        else:
+            self.teacher.train()  # Training mode for co-training
 
         self.temperature = temperature
         self.alpha = alpha
@@ -77,7 +87,26 @@ class DistillationTrainer(Trainer):
         print(f"  Loss strategy: {self.loss_strategy.name}")
         print(f"  Temperature: {temperature}")
         print(f"  Alpha: {alpha}")
-        print(f"  Teacher frozen: {not any(p.requires_grad for p in self.teacher.parameters())}")
+        print(f"  Teacher frozen: {freeze_teacher}")
+
+    def create_optimizer(self):
+        """
+        Create optimizer, including teacher parameters if co-training.
+        """
+        if self.optimizer is not None:
+            return self.optimizer
+
+        # Get default optimizer for student
+        super().create_optimizer()
+
+        # If co-training, add teacher parameters to optimizer
+        if not self.freeze_teacher:
+            teacher_params = list(self.teacher.parameters())
+            # Add teacher params to existing optimizer's param groups
+            self.optimizer.add_param_group({"params": teacher_params})
+            print(f"  Added {len(teacher_params)} teacher parameter groups to optimizer")
+
+        return self.optimizer
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         """
@@ -96,8 +125,14 @@ class DistillationTrainer(Trainer):
         outputs = model(**inputs)
         student_logits = outputs.logits
 
-        # Get teacher predictions (no gradients)
-        with torch.no_grad():
+        # Get teacher predictions
+        if self.freeze_teacher:
+            # Traditional distillation: no gradients through teacher
+            with torch.no_grad():
+                teacher_outputs = self.teacher(**inputs)
+                teacher_logits = teacher_outputs.logits
+        else:
+            # Co-training: gradients flow through teacher
             teacher_outputs = self.teacher(**inputs)
             teacher_logits = teacher_outputs.logits
 

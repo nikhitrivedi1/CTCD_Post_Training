@@ -151,6 +151,7 @@ def main():
         teacher_model=teacher,
         temperature=config["distillation"]["temperature"],
         alpha=config["distillation"]["alpha"],
+        freeze_teacher=config["distillation"].get("freeze_teacher", True),
         loss_type=config["distillation"].get("loss_type", "kl_divergence"),
         model=student,
         args=training_args,
