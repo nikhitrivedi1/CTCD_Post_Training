@@ -9,7 +9,8 @@ dependencies:
   - pip
 
   # PyTorch (automatically uses MPS on M2 Macs, CUDA on Linux/Windows)
-  - pytorch>=2.0
+  # Requires >=2.6 due to CVE-2025-32434 (torch.load vulnerability)
+  - pytorch>=2.6
   - torchvision
   - torchaudio
 

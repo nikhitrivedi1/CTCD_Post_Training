@@ -19,30 +19,11 @@ any HuggingFace model pair.
 
 ## Quick Start
 
-### Installation (Choose Your Method)
-
-**Method 1: conda (Recommended for HPC/Scientific Computing)**
+### Installation
 
 ```bash
 conda env create -f environment.yml
 conda activate distillation
-```
-
-**Method 2: uv (Fast Alternative)**
-
-```bash
-pip install uv
-uv venv
-source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-uv pip install -e .
-```
-
-**Method 3: pip (Traditional)**
-
-```bash
-python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
-pip install -r requirements.txt
 ```
 
 ### Verify Installation
@@ -327,7 +308,7 @@ MIT License - see LICENSE file
 Contributions welcome! Please:
 
 1. Fork the repository
-2. Install development dependencies: `conda env create -f environment.yml` or `uv pip install -e .`
+2. Install development dependencies: `conda env create -f environment.yml`
 3. Set up pre-commit hooks: `pre-commit install`
 4. Create a feature branch
 5. Make your changes
