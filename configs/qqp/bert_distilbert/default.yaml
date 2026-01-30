@@ -1,7 +1,7 @@
 # BERT → DistilBERT on QQP task
 # Target: 0.900 accuracy (from "Less is More" paper)
 
-inherit: base.yaml
+inherit: ../../base.yaml
 
 model:
   teacher: bert-base-uncased

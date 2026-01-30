@@ -1,14 +1,12 @@
-# BERT → DistilBERT on MNLI - BASELINE (No Distillation)
-# Alpha = 0.0 means only cross-entropy loss, no KL divergence from teacher
-# This establishes the baseline to prove distillation's contribution
-# Expected: Lower accuracy than α=0.5, showing distillation helps
+# BERT → DistilBERT on MNLI task
+# Target: 0.817 accuracy (from "Less is More" paper)
 
-inherit: base.yaml
+inherit: ../../base.yaml
 
 model:
   teacher: bert-base-uncased
   student: distilbert-base-uncased
-  student_init: fresh
+  student_init: fresh  # Start from random initialization
 
 data:
   task: mnli
@@ -24,7 +22,7 @@ training:
 
 distillation:
   temperature: 2
-  alpha: 0.0  # BASELINE: No distillation, only CE loss
+  alpha: 0.5
 
 checkpointing:
   save_steps: 500
@@ -35,5 +33,5 @@ logging:
   logging_steps: 100
 
 evaluation:
-  eval_steps: 500
+  eval_steps: 500  # Must match save_steps for load_best_model_at_end
   eval_strategy: steps

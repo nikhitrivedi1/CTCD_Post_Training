@@ -1,10 +1,9 @@
-# BERT → DistilBERT on MNLI - Optimized for H200 (80 GB HBM3)
-# Batch size: 512 (32× base) - H200 has massive memory bandwidth
-# Expected memory: ~25 GB (leaves 55 GB headroom)
-# Expected time: ~10-12 min for 3 epochs
-# Note: H200 is overkill for BERT, but great for fast iteration
+# BERT → DistilBERT on MNLI - H200 Default (Recommended)
+# Batch size: 256 (16× base) - Proven stable settings
+# LR: 3.2e-4 (linear scaling rule)
+# Expected time: ~15-20 min for 3 epochs
 
-inherit: base.yaml
+inherit: ../../base.yaml
 
 model:
   teacher: bert-base-uncased

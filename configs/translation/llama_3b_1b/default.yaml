@@ -1,7 +1,7 @@
 # Llama 3.2 3B → 1B on English-French translation
 # Target: BLEU ~27, COMET ~0.82 (from "Less is More" paper)
 
-inherit: base.yaml
+inherit: ../../base.yaml
 
 model:
   teacher: meta-llama/Llama-3.2-3B-Instruct
