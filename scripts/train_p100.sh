@@ -22,4 +22,4 @@ mkdir -p logs
 cd /scratch/ravi.ka/Distillation
 
 # Run training
-python train.py --config configs/mnli/bert_distilbert/p100_batch16_lr2e-5.yaml
+python -u train.py --config configs/mnli/bert_distilbert/p100/batch16_lr2e-5.yaml

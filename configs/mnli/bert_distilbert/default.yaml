@@ -6,7 +6,7 @@ inherit: ../../base.yaml
 model:
   teacher: bert-base-uncased
   student: distilbert-base-uncased
-  student_init: fresh  # Start from random initialization
+  student_init: pretrained  # Start from LM-pretrained weights
 
 data:
   task: mnli

@@ -14,7 +14,7 @@
 #
 # Usage:
 #   sbatch scripts/run_slurm.sh [config] [output_dir] [seed]
-#   sbatch scripts/run_slurm.sh configs/bert_distilbert_mnli_a100.yaml ./outputs/hpc_run 42
+#   sbatch scripts/run_slurm.sh configs/mnli/bert_distilbert/a100/batch256_lr3p2e-4.yaml ./outputs/hpc_run 42
 #
 # First-time setup:
 #   ssh login.explorer.northeastern.edu
@@ -36,7 +36,7 @@ module load anaconda3/2024.06
 source activate distillation
 
 # Configuration
-CONFIG=${1:-configs/bert_distilbert_mnli_a100.yaml}
+CONFIG=${1:-configs/mnli/bert_distilbert/a100/batch256_lr3p2e-4.yaml}
 OUTPUT_DIR=${2:-./outputs/slurm_run}
 SEED=${3:-42}
 STATE_FILE="$OUTPUT_DIR/training_state.json"

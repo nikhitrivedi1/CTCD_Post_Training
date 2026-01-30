@@ -4,12 +4,12 @@
 # Expected time: ~1.5-2 hours on P100
 # Note: P100 lacks tensor cores, but fp16 still helps with memory
 
-inherit: ../../base.yaml
+inherit: ../../../base.yaml
 
 model:
   teacher: bert-base-uncased
   student: distilbert-base-uncased
-  student_init: fresh
+  student_init: pretrained
 
 data:
   task: mnli

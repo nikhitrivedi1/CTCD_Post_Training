@@ -22,4 +22,4 @@ mkdir -p logs
 cd /scratch/ravi.ka/Distillation
 
 # Run training (unbuffered output for real-time logging)
-python -u train.py --config configs/mnli/bert_distilbert/h200_batch64_lr8e-5_cotrain.yaml
+python -u train.py --config configs/mnli/bert_distilbert/h200/batch64_lr8e-5_cotrain.yaml

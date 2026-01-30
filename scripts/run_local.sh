@@ -5,7 +5,7 @@
 set -e  # Exit on error
 
 # Configuration
-CONFIG=${1:-configs/bert_distilbert_mnli.yaml}
+CONFIG=${1:-configs/mnli/bert_distilbert/default.yaml}
 OUTPUT_DIR=${2:-./outputs/local_test}
 MAX_STEPS=${3:-10}  # Default to 10 steps for quick testing
 

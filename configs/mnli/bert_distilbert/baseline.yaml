@@ -8,7 +8,7 @@ inherit: ../../base.yaml
 model:
   teacher: bert-base-uncased
   student: distilbert-base-uncased
-  student_init: fresh
+  student_init: pretrained
 
 data:
   task: mnli
