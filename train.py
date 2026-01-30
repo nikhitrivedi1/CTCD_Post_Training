@@ -4,6 +4,8 @@ import argparse
 import os
 import random
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -41,10 +43,16 @@ from src.utils.config import load_config
 def main():
     parser = argparse.ArgumentParser(description="Knowledge Distillation Training")
     parser.add_argument("--config", type=str, required=True, help="Path to config file")
-    parser.add_argument("--output_dir", type=str, default="./outputs", help="Output directory")
+    parser.add_argument("--output_dir", type=str, default=None, help="Output directory (default: outputs/<config>_<timestamp>)")
     parser.add_argument("--max_steps", type=int, default=-1, help="Max training steps (for testing)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     args = parser.parse_args()
+
+    # Generate output directory from config name + UTC timestamp if not specified
+    if args.output_dir is None:
+        config_name = Path(args.config).stem  # e.g., "h200" from "configs/mnli/bert_distilbert/h200.yaml"
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H-%M")
+        args.output_dir = f"./outputs/{config_name}_{timestamp}"
 
     # Set reproducibility seed early
     set_reproducibility_seed(args.seed)
@@ -52,6 +60,7 @@ def main():
 
     # Load configuration
     print(f"Loading config from {args.config}")
+    print(f"Output directory: {args.output_dir}")
     config = load_config(args.config)
 
     # Detect environment
