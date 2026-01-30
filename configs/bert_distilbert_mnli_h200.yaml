@@ -1,0 +1,43 @@
+# BERT → DistilBERT on MNLI - Optimized for H200 (80 GB HBM3)
+# Batch size: 512 (32× base) - H200 has massive memory bandwidth
+# Expected memory: ~25 GB (leaves 55 GB headroom)
+# Expected time: ~10-12 min for 3 epochs
+# Note: H200 is overkill for BERT, but great for fast iteration
+
+inherit: base.yaml
+
+model:
+  teacher: bert-base-uncased
+  student: distilbert-base-uncased
+  student_init: fresh
+
+data:
+  task: mnli
+  max_length: 128
+
+training:
+  num_epochs: 3
+  batch_size: 512          # 32× base - H200 can handle it
+  learning_rate: 0.00064   # 32× base (linear scaling rule)
+  warmup_steps: 600        # More warmup for very large batch
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: true               # bf16 would be better but fp16 is safer
+  dataloader_num_workers: 8
+  dataloader_pin_memory: true
+
+distillation:
+  temperature: 2
+  alpha: 0.5
+
+checkpointing:
+  save_steps: 250          # More frequent saves with faster training
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 50        # More frequent logging
+
+evaluation:
+  eval_steps: 250          # Match save_steps
+  eval_strategy: steps
