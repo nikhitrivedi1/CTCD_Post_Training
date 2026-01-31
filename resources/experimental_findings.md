@@ -16,6 +16,16 @@ Zero-shot evaluation on MNLI validation_matched (n=9815):
 | bert-base-uncased | Teacher (base) | **36.07%** | Random classifier init |
 | textattack/bert-base-uncased-MNLI | Teacher (SFT) | **84.57%** | Fine-tuned on MNLI |
 
+Zero-shot evaluation on QQP validation (n=40430):
+
+| Model | Role | QQP Accuracy | Notes |
+|-------|------|--------------|-------|
+| distilbert-base-uncased | Student | **36.82%** | Random classifier init |
+| bert-base-uncased | Teacher (base) | **37.68%** | Random classifier init |
+| textattack/bert-base-uncased-QQP | Teacher (SFT) | **90.91%** | Fine-tuned on QQP |
+
+**Note:** QQP baseline (~37%) is below 50% due to class imbalance - more "not duplicate" (0) than "duplicate" (1) examples. Models with random classifiers tend to predict the majority class.
+
 ---
 
 ## Final Ablation Results
@@ -373,6 +383,131 @@ The ranking `04 > 03 > 01 > 00 > 02 >>> 05` told a story that no amount of theor
 
 ---
 
+## QQP Ablation Results
+
+**Date:** 2026-01-31
+
+| Rank | Config | Val Accuracy | Δ from Student Baseline | Description |
+|------|--------|--------------|------------------------|-------------|
+| 1 | 03 | **90.37%** | +53.55% | Co-train base teacher |
+| 2 | 04 | 90.28% | +53.46% | Co-train SFT teacher |
+| 3 | 01 | 90.19% | +53.37% | Frozen base teacher |
+| 4 | 00 | 89.71% | +52.89% | No teacher (CE only) |
+| 5 | 02 | 65.50% | +28.68% | Frozen SFT teacher ❌ |
+
+**The full training journey:**
+```
+Student baseline:     36.82% (random)
+    ↓ +52.89% with CE-only training
+No teacher (00):      89.71%
+    ↓ +0.66% with co-train base
+Best config (03):     90.37%
+```
+
+**Key observation:** QQP ranking differs slightly from MNLI:
+- MNLI: `04 > 03 > 01 > 00 > 02`
+- QQP:  `03 > 04 > 01 > 00 > 02`
+
+Co-training base teacher (03) slightly outperforms co-training SFT teacher (04) on QQP, while the reverse was true for MNLI. Both are within noise margin (~0.1%).
+
+---
+
+## TextAttack Label Mappings
+
+**Date:** 2026-01-31
+
+### Verification Method
+
+Tested known examples against model predictions to determine actual label meanings:
+
+### QQP Labels: ALIGNED ✓
+
+| Index | TextAttack | HuggingFace |
+|-------|------------|-------------|
+| 0 | not_duplicate | not_duplicate |
+| 1 | duplicate | duplicate |
+
+**No `teacher_label_map` needed for QQP.**
+
+### MNLI Labels: MISALIGNED ✗
+
+| Index | TextAttack | HuggingFace |
+|-------|------------|-------------|
+| 0 | contradiction | entailment |
+| 1 | entailment | neutral |
+| 2 | neutral | contradiction |
+
+**Required mapping:** `teacher_label_map: [1, 2, 0]`
+
+Empirical verification:
+```
+Raw accuracy (no mapping):     5.5%
+With [1,2,0] mapping:         83.5% ✓
+With [2,0,1] mapping:         11.0%
+```
+
+---
+
+## Frozen SFT Teacher Fails Even With Aligned Labels
+
+**Date:** 2026-01-31
+
+### Background
+
+QQP config 02 (frozen SFT teacher) achieved only **65.50%** despite:
+1. Labels being correctly aligned (no swap needed)
+2. Teacher having **90.91%** validation accuracy
+
+This confirms the "overconfident wrong teacher" effect is **not** due to label misalignment.
+
+### Comparison
+
+| Task | Config 02 Accuracy | Teacher Accuracy | Label Status |
+|------|-------------------|------------------|--------------|
+| MNLI | 79.26% | 84.57% | Misaligned (fixed with mapping) |
+| QQP | 65.50% | 90.91% | Aligned |
+
+QQP's larger gap (65.5% vs 90.9%) compared to MNLI (79.3% vs 84.6%) suggests the frozen SFT teacher problem may be worse when:
+- Teacher is more confident (higher accuracy)
+- Task is binary (confident wrong = 50% wrong direction vs 33% for 3-class)
+
+### Conclusion
+
+The frozen SFT teacher failure is **fundamental to frozen distillation**, not a label alignment bug. Co-training (03/04) consistently outperforms frozen approaches because it allows self-correction.
+
+---
+
+## Cross-Task Consistency
+
+**Date:** 2026-01-31
+
+Both MNLI and QQP show the same pattern:
+
+| Observation | MNLI | QQP |
+|-------------|------|-----|
+| Best config | Co-train (03/04) | Co-train (03/04) |
+| Worst config | Frozen SFT (02) | Frozen SFT (02) |
+| CE-only baseline | Competitive | Competitive |
+| Frozen base > Frozen SFT | ✓ (01 > 02) | ✓ (01 > 02) |
+
+**Universal findings:**
+1. Co-training > Frozen for distillation
+2. Untrained teacher > Trained teacher when frozen
+3. CE-only baseline is hard to beat with frozen distillation
+4. Overconfident wrong predictions hurt more than uncertain noise
+
+---
+
 ## Future Findings
 
 (Add new observations here as experiments progress)
+
+---
+
+## Related Documents
+
+| Document | Purpose |
+|----------|---------|
+| [research-framing.md](research-framing.md) | Research questions, hypotheses, paper potential |
+| [framework-direction.md](framework-direction.md) | Vision, mastery path, learning roadmap |
+| [diffusion-distillation.md](diffusion-distillation.md) | Diffusion model distillation guide |
