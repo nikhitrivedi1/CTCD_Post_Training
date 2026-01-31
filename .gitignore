@@ -60,6 +60,7 @@ logs/
 checkpoints/
 wandb/
 *.log
+.last_run
 
 # Model files (too large for git)
 *.bin

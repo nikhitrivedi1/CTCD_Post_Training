@@ -272,6 +272,33 @@ Currently single-GPU. To add multi-GPU:
 - Auto-requeue handles 8-hour limits
 - Configure in `scripts/run_slurm.sh`
 
+```bash
+# Named run (new)
+sbatch scripts/run_slurm.sh mnli_00 configs/mnli/bert_distilbert/default.yaml
+# -> outputs/mnli_00/
+
+# Resume existing run
+sbatch scripts/run_slurm.sh mnli_00
+# -> outputs/mnli_00/ (continues from checkpoint)
+
+# Auto-named run (includes timestamp)
+sbatch scripts/run_slurm.sh configs/mnli/bert_distilbert/default.yaml
+# -> outputs/mnli_default_2026-01-31_03-15Z/
+
+# Named run with timestamp (unique each submission)
+TIMESTAMP=1 sbatch scripts/run_slurm.sh mnli_00 configs/...
+# -> outputs/mnli_00_2026-01-31_03-15Z/
+
+# Force overwrite existing run
+FORCE=1 sbatch scripts/run_slurm.sh mnli_00 configs/...
+
+# Testing on cluster (10 steps only)
+MAX_STEPS=10 sbatch scripts/run_slurm.sh configs/...
+
+# Custom seed
+SEED=123 sbatch scripts/run_slurm.sh mnli_00 configs/...
+```
+
 ## Running Included Examples
 
 ```bash

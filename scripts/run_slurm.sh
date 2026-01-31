@@ -10,21 +10,40 @@
 #SBATCH --signal=SIGUSR1@120
 
 # SLURM script for knowledge distillation on Explorer HPC
-# Handles job limits by automatically resubmitting incomplete jobs
+# Handles job time limits by automatically resubmitting incomplete jobs
+#
+# Auto-resubmission: When training is incomplete after 8 hours, the script
+# automatically resubmits with the actual run name. This works for ALL run
+# types (auto-named, named, timestamped). The .last_run file tracks the
+# actual output directory across job boundaries.
 #
 # Usage:
-#   sbatch scripts/run_slurm.sh <config> [run_name]
+#   sbatch scripts/run_slurm.sh <run_name> <config>   # Named run (new or resume)
+#   sbatch scripts/run_slurm.sh <run_name>            # Resume existing run
+#   sbatch scripts/run_slurm.sh <config>              # Auto-named run
 #
 # Examples:
-#   sbatch scripts/run_slurm.sh configs/mnli/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml
-#   -> auto-generates: outputs/mnli_02_frozen_sft-teacher_kl_2026-01-31_03-15Z
+#   # Named run (new)
+#   sbatch scripts/run_slurm.sh mnli_00 configs/mnli/bert_distilbert/default.yaml
+#   -> outputs/mnli_00/
 #
-#   sbatch scripts/run_slurm.sh configs/... my_experiment
-#   -> outputs/my_experiment (resumes if exists)
+#   # Resume existing run
+#   sbatch scripts/run_slurm.sh mnli_00
+#   -> outputs/mnli_00/ (resumes from checkpoint)
+#
+#   # Auto-named run (includes timestamp)
+#   sbatch scripts/run_slurm.sh configs/mnli/bert_distilbert/default.yaml
+#   -> outputs/mnli_default_2026-01-31_03-15Z/
+#
+#   # Named run with timestamp (unique each submission)
+#   TIMESTAMP=1 sbatch scripts/run_slurm.sh mnli_00 configs/...
+#   -> outputs/mnli_00_2026-01-31_03-15Z/
 #
 # Environment variables:
-#   SEED=123 sbatch scripts/run_slurm.sh configs/... test_run_seed_123
-#   MAX_STEPS=10 sbatch scripts/run_slurm.sh configs/... test_run
+#   SEED=123      - Custom random seed
+#   MAX_STEPS=10  - Limit steps (for testing)
+#   TIMESTAMP=1   - Append timestamp to run_name
+#   FORCE=1       - Overwrite existing run
 #
 # First-time setup:
 #   ssh login.explorer.northeastern.edu
@@ -51,45 +70,63 @@ module load anaconda3/2024.06
 eval "$(conda shell.bash hook)"
 conda activate distillation
 
-# Configuration: <config> [run_name]
-CONFIG=${1:-configs/mnli/bert_distilbert/gpu/a100/batch256_lr3p2e-4.yaml}
-
-# Generate run name from task + config filename + timestamp if not provided
-# e.g., configs/mnli/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml
-#    -> mnli_02_frozen_sft-teacher_kl_2026-01-31_03-15Z
-# Full config path is stored in run_metadata for searchability
-if [ -z "$2" ]; then
-    TIMESTAMP=$(date -u +"%Y-%m-%d_%H-%MZ")
-    TASK=$(echo "$CONFIG" | sed 's|^configs/||' | cut -d/ -f1)
-    CONFIG_NAME=$(basename "$CONFIG" .yaml)
-    RUN_NAME="${TASK}_${CONFIG_NAME}_${TIMESTAMP}"
+# Parse arguments: detect if $1 is config (ends with .yaml/.yml) or run_name
+if [[ "$1" == *.yaml ]] || [[ "$1" == *.yml ]]; then
+    # Auto-named run: sbatch script.sh config.yaml
+    CONFIG="$1"
+    RUN_NAME=""
+elif [ -n "$1" ]; then
+    # Named run: sbatch script.sh run_name [config.yaml]
+    RUN_NAME="$1"
+    CONFIG="$2"
 else
-    RUN_NAME="$2"
+    # No arguments: error
+    echo "Error: No arguments provided."
+    echo "Usage:"
+    echo "  sbatch scripts/run_slurm.sh <run_name> <config>  # New named run"
+    echo "  sbatch scripts/run_slurm.sh <run_name>           # Resume existing"
+    echo "  sbatch scripts/run_slurm.sh <config>             # Auto-named run"
+    exit 1
 fi
 
-OUTPUT_DIR="./outputs/$RUN_NAME"
-STATE_FILE="$OUTPUT_DIR/training_state.json"
+# Build command arguments
+ARGS=""
 
-# Optional: seed (via environment variable)
-SEED_ARG=""
+# Optional: seed
 if [ -n "$SEED" ]; then
-    SEED_ARG="--seed $SEED"
+    ARGS="$ARGS --seed $SEED"
     echo "Custom seed: $SEED"
 fi
 
-# Optional: max_steps for testing (via environment variable)
-MAX_STEPS_ARG=""
+# Optional: max_steps for testing
 if [ -n "$MAX_STEPS" ]; then
-    MAX_STEPS_ARG="--max_steps $MAX_STEPS"
+    ARGS="$ARGS --max_steps $MAX_STEPS"
     echo "Testing mode: max_steps=$MAX_STEPS"
+fi
+
+# Optional: append timestamp to run_name
+if [ -n "$TIMESTAMP" ]; then
+    ARGS="$ARGS --timestamp"
+    echo "Timestamp mode: appending timestamp to run_name"
+fi
+
+# Optional: force overwrite
+if [ -n "$FORCE" ]; then
+    ARGS="$ARGS --force"
+    echo "Force mode: will overwrite existing run"
 fi
 
 # Create logs directory
 mkdir -p logs
 
-# Check if training already complete
-if [ -f "$STATE_FILE" ]; then
-    COMPLETE=$(python -c "
+# Check if training already complete (for named runs without TIMESTAMP or FORCE)
+# Skip check if TIMESTAMP (actual name will be different) or FORCE (user wants overwrite)
+if [ -n "$RUN_NAME" ] && [ -z "$TIMESTAMP" ] && [ -z "$FORCE" ]; then
+    OUTPUT_DIR="./outputs/$RUN_NAME"
+    STATE_FILE="$OUTPUT_DIR/training_state.json"
+
+    if [ -f "$STATE_FILE" ]; then
+        COMPLETE=$(python -c "
 import json
 try:
     with open('$STATE_FILE') as f:
@@ -100,12 +137,12 @@ try:
 except:
     print('false')
 ")
-
-    if [ "$COMPLETE" = "true" ]; then
-        echo "Training already complete. Exiting."
-        exit 0
-    else
-        echo "Resuming training from previous checkpoint..."
+        if [ "$COMPLETE" = "true" ]; then
+            echo "Training already complete for: $RUN_NAME"
+            exit 0
+        else
+            echo "Resuming training from previous checkpoint..."
+        fi
     fi
 fi
 
@@ -114,23 +151,48 @@ echo ""
 echo "========================================="
 echo "Starting training..."
 echo "Config: $CONFIG"
-echo "Run name: $RUN_NAME"
-echo "Output: $OUTPUT_DIR"
+if [ -n "$RUN_NAME" ]; then
+    echo "Run name: $RUN_NAME"
+fi
 echo "========================================="
 echo ""
 
-# Use --run_name for new runs (--new), resume otherwise
-if [ -d "$OUTPUT_DIR" ]; then
-    python train.py --run_name "$RUN_NAME" $SEED_ARG $MAX_STEPS_ARG
+# Build and run the training command
+# Use || true to capture exit code despite set -e
+if [ -n "$RUN_NAME" ]; then
+    # Named run provided as argument (user or auto-resubmit)
+    OUTPUT_DIR="./outputs/$RUN_NAME"
+    # Resume only if: dir exists AND no FORCE AND no TIMESTAMP
+    # (TIMESTAMP creates a new dir, so always needs --config)
+    if [ -d "$OUTPUT_DIR" ] && [ -z "$FORCE" ] && [ -z "$TIMESTAMP" ]; then
+        # Resume existing run (no --config needed)
+        python train.py --run_name "$RUN_NAME" $ARGS || EXIT_CODE=$?
+    else
+        # Create new run (--config required)
+        if [ -z "$CONFIG" ]; then
+            echo "Error: --config required for new run '$RUN_NAME'"
+            echo "Usage: sbatch scripts/run_slurm.sh $RUN_NAME <config.yaml>"
+            exit 1
+        fi
+        python train.py --run_name "$RUN_NAME" --config "$CONFIG" $ARGS || EXIT_CODE=$?
+    fi
 else
-    python train.py --config "$CONFIG" --run_name "$RUN_NAME" --new $SEED_ARG $MAX_STEPS_ARG
+    # Auto-named run: always start fresh, clear any stale .last_run
+    rm -f .last_run
+    python train.py --config "$CONFIG" $ARGS || EXIT_CODE=$?
 fi
 
-EXIT_CODE=$?
+EXIT_CODE=${EXIT_CODE:-0}
 
 # Check if more training needed and resubmit if so
-if [ $EXIT_CODE -eq 0 ] && [ -f "$STATE_FILE" ]; then
-    COMPLETE=$(python -c "
+# Read actual output dir from .last_run (works for all run types)
+if [ $EXIT_CODE -eq 0 ] && [ -f ".last_run" ]; then
+    ACTUAL_RUN_NAME=$(sed -n '1p' .last_run)
+    ACTUAL_OUTPUT_DIR=$(sed -n '2p' .last_run)
+    STATE_FILE="$ACTUAL_OUTPUT_DIR/training_state.json"
+
+    if [ -f "$STATE_FILE" ]; then
+        COMPLETE=$(python -c "
 import json
 try:
     with open('$STATE_FILE') as f:
@@ -142,23 +204,37 @@ except:
     print('false')
 ")
 
-    if [ "$COMPLETE" = "false" ]; then
+        if [ "$COMPLETE" = "false" ]; then
+            echo ""
+            echo "========================================="
+            echo "Training incomplete. Resubmitting job..."
+            echo "Run: $ACTUAL_RUN_NAME"
+            echo "========================================="
+
+            # Resubmit with run_name only (resume mode, config not needed)
+            SEED="$SEED" MAX_STEPS="$MAX_STEPS" sbatch "$0" "$ACTUAL_RUN_NAME"
+        else
+            echo ""
+            echo "========================================="
+            echo "Training complete!"
+            echo "========================================="
+        fi
+    else
         echo ""
         echo "========================================="
-        echo "Training incomplete. Resubmitting job..."
+        echo "Training complete! (no state file)"
         echo "========================================="
-
-        # Resubmit with same run_name (W&B ID managed via metadata in train.py)
-        sbatch "$0" "$CONFIG" "$RUN_NAME"
-    else
+    fi
+else
+    if [ $EXIT_CODE -eq 0 ]; then
         echo ""
         echo "========================================="
         echo "Training complete!"
         echo "========================================="
+    else
+        echo ""
+        echo "========================================="
+        echo "Job failed with exit code: $EXIT_CODE"
+        echo "========================================="
     fi
-else
-    echo ""
-    echo "========================================="
-    echo "Job failed with exit code: $EXIT_CODE"
-    echo "========================================="
 fi

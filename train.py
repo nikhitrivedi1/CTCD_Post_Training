@@ -305,6 +305,9 @@ def main():
         save_config_snapshot(output_dir, config)
         print(f"Created run metadata: {output_dir / 'run_metadata.json'}")
 
+    # Write .last_run for SLURM auto-resubmission (works with any run type)
+    Path(".last_run").write_text(f"{run_name}\n{output_dir}\n")
+
     # Setup W&B
     os.environ.setdefault("WANDB_PROJECT", "Knowledge Distillation")
     os.environ["WANDB_RUN_ID"] = wandb_run_id
