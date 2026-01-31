@@ -5,7 +5,7 @@ from typing import Optional
 import torch
 from transformers import Trainer
 
-from .losses import DistillationLossStrategy, KLDivergenceLoss, get_loss_strategy
+from .losses import DistillationLossStrategy, KLDistillationLoss, get_loss_strategy
 
 
 class DistillationTrainer(Trainer):
@@ -78,7 +78,7 @@ class DistillationTrainer(Trainer):
             )
         else:
             # Default to KL divergence
-            self.loss_strategy = KLDivergenceLoss(
+            self.loss_strategy = KLDistillationLoss(
                 temperature=temperature,
                 alpha=alpha
             )

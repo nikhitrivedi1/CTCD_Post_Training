@@ -52,7 +52,7 @@ class DistillationLossStrategy(ABC):
         pass
 
 
-class KLDivergenceLoss(DistillationLossStrategy):
+class KLDistillationLoss(DistillationLossStrategy):
     """
     Standard KL Divergence loss from Hinton et al. (2015).
 
@@ -77,26 +77,33 @@ class KLDivergenceLoss(DistillationLossStrategy):
         ce_loss: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
     ) -> LossOutput:
-        # Compute KL divergence with temperature scaling
-        kl_loss = F.kl_div(
+        # Always compute KL divergence for monitoring (even when alpha=0)
+        kl_raw = F.kl_div(
             F.log_softmax(student_logits / self.temperature, dim=-1),
             F.softmax(teacher_logits / self.temperature, dim=-1),
             reduction='batchmean'
         ) * (self.temperature ** 2)
 
+        # Weighted contributions
+        ce_weighted = (1 - self.alpha) * ce_loss
+        kl_weighted = self.alpha * kl_raw
+
         # Combined loss
-        total_loss = (1 - self.alpha) * ce_loss + self.alpha * kl_loss
+        total_loss = ce_weighted + kl_weighted
 
         return LossOutput(
             total_loss=total_loss,
             components={
-                "loss_ce": ce_loss,
-                "loss_kl": kl_loss,
+                "ce_raw": ce_loss,
+                "kl_raw": kl_raw,
+                "ce_weighted": ce_weighted,
+                "kl_weighted": kl_weighted,
+                "alpha": torch.tensor(self.alpha),
             }
         )
 
 
-class MSELogitsLoss(DistillationLossStrategy):
+class MSEDistillationLoss(DistillationLossStrategy):
     """
     Mean Squared Error loss between logits.
 
@@ -106,7 +113,8 @@ class MSELogitsLoss(DistillationLossStrategy):
     raw logits. Can be more stable in some cases.
     """
 
-    def __init__(self, alpha: float = 0.5, normalize: bool = True):
+    def __init__(self, alpha: float = 0.5, normalize: bool = True, **kwargs):
+        # kwargs captures unused parameters like temperature for compatibility
         self.alpha = alpha
         self.normalize = normalize
 
@@ -121,26 +129,32 @@ class MSELogitsLoss(DistillationLossStrategy):
         ce_loss: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
     ) -> LossOutput:
+        # Always compute MSE for monitoring (even when alpha=0)
         if self.normalize:
-            # Normalize logits to have unit variance (helps with scale differences)
             student_norm = (student_logits - student_logits.mean()) / (student_logits.std() + 1e-8)
             teacher_norm = (teacher_logits - teacher_logits.mean()) / (teacher_logits.std() + 1e-8)
-            mse_loss = F.mse_loss(student_norm, teacher_norm)
+            mse_raw = F.mse_loss(student_norm, teacher_norm)
         else:
-            mse_loss = F.mse_loss(student_logits, teacher_logits)
+            mse_raw = F.mse_loss(student_logits, teacher_logits)
 
-        total_loss = (1 - self.alpha) * ce_loss + self.alpha * mse_loss
+        # Weighted contributions
+        ce_weighted = (1 - self.alpha) * ce_loss
+        mse_weighted = self.alpha * mse_raw
+        total_loss = ce_weighted + mse_weighted
 
         return LossOutput(
             total_loss=total_loss,
             components={
-                "loss_ce": ce_loss,
-                "loss_mse": mse_loss,
+                "ce_raw": ce_loss,
+                "mse_raw": mse_raw,
+                "ce_weighted": ce_weighted,
+                "mse_weighted": mse_weighted,
+                "alpha": torch.tensor(self.alpha),
             }
         )
 
 
-class CosineEmbeddingLoss(DistillationLossStrategy):
+class CosineDistillationLoss(DistillationLossStrategy):
     """
     Cosine similarity loss between logits/representations.
 
@@ -150,7 +164,8 @@ class CosineEmbeddingLoss(DistillationLossStrategy):
     their magnitude. Useful when scale differences are problematic.
     """
 
-    def __init__(self, alpha: float = 0.5):
+    def __init__(self, alpha: float = 0.5, **kwargs):
+        # kwargs captures unused parameters like temperature for compatibility
         self.alpha = alpha
 
     @property
@@ -164,23 +179,28 @@ class CosineEmbeddingLoss(DistillationLossStrategy):
         ce_loss: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
     ) -> LossOutput:
-        # Compute cosine similarity (1 = identical, -1 = opposite)
+        # Always compute cosine for monitoring (even when alpha=0)
         cosine_sim = F.cosine_similarity(student_logits, teacher_logits, dim=-1)
-        # Convert to loss (0 = identical, 2 = opposite)
-        cosine_loss = (1 - cosine_sim).mean()
+        cosine_raw = (1 - cosine_sim).mean()
 
-        total_loss = (1 - self.alpha) * ce_loss + self.alpha * cosine_loss
+        # Weighted contributions
+        ce_weighted = (1 - self.alpha) * ce_loss
+        cosine_weighted = self.alpha * cosine_raw
+        total_loss = ce_weighted + cosine_weighted
 
         return LossOutput(
             total_loss=total_loss,
             components={
-                "loss_ce": ce_loss,
-                "loss_cosine": cosine_loss,
+                "ce_raw": ce_loss,
+                "cosine_raw": cosine_raw,
+                "ce_weighted": ce_weighted,
+                "cosine_weighted": cosine_weighted,
+                "alpha": torch.tensor(self.alpha),
             }
         )
 
 
-class SoftTargetLoss(DistillationLossStrategy):
+class SoftTargetDistillationLoss(DistillationLossStrategy):
     """
     Soft target cross-entropy loss.
 
@@ -205,25 +225,29 @@ class SoftTargetLoss(DistillationLossStrategy):
         ce_loss: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
     ) -> LossOutput:
-        # Soft labels from teacher
+        # Always compute soft CE for monitoring (even when alpha=0)
         soft_labels = F.softmax(teacher_logits / self.temperature, dim=-1)
+        ce_soft_raw = -(soft_labels * F.log_softmax(student_logits / self.temperature, dim=-1)).sum(dim=-1).mean()
+        ce_soft_raw = ce_soft_raw * (self.temperature ** 2)
 
-        # Cross-entropy with soft labels
-        soft_ce_loss = -(soft_labels * F.log_softmax(student_logits / self.temperature, dim=-1)).sum(dim=-1).mean()
-        soft_ce_loss = soft_ce_loss * (self.temperature ** 2)
-
-        total_loss = (1 - self.alpha) * ce_loss + self.alpha * soft_ce_loss
+        # Weighted contributions
+        ce_hard_weighted = (1 - self.alpha) * ce_loss
+        ce_soft_weighted = self.alpha * ce_soft_raw
+        total_loss = ce_hard_weighted + ce_soft_weighted
 
         return LossOutput(
             total_loss=total_loss,
             components={
-                "loss_ce_hard": ce_loss,
-                "loss_ce_soft": soft_ce_loss,
+                "ce_hard_raw": ce_loss,
+                "ce_soft_raw": ce_soft_raw,
+                "ce_hard_weighted": ce_hard_weighted,
+                "ce_soft_weighted": ce_soft_weighted,
+                "alpha": torch.tensor(self.alpha),
             }
         )
 
 
-class CombinedLoss(DistillationLossStrategy):
+class CombinedDistillationLoss(DistillationLossStrategy):
     """
     Combines multiple loss strategies with configurable weights.
 
@@ -250,7 +274,13 @@ class CombinedLoss(DistillationLossStrategy):
         ce_loss: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
     ) -> LossOutput:
-        all_components = {"loss_ce": ce_loss}
+        # Weighted CE contribution
+        ce_weighted = (1 - self.alpha) * ce_loss
+        all_components = {
+            "ce_raw": ce_loss,
+            "ce_weighted": ce_weighted,
+            "alpha": torch.tensor(self.alpha),
+        }
         distill_loss = torch.tensor(0.0, device=student_logits.device)
 
         for strategy, weight in zip(self.strategies, self.weights):
@@ -259,12 +289,12 @@ class CombinedLoss(DistillationLossStrategy):
             strategy_distill = output.total_loss - (1 - strategy.alpha) * ce_loss
             distill_loss = distill_loss + weight * strategy_distill
 
-            # Collect components with prefixed names
+            # Collect components with prefixed names (exclude ce_raw/ce_weighted/alpha)
             for k, v in output.components.items():
-                if k != "loss_ce":
+                if k not in ("ce_raw", "ce_weighted", "alpha"):
                     all_components[f"{strategy.name}_{k}"] = v
 
-        total_loss = (1 - self.alpha) * ce_loss + self.alpha * distill_loss
+        total_loss = ce_weighted + self.alpha * distill_loss
 
         return LossOutput(
             total_loss=total_loss,
@@ -274,10 +304,10 @@ class CombinedLoss(DistillationLossStrategy):
 
 # Registry for easy lookup by name
 LOSS_REGISTRY = {
-    "kl_divergence": KLDivergenceLoss,
-    "mse_logits": MSELogitsLoss,
-    "cosine_embedding": CosineEmbeddingLoss,
-    "soft_target": SoftTargetLoss,
+    "kl_divergence": KLDistillationLoss,
+    "mse_logits": MSEDistillationLoss,
+    "cosine_embedding": CosineDistillationLoss,
+    "soft_target": SoftTargetDistillationLoss,
 }
 
 

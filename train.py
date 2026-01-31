@@ -1,5 +1,8 @@
 """Main training script for knowledge distillation."""
 
+import warnings
+warnings.filterwarnings("ignore")
+
 import argparse
 import hashlib
 import json
@@ -283,6 +286,7 @@ def main():
         report_to=report_to,
         fp16=config["training"].get("fp16", True) if device == "cuda" else False,
         dataloader_num_workers=config["training"].get("dataloader_num_workers", 4),
+        dataloader_pin_memory=device == "cuda",  # Disable on MPS (not supported)
         run_name=run_name,
         max_steps=args.max_steps if args.max_steps > 0 else -1,
         load_best_model_at_end=True,
