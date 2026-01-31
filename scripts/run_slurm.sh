@@ -39,7 +39,7 @@ module load anaconda3/2024.06
 source activate distillation
 
 # Configuration
-CONFIG=${1:-configs/mnli/bert_distilbert/a100/batch256_lr3p2e-4.yaml}
+CONFIG=${1:-configs/mnli/bert_distilbert/gpu/a100/batch256_lr3p2e-4.yaml}
 RUN_NAME=${2:-slurm_run}
 SEED=${3:-42}
 OUTPUT_DIR="./outputs/$RUN_NAME"
