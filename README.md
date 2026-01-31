@@ -35,15 +35,26 @@ python test_setup.py
 ### Basic Usage
 
 ```bash
-# Local testing (10 steps)
-python train.py --config configs/your_config.yaml --output_dir ./outputs --max_steps 10
+# New run (auto-named with timestamp)
+python train.py --config configs/mnli/bert_distilbert/default.yaml
 
-# Full training
-python train.py --config configs/your_config.yaml --output_dir ./outputs
+# New run with custom name
+python train.py --run_name mnli_00 --config configs/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+
+# Resume existing run
+python train.py --run_name mnli_00
+
+# Overwrite existing run
+python train.py --run_name mnli_00 --config configs/... --force
+
+# Local testing (10 steps)
+python train.py --config configs/... --max_steps 10
 
 # SLURM (with auto-requeue)
-sbatch scripts/run_slurm.sh configs/your_config.yaml ./outputs
+sbatch scripts/run_slurm.sh configs/your_config.yaml
 ```
+
+See [resources/run-options.md](resources/run-options.md) for complete CLI reference.
 
 ## Using with Your Own Models
 
@@ -264,14 +275,18 @@ Currently single-GPU. To add multi-GPU:
 ## Running Included Examples
 
 ```bash
-# BERT on MNLI (sentence entailment)
-python train.py --config configs/bert_distilbert_mnli.yaml --output_dir ./outputs/mnli
+# BERT → DistilBERT on MNLI (sentence entailment)
+python train.py --run_name mnli_baseline --config configs/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
 
-# BERT on QQP (question pairs)
-python train.py --config configs/bert_distilbert_qqp.yaml --output_dir ./outputs/qqp
+# BERT → DistilBERT on QQP (question pairs)
+python train.py --run_name qqp_baseline --config configs/qqp/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
 
-# Llama on translation (EN-FR)
-sbatch scripts/run_slurm.sh configs/llama_3b_1b_translation.yaml ./outputs/translation
+# Auto-named runs (includes timestamp)
+python train.py --config configs/mnli/bert_distilbert/default.yaml
+# Creates: outputs/mnli_default_2026-01-31_12-00Z/
+
+# Resume a run
+python train.py --run_name mnli_baseline
 ```
 
 ## Development

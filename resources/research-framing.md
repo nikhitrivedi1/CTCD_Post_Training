@@ -760,3 +760,4 @@ Based on our findings:
 | [framework-direction.md](framework-direction.md) | Vision, mastery path, learning roadmap |
 | [experimental_findings.md](experimental_findings.md) | Detailed experiment results and analysis |
 | [diffusion-distillation.md](diffusion-distillation.md) | Diffusion model distillation (StyleTTS2, SD) |
+| [run-options.md](run-options.md) | CLI reference and run management |

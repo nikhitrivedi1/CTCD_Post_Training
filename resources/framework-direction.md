@@ -430,6 +430,7 @@ Phase 4 (Complete by: +12 months)
 | [research-framing.md](research-framing.md) | Research questions, findings, paper potential |
 | [experimental_findings.md](experimental_findings.md) | Detailed experiment results |
 | [diffusion-distillation.md](diffusion-distillation.md) | Diffusion model distillation guide |
+| [run-options.md](run-options.md) | CLI reference and run management |
 | [../docs/](../docs/) | Technical documentation |
 
 ---

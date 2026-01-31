@@ -511,3 +511,4 @@ Both MNLI and QQP show the same pattern:
 | [research-framing.md](research-framing.md) | Research questions, hypotheses, paper potential |
 | [framework-direction.md](framework-direction.md) | Vision, mastery path, learning roadmap |
 | [diffusion-distillation.md](diffusion-distillation.md) | Diffusion model distillation guide |
+| [run-options.md](run-options.md) | CLI reference and run management |

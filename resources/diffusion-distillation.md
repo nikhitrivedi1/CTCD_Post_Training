@@ -565,3 +565,4 @@ x_{t-1} = μ_θ(x_t, t) + σ_t * z,  where z ~ N(0, I)
 | [research-framing.md](research-framing.md) | Classification KD research, findings, paper potential |
 | [framework-direction.md](framework-direction.md) | Vision, mastery path, learning roadmap |
 | [experimental_findings.md](experimental_findings.md) | Detailed experiment results (MNLI, QQP) |
+| [run-options.md](run-options.md) | CLI reference and run management |

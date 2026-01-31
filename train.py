@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import random
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -123,11 +124,11 @@ def main():
     parser.add_argument("--config", type=str, default=None,
                         help="Path to config file (required for new runs, ignored for resume)")
     parser.add_argument("--run_name", type=str, default=None,
-                        help="Run name. With --new, creates new run. Without --new, resumes existing run.")
-    parser.add_argument("--new", action="store_true",
-                        help="Create a new run with --run_name (fails if exists). Without this, --run_name resumes.")
-    parser.add_argument("--output_dir", type=str, default=None,
-                        help="[Deprecated] Use --run_name instead. Direct output directory override.")
+                        help="Run name. Creates if not exists, resumes if exists. Use --force to overwrite.")
+    parser.add_argument("--timestamp", action="store_true",
+                        help="Append timestamp to --run_name (e.g., mnli_00 -> mnli_00_2026-01-31_12-00Z).")
+    parser.add_argument("--force", action="store_true",
+                        help="Overwrite existing run (deletes existing outputs and starts fresh).")
     parser.add_argument("--max_steps", type=int, default=-1, help="Max training steps (for testing)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     args = parser.parse_args()
@@ -136,48 +137,57 @@ def main():
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%MZ")
 
     # Determine output directory and run name
-    # Priority: --output_dir (legacy) > --run_name > auto-generate (new run)
-    if args.output_dir is not None:
-        # Legacy mode: direct output_dir specification
-        if args.new:
-            print("Warning: --new is ignored when using --output_dir (deprecated)")
-        output_dir = Path(args.output_dir)
-        run_name = output_dir.name
-        is_resume = output_dir.exists()
-        if is_resume:
-            print(f"Resuming from existing output directory: {output_dir}")
-        elif args.config is None:
-            sys.exit("\nError: --config is required for new runs.\n")
-    elif args.run_name is not None:
-        output_dir = Path(f"./outputs/{args.run_name}")
-        run_name = args.run_name
-        if args.new:
-            # Explicit new run with custom name
+    if args.run_name is not None:
+        # Apply timestamp suffix if requested
+        if args.timestamp:
+            run_name = f"{args.run_name}_{timestamp}"
+        else:
+            run_name = args.run_name
+        output_dir = Path(f"./outputs/{run_name}")
+        if output_dir.exists():
+            if args.force:
+                # Force overwrite: delete existing and start fresh
+                print(f"\n--force specified. Deleting existing run: {output_dir}")
+                shutil.rmtree(output_dir)
+                if args.config is None:
+                    sys.exit(
+                        "\nError: --config is required for new runs.\n\n"
+                        "Usage:\n"
+                        "  python train.py --run_name NAME --config CONFIG [--force]\n"
+                    )
+                is_resume = False
+                print(f"Starting fresh run: {run_name}")
+            else:
+                # Resume existing run
+                is_resume = True
+                print(f"\nRun '{run_name}' exists at {output_dir}/")
+                print(f"Resuming existing run. Use --force to overwrite.\n")
+        else:
+            # Create new run
             if args.config is None:
-                sys.exit("\nError: --config is required for new runs.\n")
-            if output_dir.exists():
                 sys.exit(
-                    f"\nError: Run '{args.run_name}' already exists at {output_dir}\n"
-                    f"Remove --new to resume this run, or choose a different name.\n"
+                    f"\nError: Run '{args.run_name}' does not exist and --config not provided.\n\n"
+                    f"Usage:\n"
+                    f"  New run:    python train.py --run_name {args.run_name} --config CONFIG\n"
+                    f"  Resume:     python train.py --run_name EXISTING_RUN\n"
+                    f"  Overwrite:  python train.py --run_name NAME --config CONFIG --force\n"
                 )
             is_resume = False
             print(f"Starting new run: {run_name}")
-        else:
-            # Resume mode: run_name must exist
-            if not output_dir.exists():
-                sys.exit(
-                    f"\nError: Run '{args.run_name}' not found at {output_dir}\n"
-                    f"To start a new run with this name, add --new.\n"
-                    f"To resume, ensure the run exists.\n"
-                )
-            is_resume = True
-            print(f"Resuming run: {run_name}")
     else:
         # New run: auto-generate name from config
         if args.config is None:
-            sys.exit("\nError: --config is required for new runs.\n")
-        if args.new:
-            print("Warning: --new without --run_name is redundant (auto-generated names are always new)")
+            sys.exit(
+                "\nError: No --run_name or --config provided.\n\n"
+                "Usage:\n"
+                "  New run:    python train.py --config CONFIG\n"
+                "  Named run:  python train.py --run_name NAME --config CONFIG\n"
+                "  Resume:     python train.py --run_name EXISTING_RUN\n"
+            )
+        if args.force:
+            print("Warning: --force without --run_name is redundant (auto-generated names are always unique)")
+        if args.timestamp:
+            print("Warning: --timestamp without --run_name is redundant (auto-generated names include timestamps)")
         config_id = generate_config_id(args.config)
         run_name = f"{config_id}_{timestamp}"
         output_dir = Path(f"./outputs/{run_name}")
@@ -197,11 +207,20 @@ def main():
         if args.config is not None:
             sys.exit(
                 f"\nError: --config cannot be used when resuming.\n"
-                f"The stored config at {output_dir / 'config.yaml'} will be used.\n"
+                f"The stored config at {output_dir / 'config.yaml'} will be used.\n\n"
+                f"Usage:\n"
+                f"  Resume:     python train.py --run_name {run_name}\n"
+                f"  Overwrite:  python train.py --run_name {run_name} --config CONFIG --force\n"
             )
         config = load_config_snapshot(output_dir)
         if config is None:
-            sys.exit(f"\nError: No stored config found at {output_dir / 'config.yaml'}\n")
+            sys.exit(
+                f"\nError: No stored config found at {output_dir / 'config.yaml'}\n"
+                f"The run directory exists but appears corrupted.\n\n"
+                f"Options:\n"
+                f"  Delete and restart:  python train.py --run_name {run_name} --config CONFIG --force\n"
+                f"  Or manually delete:  rm -rf {output_dir}\n"
+            )
         print(f"Loaded stored config from: {output_dir / 'config.yaml'}")
     else:
         # New run: --config already validated above
@@ -252,10 +271,25 @@ def main():
 
     # Handle run metadata
     metadata = load_run_metadata(output_dir)
-    if is_resume and metadata:
-        wandb_run_id = metadata.get("wandb_run_id")
-        print(f"Resuming run: wandb_run_id={wandb_run_id}")
+    if is_resume:
+        if metadata:
+            wandb_run_id = metadata.get("wandb_run_id")
+            print(f"Resuming run: wandb_run_id={wandb_run_id}")
+        else:
+            # Corrupted run: config.yaml exists but run_metadata.json missing
+            # Regenerate metadata from available info
+            wandb_run_id = truncate_for_wandb(run_name)
+            metadata = {
+                "run_name": run_name,
+                "wandb_run_id": wandb_run_id,
+                "config": "(recovered from config.yaml)",
+                "created": "(unknown - recovered run)",
+                "seed": args.seed,
+            }
+            save_run_metadata(output_dir, metadata)
+            print(f"Warning: Recovered missing run_metadata.json for: {run_name}")
     else:
+        # New run
         config_id = generate_config_id(args.config)
         wandb_run_id = truncate_for_wandb(run_name)
         metadata = {
@@ -272,7 +306,7 @@ def main():
         print(f"Created run metadata: {output_dir / 'run_metadata.json'}")
 
     # Setup W&B
-    os.environ.setdefault("WANDB_PROJECT", "knowledge-distillation")
+    os.environ.setdefault("WANDB_PROJECT", "Knowledge Distillation")
     os.environ["WANDB_RUN_ID"] = wandb_run_id
     os.environ["WANDB_RESUME"] = "allow"
 
