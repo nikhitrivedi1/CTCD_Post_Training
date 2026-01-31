@@ -94,11 +94,11 @@ class KLDistillationLoss(DistillationLossStrategy):
         return LossOutput(
             total_loss=total_loss,
             components={
-                "ce_raw": ce_loss,
-                "kl_raw": kl_raw,
                 "ce_weighted": ce_weighted,
                 "kl_weighted": kl_weighted,
                 "alpha": torch.tensor(self.alpha),
+                "ce_raw": ce_loss,
+                "kl_raw": kl_raw,
             }
         )
 
@@ -145,11 +145,11 @@ class MSEDistillationLoss(DistillationLossStrategy):
         return LossOutput(
             total_loss=total_loss,
             components={
-                "ce_raw": ce_loss,
-                "mse_raw": mse_raw,
                 "ce_weighted": ce_weighted,
                 "mse_weighted": mse_weighted,
                 "alpha": torch.tensor(self.alpha),
+                "ce_raw": ce_loss,
+                "mse_raw": mse_raw,
             }
         )
 
@@ -191,11 +191,11 @@ class CosineDistillationLoss(DistillationLossStrategy):
         return LossOutput(
             total_loss=total_loss,
             components={
-                "ce_raw": ce_loss,
-                "cosine_raw": cosine_raw,
                 "ce_weighted": ce_weighted,
                 "cosine_weighted": cosine_weighted,
                 "alpha": torch.tensor(self.alpha),
+                "ce_raw": ce_loss,
+                "cosine_raw": cosine_raw,
             }
         )
 
@@ -238,11 +238,11 @@ class SoftTargetDistillationLoss(DistillationLossStrategy):
         return LossOutput(
             total_loss=total_loss,
             components={
-                "ce_hard_raw": ce_loss,
-                "ce_soft_raw": ce_soft_raw,
                 "ce_hard_weighted": ce_hard_weighted,
                 "ce_soft_weighted": ce_soft_weighted,
                 "alpha": torch.tensor(self.alpha),
+                "ce_hard_raw": ce_loss,
+                "ce_soft_raw": ce_soft_raw,
             }
         )
 
@@ -277,9 +277,11 @@ class CombinedDistillationLoss(DistillationLossStrategy):
         # Weighted CE contribution
         ce_weighted = (1 - self.alpha) * ce_loss
         all_components = {
-            "ce_raw": ce_loss,
             "ce_weighted": ce_weighted,
+            # distill_weighted components added by loop
             "alpha": torch.tensor(self.alpha),
+            "ce_raw": ce_loss,
+            # distill_raw components added by loop
         }
         distill_loss = torch.tensor(0.0, device=student_logits.device)
 

@@ -25,8 +25,8 @@ The goal of knowledge distillation is to close the gap between the student basel
 
 ## Ablation Configurations
 
-### 1. CE Only (No Distillation Baseline)
-**Config**: `configs/mnli/bert_distilbert/ablations/ce_only.yaml`
+### 00_no-teacher_ce-only (Baseline)
+**Config**: `configs/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml`
 
 | Setting | Value |
 |---------|-------|
@@ -38,8 +38,8 @@ The goal of knowledge distillation is to close the gap between the student basel
 
 ---
 
-### 2. Frozen LM Teacher
-**Config**: `configs/mnli/bert_distilbert/ablations/frozen_lm_teacher.yaml`
+### 01_frozen_base-teacher_kl
+**Config**: `configs/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml`
 
 | Setting | Value |
 |---------|-------|
@@ -52,8 +52,8 @@ The goal of knowledge distillation is to close the gap between the student basel
 
 ---
 
-### 3. Frozen SFT Teacher (Traditional KD)
-**Config**: `configs/mnli/bert_distilbert/ablations/frozen_sft_teacher.yaml`
+### 02_frozen_sft-teacher_kl (Traditional KD)
+**Config**: `configs/mnli/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml`
 
 | Setting | Value |
 |---------|-------|
@@ -66,8 +66,8 @@ The goal of knowledge distillation is to close the gap between the student basel
 
 ---
 
-### 4. Co-training (LM Teacher)
-**Config**: `configs/mnli/bert_distilbert/ablations/cotrain.yaml`
+### 03_cotrain_base-teacher_kl
+**Config**: `configs/mnli/bert_distilbert/ablations/03_cotrain_base-teacher_kl.yaml`
 
 | Setting | Value |
 |---------|-------|
@@ -80,8 +80,8 @@ The goal of knowledge distillation is to close the gap between the student basel
 
 ---
 
-### 5. Co-training (SFT Teacher)
-**Config**: `configs/mnli/bert_distilbert/ablations/cotrain_sft_teacher.yaml`
+### 04_cotrain_sft-teacher_kl
+**Config**: `configs/mnli/bert_distilbert/ablations/04_cotrain_sft-teacher_kl.yaml`
 
 | Setting | Value |
 |---------|-------|
@@ -98,11 +98,11 @@ The goal of knowledge distillation is to close the gap between the student basel
 
 | Config | Teacher State | Training Mode | Expected Acc |
 |--------|---------------|---------------|--------------|
-| CE Only | N/A | N/A | ~79-80% |
-| Frozen LM | Untrained | Frozen | ~60-65% |
-| Frozen SFT | Task-trained | Frozen | ~81-82% |
-| Co-train LM | Untrained→Trained | Co-training | ~82% |
-| Co-train SFT | Task-trained | Co-training | ~82-83% |
+| 00_no-teacher_ce-only | N/A | N/A | ~79-80% |
+| 01_frozen_base-teacher_kl | Untrained | Frozen | ~60-65% |
+| 02_frozen_sft-teacher_kl | Task-trained | Frozen | ~81-82% |
+| 03_cotrain_base-teacher_kl | Untrained→Trained | Co-training | ~82% |
+| 04_cotrain_sft-teacher_kl | Task-trained | Co-training | ~82-83% |
 
 ## Key Insights
 
@@ -118,10 +118,10 @@ The goal of knowledge distillation is to close the gap between the student basel
 
 ```bash
 # Run individual ablation
-python train.py --config configs/mnli/bert_distilbert/ablations/ce_only.yaml
+python train.py --config configs/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
 
 # Run with custom name
-python train.py --config configs/mnli/bert_distilbert/ablations/cotrain.yaml \
+python train.py --config configs/mnli/bert_distilbert/ablations/03_cotrain_base-teacher_kl.yaml \
     --run_name ablation_cotrain --new
 
 # Resume a run

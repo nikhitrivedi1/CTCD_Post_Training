@@ -1,12 +1,12 @@
-# Ablation 2: Frozen LM-Pretrained Teacher
-# Traditional KD setup but teacher hasn't learned MNLI
-# Tests: Does an untrained teacher provide useful soft labels?
-# Expected: ~60-65% (teacher gives random soft labels)
+# 00_no-teacher_ce-only: Baseline without teacher
+# Student trains on MNLI with cross-entropy loss only
+# No teacher supervision - establishes baseline for distillation comparison
+# Expected: ~79-80% (DistilBERT baseline without teacher guidance)
 
 inherit: ../../../base.yaml
 
 model:
-  teacher: bert-base-uncased  # LM-pretrained, not MNLI-trained
+  teacher: bert-base-uncased  # Unused but required by trainer
   student: distilbert-base-uncased
   student_init: pretrained
 
@@ -25,8 +25,8 @@ training:
 
 distillation:
   temperature: 2
-  alpha: 0.5              # CE + KL
-  freeze_teacher: true    # Traditional distillation (frozen)
+  alpha: 0.0              # CE only, no KL loss
+  freeze_teacher: true    # Teacher not used anyway
 
 checkpointing:
   save_steps: 2000

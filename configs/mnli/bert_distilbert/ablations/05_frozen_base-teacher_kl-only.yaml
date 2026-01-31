@@ -1,12 +1,12 @@
-# Ablation 3: Frozen SFT Teacher (Traditional Knowledge Distillation)
-# Teacher is pre-trained on MNLI, provides expert soft labels
-# This is the "standard" KD setup from most papers
-# Expected: ~81-82% (proper KD with trained teacher)
+# 05_frozen_base-teacher_kl-only: Pure KL distillation (no CE loss)
+# Alpha = 1.0 means only KL divergence loss, no cross-entropy with labels
+# Tests whether soft labels alone are sufficient for learning
+# Expected: Slightly lower than α=0.5 (missing hard label signal)
 
 inherit: ../../../base.yaml
 
 model:
-  teacher: textattack/bert-base-uncased-MNLI  # Pre-trained on MNLI
+  teacher: bert-base-uncased
   student: distilbert-base-uncased
   student_init: pretrained
 
@@ -25,7 +25,7 @@ training:
 
 distillation:
   temperature: 2
-  alpha: 0.5              # CE + KL
+  alpha: 1.0              # KL only, no CE loss
   freeze_teacher: true    # Traditional distillation (frozen)
 
 checkpointing:
