@@ -23,7 +23,8 @@
 #   -> outputs/my_experiment (resumes if exists)
 #
 # Environment variables:
-#   MAX_STEPS=10 sbatch scripts/run_slurm.sh configs/...  # For testing
+#   SEED=123 sbatch scripts/run_slurm.sh configs/... test_run_seed_123
+#   MAX_STEPS=10 sbatch scripts/run_slurm.sh configs/... test_run
 #
 # First-time setup:
 #   ssh login.explorer.northeastern.edu
@@ -36,11 +37,16 @@ set -e  # Exit on error
 echo "========================================="
 echo "SLURM Job: $SLURM_JOB_ID"
 echo "Node: $SLURM_NODELIST"
-echo "GPU: $CUDA_VISIBLE_DEVICES"
+echo "GPU Device: $CUDA_VISIBLE_DEVICES"
 echo "========================================="
 
 # Load modules and activate environment
 module load cuda/12.1
+
+# Show GPU info after CUDA is loaded
+GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "Unknown")
+GPU_MEM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader 2>/dev/null | head -1 || echo "Unknown")
+echo "GPU: $GPU_NAME ($GPU_MEM)"
 module load anaconda3/2024.06
 eval "$(conda shell.bash hook)"
 conda activate distillation
@@ -62,6 +68,13 @@ fi
 
 OUTPUT_DIR="./outputs/$RUN_NAME"
 STATE_FILE="$OUTPUT_DIR/training_state.json"
+
+# Optional: seed (via environment variable)
+SEED_ARG=""
+if [ -n "$SEED" ]; then
+    SEED_ARG="--seed $SEED"
+    echo "Custom seed: $SEED"
+fi
 
 # Optional: max_steps for testing (via environment variable)
 MAX_STEPS_ARG=""
@@ -107,9 +120,9 @@ echo ""
 
 # Use --run_name for new runs (--new), resume otherwise
 if [ -d "$OUTPUT_DIR" ]; then
-    python train.py --run_name "$RUN_NAME" $MAX_STEPS_ARG
+    python train.py --run_name "$RUN_NAME" $SEED_ARG $MAX_STEPS_ARG
 else
-    python train.py --config "$CONFIG" --run_name "$RUN_NAME" --new $MAX_STEPS_ARG
+    python train.py --config "$CONFIG" --run_name "$RUN_NAME" --new $SEED_ARG $MAX_STEPS_ARG
 fi
 
 EXIT_CODE=$?
