@@ -33,6 +33,7 @@ class DistillationTrainer(Trainer):
             freeze_teacher: bool = True,
             loss_strategy: Optional[DistillationLossStrategy] = None,
             loss_type: Optional[str] = None,
+            teacher_label_map: Optional[list] = None,
             *args,
             **kwargs
     ):
@@ -47,6 +48,9 @@ class DistillationTrainer(Trainer):
                            If False, train teacher alongside student (co-training).
             loss_strategy: Pre-configured loss strategy instance (takes precedence)
             loss_type: Name of loss strategy to use (e.g., "kl_divergence", "mse_logits")
+            teacher_label_map: Optional list to remap teacher logits to match dataset labels.
+                              e.g., [1, 2, 0] means teacher label 1 -> dataset label 0, etc.
+                              Use when teacher was trained with different label ordering.
             *args: Additional arguments for Trainer
             **kwargs: Additional keyword arguments for Trainer
         """
@@ -54,6 +58,7 @@ class DistillationTrainer(Trainer):
 
         self.teacher = teacher_model
         self.freeze_teacher = freeze_teacher
+        self.teacher_label_map = teacher_label_map
 
         if freeze_teacher:
             self.teacher.eval()  # Evaluation mode (no dropout)
@@ -135,6 +140,12 @@ class DistillationTrainer(Trainer):
             # Co-training: gradients flow through teacher
             teacher_outputs = self.teacher(**inputs)
             teacher_logits = teacher_outputs.logits
+
+        # Remap teacher logits if label ordering differs from dataset
+        # e.g., TextAttack MNLI uses [contradiction, entailment, neutral]
+        # but HuggingFace MNLI uses [entailment, neutral, contradiction]
+        if self.teacher_label_map is not None:
+            teacher_logits = teacher_logits[:, self.teacher_label_map]
 
         # Task loss (cross-entropy with labels)
         ce_loss = outputs.loss

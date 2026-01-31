@@ -290,7 +290,7 @@ def main():
         fp16=config["training"].get("fp16", True) if device == "cuda" else False,
         dataloader_num_workers=config["training"].get("dataloader_num_workers", 4),
         dataloader_pin_memory=device == "cuda",  # Disable on MPS (not supported)
-        run_name=run_name,
+        run_name=wandb_run_id,  # Use timestamped ID for W&B display
         max_steps=args.max_steps if args.max_steps > 0 else -1,
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
@@ -308,6 +308,7 @@ def main():
         alpha=config["distillation"]["alpha"],
         freeze_teacher=config["distillation"].get("freeze_teacher", True),
         loss_type=config["distillation"].get("loss_type", "kl_divergence"),
+        teacher_label_map=config["distillation"].get("teacher_label_map"),
         model=student,
         args=training_args,
         train_dataset=train_dataset,
