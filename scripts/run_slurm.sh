@@ -42,7 +42,8 @@ echo "========================================="
 # Load modules and activate environment
 module load cuda/12.1
 module load anaconda3/2024.06
-source activate distillation
+eval "$(conda shell.bash hook)"
+conda activate distillation
 
 # Configuration: <config> [run_name]
 CONFIG=${1:-configs/mnli/bert_distilbert/gpu/a100/batch256_lr3p2e-4.yaml}
