@@ -17,7 +17,7 @@
 #
 # Examples:
 #   sbatch scripts/run_slurm.sh configs/mnli/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml
-#   -> auto-generates: outputs/mnli_bert_distilbert_ablations_02_frozen_sft-teacher_kl_2026-01-31_03-15Z
+#   -> auto-generates: outputs/02_frozen_sft-teacher_kl_2026-01-31_03-15Z
 #
 #   sbatch scripts/run_slurm.sh configs/... my_experiment
 #   -> outputs/my_experiment (resumes if exists)
@@ -54,14 +54,14 @@ conda activate distillation
 # Configuration: <config> [run_name]
 CONFIG=${1:-configs/mnli/bert_distilbert/gpu/a100/batch256_lr3p2e-4.yaml}
 
-# Generate run name from config path + timestamp if not provided
+# Generate run name from config filename + timestamp if not provided
 # e.g., configs/mnli/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml
-#    -> mnli_bert_distilbert_ablations_02_frozen_sft-teacher_kl_2026-01-31_03-15Z
+#    -> 02_frozen_sft-teacher_kl_2026-01-31_03-15Z
+# Full config path is stored in run_metadata for searchability
 if [ -z "$2" ]; then
     TIMESTAMP=$(date -u +"%Y-%m-%d_%H-%MZ")
-    # Remove configs/ prefix and .yaml suffix, replace / with _
-    CONFIG_ID=$(echo "$CONFIG" | sed 's|^configs/||' | sed 's|\.yaml$||' | tr '/' '_')
-    RUN_NAME="${CONFIG_ID}_${TIMESTAMP}"
+    CONFIG_NAME=$(basename "$CONFIG" .yaml)
+    RUN_NAME="${CONFIG_NAME}_${TIMESTAMP}"
 else
     RUN_NAME="$2"
 fi

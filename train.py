@@ -47,34 +47,32 @@ from src.utils.config import load_config
 
 
 def generate_config_id(config_path: str) -> str:
-    """Generate a config identifier from the config path.
+    """Generate a config identifier from the config filename.
 
-    configs/mnli/bert_distilbert/h200/cotrain.yaml → mnli_bert_distilbert_h200_cotrain
+    configs/mnli/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml → 02_frozen_sft-teacher_kl
+
+    Full config path is stored in run_metadata for searchability.
     """
-    config_path_parts = Path(config_path).with_suffix("").parts
-    return "_".join(config_path_parts[1:]) if config_path_parts[0] == "configs" else "_".join(config_path_parts)
+    return Path(config_path).stem
 
 
-def truncate_for_wandb(run_name: str, max_length: int = 64) -> str:
-    """Truncate run_name for W&B, preserving timestamp suffix.
+def truncate_for_wandb(run_id: str, max_length: int = 64) -> str:
+    """Truncate run_id for W&B's 64-char limit, preserving timestamp suffix.
 
-    Run names have format: {config_id}_{timestamp}
-    Timestamp format: YYYY-MM-DD_HH-MMZ (17 chars)
-
-    Truncates config_id prefix if needed, always keeps full timestamp.
+    Format: {config_name}_{timestamp} where timestamp is YYYY-MM-DD_HH-MMZ (17 chars).
+    If truncation needed, shortens config_name while keeping full timestamp.
     """
-    if len(run_name) <= max_length:
-        return run_name
+    if len(run_id) <= max_length:
+        return run_id
 
-    # Timestamp is last 17 chars (YYYY-MM-DD_HH-MMZ)
-    timestamp_len = 17
-    if len(run_name) > timestamp_len + 1:  # Has prefix + underscore + timestamp
-        timestamp = run_name[-timestamp_len:]
-        prefix = run_name[:-(timestamp_len + 1)]  # Exclude underscore before timestamp
-        max_prefix_len = max_length - timestamp_len - 1
-        return f"{prefix[:max_prefix_len]}_{timestamp}"
+    timestamp_len = 17  # YYYY-MM-DD_HH-MMZ
+    if len(run_id) > timestamp_len + 1:
+        timestamp = run_id[-timestamp_len:]
+        config_name = run_id[:-(timestamp_len + 1)]
+        max_config_len = max_length - timestamp_len - 1
+        return f"{config_name[:max_config_len]}_{timestamp}"
 
-    return run_name[:max_length]
+    return run_id[:max_length]
 
 
 def load_run_metadata(output_dir: Path) -> dict | None:
@@ -245,11 +243,9 @@ def main():
     # Handle run metadata
     metadata = load_run_metadata(output_dir)
     if is_resume and metadata:
-        # Resuming: use stored wandb_run_id
         wandb_run_id = metadata.get("wandb_run_id")
-        print(f"Loaded metadata: wandb_run_id={wandb_run_id}")
+        print(f"Resuming run: wandb_run_id={wandb_run_id}")
     else:
-        # New run: use run_name as wandb_run_id, truncated to 64 chars for W&B
         config_id = generate_config_id(args.config)
         wandb_run_id = truncate_for_wandb(run_name)
         metadata = {
@@ -263,15 +259,13 @@ def main():
         output_dir.mkdir(parents=True, exist_ok=True)
         save_run_metadata(output_dir, metadata)
         save_config_snapshot(output_dir, config)
-        print(f"Created new run metadata: {output_dir / 'run_metadata.json'}")
-        print(f"Saved config snapshot: {output_dir / 'config.yaml'}")
+        print(f"Created run metadata: {output_dir / 'run_metadata.json'}")
 
-    # Setup W&B (respect WANDB_MODE if set)
+    # Setup W&B
     os.environ.setdefault("WANDB_PROJECT", "knowledge-distillation")
     os.environ["WANDB_RUN_ID"] = wandb_run_id
-    os.environ["WANDB_RESUME"] = "allow"  # Resume if exists, create if not
+    os.environ["WANDB_RESUME"] = "allow"
 
-    # Determine report_to based on WANDB_MODE
     report_to = config["logging"]["report_to"]
     if os.environ.get("WANDB_MODE") == "disabled":
         report_to = "none"
@@ -299,7 +293,7 @@ def main():
         fp16=config["training"].get("fp16", True) if device == "cuda" else False,
         dataloader_num_workers=config["training"].get("dataloader_num_workers", 4),
         dataloader_pin_memory=device == "cuda",  # Disable on MPS (not supported)
-        run_name=wandb_run_id,  # Use timestamped ID for W&B display
+        run_name=wandb_run_id,
         max_steps=args.max_steps if args.max_steps > 0 else -1,
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
@@ -344,13 +338,13 @@ def main():
         if wandb.run:
             # Log full config to W&B for dashboard visibility
             wandb.config.update(config, allow_val_change=True)
-            # Sync metadata if W&B run ID changed (e.g., original was deleted)
+            # Sync metadata if W&B assigned a different ID (e.g., original was deleted)
             if wandb.run.id != metadata.get("wandb_run_id"):
                 old_id = metadata.get("wandb_run_id")
                 metadata["wandb_run_id"] = wandb.run.id
                 metadata.setdefault("wandb_run_id_history", []).append(old_id)
                 save_run_metadata(output_dir, metadata)
-                print(f"Updated W&B run ID in metadata: {old_id} → {wandb.run.id}")
+                print(f"W&B ID changed: {old_id} → {wandb.run.id}")
     except Exception:
         pass  # W&B not available or disabled
 

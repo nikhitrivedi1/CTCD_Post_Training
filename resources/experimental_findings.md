@@ -4,6 +4,44 @@ Observations and insights discovered during knowledge distillation experiments.
 
 ---
 
+## Base Model Accuracies
+
+**Date:** 2026-01-30
+
+Zero-shot evaluation on MNLI validation_matched (n=9815):
+
+| Model | Role | MNLI Accuracy | Notes |
+|-------|------|---------------|-------|
+| distilbert-base-uncased | Student | **32.11%** | Random classifier init |
+| bert-base-uncased | Teacher (base) | **36.07%** | Random classifier init |
+| textattack/bert-base-uncased-MNLI | Teacher (SFT) | **84.57%** | Fine-tuned on MNLI |
+
+---
+
+## Final Ablation Results
+
+**Date:** 2026-01-30
+
+| Rank | Config | Val Accuracy | Δ from Student Baseline | Description |
+|------|--------|--------------|------------------------|-------------|
+| 1 | 04 | **82.62%** | +50.51% | Co-train SFT teacher |
+| 2 | 03 | 82.06% | +49.95% | Co-train base teacher |
+| 3 | 01 | 81.25% | +49.14% | Frozen base teacher |
+| 4 | 00 | 80.94% | +48.83% | No teacher (CE only) |
+| 5 | 02 | 79.26% | +47.15% | Frozen SFT teacher |
+| 6 | 05 | 31.61% | -0.50% | KL only (no CE) |
+
+**The full training journey:**
+```
+Student baseline:     32.11% (random)
+    ↓ +48.83% with CE-only training
+No teacher (00):      80.94%
+    ↓ +1.68% with co-train SFT
+Best config (04):     82.62%
+```
+
+---
+
 ## Co-training Robustness to Label Misalignment
 
 **Date:** 2026-01-30
