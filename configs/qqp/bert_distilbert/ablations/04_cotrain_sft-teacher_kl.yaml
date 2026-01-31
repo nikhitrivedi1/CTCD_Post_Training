@@ -1,0 +1,41 @@
+# 04_cotrain_sft-teacher_kl: Co-training with fine-tuned teacher
+# Teacher starts with task knowledge but can adapt
+# Expected: Best performance - combines prior knowledge with adaptability
+
+inherit: ../../../base.yaml
+
+model:
+  teacher: textattack/bert-base-uncased-QQP
+  student: distilbert-base-uncased
+  student_init: pretrained
+
+data:
+  task: qqp
+  max_length: 128
+
+training:
+  num_epochs: 3
+  batch_size: 16
+  learning_rate: 0.00002
+  warmup_steps: 200
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: true
+
+distillation:
+  temperature: 2
+  alpha: 0.5              # Balanced CE + KL
+  freeze_teacher: false   # Teacher learns too
+  # teacher_label_map: [1, 0]  # Uncomment if labels are swapped
+
+checkpointing:
+  save_steps: 2000
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 100
+
+evaluation:
+  eval_steps: 2000
+  eval_strategy: steps

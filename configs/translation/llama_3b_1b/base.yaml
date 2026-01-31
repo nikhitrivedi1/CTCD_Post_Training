@@ -34,7 +34,7 @@ training:
 
 distillation:
   temperature: 2.0
-  alpha: 1.0  # Pure distillation (no task loss)
+  alpha: 1.0  # Pure distillation (no task loss) - paper default
 
 checkpointing:
   save_steps: 500

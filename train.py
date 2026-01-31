@@ -47,13 +47,23 @@ from src.utils.config import load_config
 
 
 def generate_config_id(config_path: str) -> str:
-    """Generate a config identifier from the config filename.
+    """Generate a config identifier with task prefix.
 
-    configs/mnli/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml → 02_frozen_sft-teacher_kl
+    configs/mnli/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml → mnli_02_frozen_sft-teacher_kl
+    configs/qqp/bert_distilbert/ablations/00_no-teacher_ce-only.yaml → qqp_00_no-teacher_ce-only
 
     Full config path is stored in run_metadata for searchability.
     """
-    return Path(config_path).stem
+    path = Path(config_path)
+    config_name = path.stem
+
+    # Extract task from path: configs/{task}/...
+    parts = path.parts
+    if len(parts) > 1 and parts[0] == "configs":
+        task = parts[1]
+        return f"{task}_{config_name}"
+
+    return config_name
 
 
 def truncate_for_wandb(run_id: str, max_length: int = 64) -> str:

@@ -1,12 +1,13 @@
-# BERT → DistilBERT on QQP task
-# Target: 0.900 accuracy (from "Less is More" paper)
+# 03_cotrain_base-teacher_kl: Co-training with untrained teacher
+# Teacher learns alongside student from scratch
+# Tests if joint training provides mutual benefit
 
-inherit: ../../base.yaml
+inherit: ../../../base.yaml
 
 model:
   teacher: bert-base-uncased
   student: distilbert-base-uncased
-  student_init: fresh  # Start from random initialization
+  student_init: pretrained
 
 data:
   task: qqp
@@ -19,13 +20,15 @@ training:
   warmup_steps: 200
   weight_decay: 0.01
   max_grad_norm: 2.0
+  fp16: true
 
 distillation:
-  temperature: 11  # Paper found 11 works best for QQP
-  alpha: 0.5
+  temperature: 2
+  alpha: 0.5              # Balanced CE + KL
+  freeze_teacher: false   # Teacher learns too
 
 checkpointing:
-  save_steps: 500
+  save_steps: 2000
   save_total_limit: 3
 
 logging:
@@ -33,5 +36,5 @@ logging:
   logging_steps: 100
 
 evaluation:
-  eval_steps: 500  # Must match save_steps for load_best_model_at_end
+  eval_steps: 2000
   eval_strategy: steps
