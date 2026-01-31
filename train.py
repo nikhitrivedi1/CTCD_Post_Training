@@ -1,11 +1,15 @@
 """Main training script for knowledge distillation."""
 
 import argparse
+import hashlib
+import json
 import os
 import random
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+import yaml
 
 import numpy as np
 import torch
@@ -40,31 +44,148 @@ from src.utils.checkpoint import TrainingState
 from src.utils.config import load_config
 
 
+def generate_config_id(config_path: str) -> str:
+    """Generate a config identifier from the config path.
+
+    configs/mnli/bert_distilbert/h200/cotrain.yaml → mnli_bert_distilbert_h200_cotrain
+    """
+    config_path_parts = Path(config_path).with_suffix("").parts
+    return "_".join(config_path_parts[1:]) if config_path_parts[0] == "configs" else "_".join(config_path_parts)
+
+
+def generate_wandb_id(run_name: str) -> str:
+    """Generate a W&B-safe run ID from run_name (max 64 chars, alphanumeric + dash/underscore)."""
+    # Use first 8 chars of MD5 hash for uniqueness, prepend readable prefix
+    hash_suffix = hashlib.md5(run_name.encode()).hexdigest()[:8]
+    # Take last portion of run_name (usually has timestamp) and combine with hash
+    short_name = run_name[-20:] if len(run_name) > 20 else run_name
+    return f"{short_name}_{hash_suffix}"
+
+
+def load_run_metadata(output_dir: Path) -> dict | None:
+    """Load run metadata if it exists."""
+    metadata_path = output_dir / "run_metadata.json"
+    if metadata_path.exists():
+        with open(metadata_path) as f:
+            return json.load(f)
+    return None
+
+
+def save_run_metadata(output_dir: Path, metadata: dict):
+    """Save run metadata to output directory."""
+    metadata_path = output_dir / "run_metadata.json"
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+
+
+def save_config_snapshot(output_dir: Path, config: dict):
+    """Save full resolved config to output directory for reproducibility."""
+    config_path = output_dir / "config.yaml"
+    with open(config_path, 'w') as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+    return config_path
+
+
+def load_config_snapshot(output_dir: Path) -> dict | None:
+    """Load stored config from output directory."""
+    config_path = output_dir / "config.yaml"
+    if config_path.exists():
+        with open(config_path) as f:
+            return yaml.safe_load(f)
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(description="Knowledge Distillation Training")
-    parser.add_argument("--config", type=str, required=True, help="Path to config file")
-    parser.add_argument("--output_dir", type=str, default=None, help="Output directory (default: outputs/<config>_<timestamp>)")
+    parser.add_argument("--config", type=str, default=None,
+                        help="Path to config file (required for new runs, ignored for resume)")
+    parser.add_argument("--run_name", type=str, default=None,
+                        help="Run name. With --new, creates new run. Without --new, resumes existing run.")
+    parser.add_argument("--new", action="store_true",
+                        help="Create a new run with --run_name (fails if exists). Without this, --run_name resumes.")
+    parser.add_argument("--output_dir", type=str, default=None,
+                        help="[Deprecated] Use --run_name instead. Direct output directory override.")
     parser.add_argument("--max_steps", type=int, default=-1, help="Max training steps (for testing)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     args = parser.parse_args()
 
-    # Generate config identifier and timestamp for output dir and W&B run name
-    # configs/mnli/bert_distilbert/h200.yaml → mnli_bert_distilbert_h200
-    config_path_parts = Path(args.config).with_suffix("").parts
-    config_id = "_".join(config_path_parts[1:]) if config_path_parts[0] == "configs" else "_".join(config_path_parts)
+    # Timestamp for new runs
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%MZ")
 
-    if args.output_dir is None:
-        args.output_dir = f"./outputs/{config_id}_{timestamp}"
+    # Determine output directory and run name
+    # Priority: --output_dir (legacy) > --run_name > auto-generate (new run)
+    if args.output_dir is not None:
+        # Legacy mode: direct output_dir specification
+        if args.new:
+            print("Warning: --new is ignored when using --output_dir (deprecated)")
+        output_dir = Path(args.output_dir)
+        run_name = output_dir.name
+        is_resume = output_dir.exists()
+        if is_resume:
+            print(f"Resuming from existing output directory: {output_dir}")
+        elif args.config is None:
+            sys.exit("\nError: --config is required for new runs.\n")
+    elif args.run_name is not None:
+        output_dir = Path(f"./outputs/{args.run_name}")
+        run_name = args.run_name
+        if args.new:
+            # Explicit new run with custom name
+            if args.config is None:
+                sys.exit("\nError: --config is required for new runs.\n")
+            if output_dir.exists():
+                sys.exit(
+                    f"\nError: Run '{args.run_name}' already exists at {output_dir}\n"
+                    f"Remove --new to resume this run, or choose a different name.\n"
+                )
+            is_resume = False
+            print(f"Starting new run: {run_name}")
+        else:
+            # Resume mode: run_name must exist
+            if not output_dir.exists():
+                sys.exit(
+                    f"\nError: Run '{args.run_name}' not found at {output_dir}\n"
+                    f"To start a new run with this name, add --new.\n"
+                    f"To resume, ensure the run exists.\n"
+                )
+            is_resume = True
+            print(f"Resuming run: {run_name}")
+    else:
+        # New run: auto-generate name from config
+        if args.config is None:
+            sys.exit("\nError: --config is required for new runs.\n")
+        if args.new:
+            print("Warning: --new without --run_name is redundant (auto-generated names are always new)")
+        config_id = generate_config_id(args.config)
+        run_name = f"{config_id}_{timestamp}"
+        output_dir = Path(f"./outputs/{run_name}")
+        is_resume = False
+        print(f"Starting new run: {run_name}")
+
+    # Convert to string for compatibility
+    args.output_dir = str(output_dir)
 
     # Set reproducibility seed early
     set_reproducibility_seed(args.seed)
     print(f"Random seed set to: {args.seed}")
 
     # Load configuration
-    print(f"Loading config from {args.config}")
+    if is_resume:
+        # Resume: load stored config, error if --config provided
+        if args.config is not None:
+            sys.exit(
+                f"\nError: --config cannot be used when resuming.\n"
+                f"The stored config at {output_dir / 'config.yaml'} will be used.\n"
+            )
+        config = load_config_snapshot(output_dir)
+        if config is None:
+            sys.exit(f"\nError: No stored config found at {output_dir / 'config.yaml'}\n")
+        print(f"Loaded stored config from: {output_dir / 'config.yaml'}")
+    else:
+        # New run: --config already validated above
+        print(f"Loading config from {args.config}")
+        config = load_config(args.config)
+
     print(f"Output directory: {args.output_dir}")
-    config = load_config(args.config)
 
     # Detect environment
     env = detect_environment()
@@ -106,15 +227,42 @@ def main():
     if resume_checkpoint:
         print(f"\nResuming from checkpoint: {resume_checkpoint}")
 
+    # Handle run metadata
+    metadata = load_run_metadata(output_dir)
+    if is_resume and metadata:
+        # Resuming: use stored wandb_run_id
+        wandb_run_id = metadata.get("wandb_run_id")
+        print(f"Loaded metadata: wandb_run_id={wandb_run_id}")
+    else:
+        # New run: generate wandb_run_id and save metadata
+        wandb_run_id = generate_wandb_id(run_name)
+        config_id = generate_config_id(args.config)
+        metadata = {
+            "run_name": run_name,
+            "wandb_run_id": wandb_run_id,
+            "config": args.config,
+            "config_id": config_id,
+            "created": timestamp,
+            "seed": args.seed,
+        }
+        output_dir.mkdir(parents=True, exist_ok=True)
+        save_run_metadata(output_dir, metadata)
+        save_config_snapshot(output_dir, config)
+        print(f"Created new run metadata: {output_dir / 'run_metadata.json'}")
+        print(f"Saved config snapshot: {output_dir / 'config.yaml'}")
+
     # Setup W&B (respect WANDB_MODE if set)
     os.environ.setdefault("WANDB_PROJECT", "knowledge-distillation")
-    run_name = f"{config_id}_{timestamp}"
+    os.environ["WANDB_RUN_ID"] = wandb_run_id
+    os.environ["WANDB_RESUME"] = "allow"  # Resume if exists, create if not
 
     # Determine report_to based on WANDB_MODE
     report_to = config["logging"]["report_to"]
     if os.environ.get("WANDB_MODE") == "disabled":
         report_to = "none"
         print("W&B disabled - logging to console only")
+    else:
+        print(f"W&B run ID: {wandb_run_id}")
 
     # Training arguments
     training_args = TrainingArguments(
@@ -172,6 +320,22 @@ def main():
     print("=" * 60 + "\n")
 
     trainer.train(resume_from_checkpoint=resume_checkpoint)
+
+    # Update W&B with full config and sync metadata
+    try:
+        import wandb
+        if wandb.run:
+            # Log full config to W&B for dashboard visibility
+            wandb.config.update(config, allow_val_change=True)
+            # Sync metadata if W&B run ID changed (e.g., original was deleted)
+            if wandb.run.id != metadata.get("wandb_run_id"):
+                old_id = metadata.get("wandb_run_id")
+                metadata["wandb_run_id"] = wandb.run.id
+                metadata.setdefault("wandb_run_id_history", []).append(old_id)
+                save_run_metadata(output_dir, metadata)
+                print(f"Updated W&B run ID in metadata: {old_id} → {wandb.run.id}")
+    except Exception:
+        pass  # W&B not available or disabled
 
     # Update state
     state.save(

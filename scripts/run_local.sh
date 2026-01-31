@@ -17,10 +17,7 @@ echo "Output: $OUTPUT_DIR"
 echo "Max steps: $MAX_STEPS"
 echo "========================================="
 
-# Create output directory
-mkdir -p "$OUTPUT_DIR"
-
-# Run training
+# Run training (train.py creates output directory and manages metadata)
 python train.py \
     --config "$CONFIG" \
     --output_dir "$OUTPUT_DIR" \

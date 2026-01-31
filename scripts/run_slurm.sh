@@ -13,8 +13,11 @@
 # Handles job limits by automatically resubmitting incomplete jobs
 #
 # Usage:
-#   sbatch scripts/run_slurm.sh [config] [output_dir] [seed]
-#   sbatch scripts/run_slurm.sh configs/mnli/bert_distilbert/a100/batch256_lr3p2e-4.yaml ./outputs/hpc_run 42
+#   sbatch scripts/run_slurm.sh [config] [run_name] [seed]
+#   sbatch scripts/run_slurm.sh configs/mnli/bert_distilbert/a100/batch256_lr3p2e-4.yaml my_experiment 42
+#
+# The run_name becomes the output directory (./outputs/run_name) and is used for W&B tracking.
+# If run_name exists, training resumes from checkpoint. W&B run ID is managed via metadata.
 #
 # First-time setup:
 #   ssh login.explorer.northeastern.edu
@@ -37,24 +40,13 @@ source activate distillation
 
 # Configuration
 CONFIG=${1:-configs/mnli/bert_distilbert/a100/batch256_lr3p2e-4.yaml}
-OUTPUT_DIR=${2:-./outputs/slurm_run}
+RUN_NAME=${2:-slurm_run}
 SEED=${3:-42}
+OUTPUT_DIR="./outputs/$RUN_NAME"
 STATE_FILE="$OUTPUT_DIR/training_state.json"
 
 # Create logs directory
 mkdir -p logs
-mkdir -p "$OUTPUT_DIR"
-
-# Set up W&B run ID for continuation across jobs
-# If WANDB_RUN_ID is not set, generate a new one
-if [ -z "$WANDB_RUN_ID" ]; then
-    export WANDB_RUN_ID=$(python -c "import wandb; print(wandb.util.generate_id())")
-    echo "Generated new W&B run ID: $WANDB_RUN_ID"
-else
-    echo "Resuming W&B run: $WANDB_RUN_ID"
-fi
-
-export WANDB_RESUME="allow"
 
 # Check if training already complete
 if [ -f "$STATE_FILE" ]; then
@@ -83,11 +75,13 @@ echo ""
 echo "========================================="
 echo "Starting training..."
 echo "Config: $CONFIG"
+echo "Run name: $RUN_NAME"
 echo "Output: $OUTPUT_DIR"
 echo "Seed: $SEED"
 echo "========================================="
 echo ""
 
+# Use --output_dir for compatibility (train.py manages W&B ID via metadata)
 python train.py \
     --config "$CONFIG" \
     --output_dir "$OUTPUT_DIR" \
@@ -115,8 +109,8 @@ except:
         echo "Training incomplete. Resubmitting job..."
         echo "========================================="
 
-        # Resubmit with same W&B run ID and seed
-        sbatch --export=WANDB_RUN_ID=$WANDB_RUN_ID "$0" "$CONFIG" "$OUTPUT_DIR" "$SEED"
+        # Resubmit with same run_name (W&B ID managed via metadata in train.py)
+        sbatch "$0" "$CONFIG" "$RUN_NAME" "$SEED"
     else
         echo ""
         echo "========================================="

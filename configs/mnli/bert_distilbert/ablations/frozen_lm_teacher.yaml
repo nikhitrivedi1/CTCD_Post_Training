@@ -1,0 +1,41 @@
+# Ablation 2: Frozen LM-Pretrained Teacher
+# Traditional KD setup but teacher hasn't learned MNLI
+# Tests: Does an untrained teacher provide useful soft labels?
+# Expected: ~60-65% (teacher gives random soft labels)
+
+inherit: ../../../base.yaml
+
+model:
+  teacher: bert-base-uncased  # LM-pretrained, not MNLI-trained
+  student: distilbert-base-uncased
+  student_init: pretrained
+
+data:
+  task: mnli
+  max_length: 128
+
+training:
+  num_epochs: 3
+  batch_size: 16
+  learning_rate: 0.00002
+  warmup_steps: 200
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: true
+
+distillation:
+  temperature: 2
+  alpha: 0.5              # CE + KL
+  freeze_teacher: true    # Traditional distillation (frozen)
+
+checkpointing:
+  save_steps: 2000
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 100
+
+evaluation:
+  eval_steps: 2000
+  eval_strategy: steps
