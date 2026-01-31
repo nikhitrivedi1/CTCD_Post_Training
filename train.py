@@ -55,17 +55,26 @@ def generate_config_id(config_path: str) -> str:
     return "_".join(config_path_parts[1:]) if config_path_parts[0] == "configs" else "_".join(config_path_parts)
 
 
-def generate_wandb_id(config_path: str, timestamp: str, max_length: int = 64) -> str:
-    """Generate a W&B-safe run ID from config filename + timestamp.
+def truncate_for_wandb(run_name: str, max_length: int = 64) -> str:
+    """Truncate run_name for W&B, preserving timestamp suffix.
 
-    Example: 01_frozen_base-teacher_kl_2026-01-31_01-53Z
-    Truncates config name if needed, always keeps full timestamp for uniqueness.
+    Run names have format: {config_id}_{timestamp}
+    Timestamp format: YYYY-MM-DD_HH-MMZ (17 chars)
+
+    Truncates config_id prefix if needed, always keeps full timestamp.
     """
-    config_name = Path(config_path).stem
-    max_name_length = max_length - len(timestamp) - 1  # -1 for underscore
-    if len(config_name) > max_name_length:
-        config_name = config_name[:max_name_length]
-    return f"{config_name}_{timestamp}"
+    if len(run_name) <= max_length:
+        return run_name
+
+    # Timestamp is last 17 chars (YYYY-MM-DD_HH-MMZ)
+    timestamp_len = 17
+    if len(run_name) > timestamp_len + 1:  # Has prefix + underscore + timestamp
+        timestamp = run_name[-timestamp_len:]
+        prefix = run_name[:-(timestamp_len + 1)]  # Exclude underscore before timestamp
+        max_prefix_len = max_length - timestamp_len - 1
+        return f"{prefix[:max_prefix_len]}_{timestamp}"
+
+    return run_name[:max_length]
 
 
 def load_run_metadata(output_dir: Path) -> dict | None:
@@ -240,9 +249,9 @@ def main():
         wandb_run_id = metadata.get("wandb_run_id")
         print(f"Loaded metadata: wandb_run_id={wandb_run_id}")
     else:
-        # New run: generate wandb_run_id and save metadata
+        # New run: use run_name as wandb_run_id, truncated to 64 chars for W&B
         config_id = generate_config_id(args.config)
-        wandb_run_id = generate_wandb_id(args.config, timestamp)
+        wandb_run_id = truncate_for_wandb(run_name)
         metadata = {
             "run_name": run_name,
             "wandb_run_id": wandb_run_id,

@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --job-name=distill
-#SBATCH --partition=courses-gpu
-#SBATCH --gres=gpu:1
+#SBATCH --job-name=distillation
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:a100:1
 #SBATCH --time=08:00:00
 #SBATCH --mem=64G
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=4
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
 #SBATCH --signal=SIGUSR1@120
@@ -13,11 +13,14 @@
 # Handles job limits by automatically resubmitting incomplete jobs
 #
 # Usage:
-#   sbatch scripts/run_slurm.sh [config] [run_name] [seed]
-#   sbatch scripts/run_slurm.sh configs/mnli/bert_distilbert/a100/batch256_lr3p2e-4.yaml my_experiment 42
+#   sbatch scripts/run_slurm.sh <config> [run_name]
 #
-# The run_name becomes the output directory (./outputs/run_name) and is used for W&B tracking.
-# If run_name exists, training resumes from checkpoint. W&B run ID is managed via metadata.
+# Examples:
+#   sbatch scripts/run_slurm.sh configs/mnli/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml
+#   -> auto-generates: outputs/mnli_bert_distilbert_ablations_02_frozen_sft-teacher_kl_2026-01-31_03-15Z
+#
+#   sbatch scripts/run_slurm.sh configs/... my_experiment
+#   -> outputs/my_experiment (resumes if exists)
 #
 # First-time setup:
 #   ssh login.explorer.northeastern.edu
@@ -38,10 +41,21 @@ module load cuda/12.1
 module load anaconda3/2024.06
 source activate distillation
 
-# Configuration
+# Configuration: <config> [run_name]
 CONFIG=${1:-configs/mnli/bert_distilbert/gpu/a100/batch256_lr3p2e-4.yaml}
-RUN_NAME=${2:-slurm_run}
-SEED=${3:-42}
+
+# Generate run name from config path + timestamp if not provided
+# e.g., configs/mnli/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml
+#    -> mnli_bert_distilbert_ablations_02_frozen_sft-teacher_kl_2026-01-31_03-15Z
+if [ -z "$2" ]; then
+    TIMESTAMP=$(date -u +"%Y-%m-%d_%H-%MZ")
+    # Remove configs/ prefix and .yaml suffix, replace / with _
+    CONFIG_ID=$(echo "$CONFIG" | sed 's|^configs/||' | sed 's|\.yaml$||' | tr '/' '_')
+    RUN_NAME="${CONFIG_ID}_${TIMESTAMP}"
+else
+    RUN_NAME="$2"
+fi
+
 OUTPUT_DIR="./outputs/$RUN_NAME"
 STATE_FILE="$OUTPUT_DIR/training_state.json"
 
@@ -77,15 +91,15 @@ echo "Starting training..."
 echo "Config: $CONFIG"
 echo "Run name: $RUN_NAME"
 echo "Output: $OUTPUT_DIR"
-echo "Seed: $SEED"
 echo "========================================="
 echo ""
 
-# Use --output_dir for compatibility (train.py manages W&B ID via metadata)
-python train.py \
-    --config "$CONFIG" \
-    --output_dir "$OUTPUT_DIR" \
-    --seed "$SEED"
+# Use --run_name for new runs (--new), resume otherwise
+if [ -d "$OUTPUT_DIR" ]; then
+    python train.py --run_name "$RUN_NAME"
+else
+    python train.py --config "$CONFIG" --run_name "$RUN_NAME" --new
+fi
 
 EXIT_CODE=$?
 
@@ -110,7 +124,7 @@ except:
         echo "========================================="
 
         # Resubmit with same run_name (W&B ID managed via metadata in train.py)
-        sbatch "$0" "$CONFIG" "$RUN_NAME" "$SEED"
+        sbatch "$0" "$CONFIG" "$RUN_NAME"
     else
         echo ""
         echo "========================================="
