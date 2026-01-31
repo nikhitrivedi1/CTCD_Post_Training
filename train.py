@@ -4,7 +4,6 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import argparse
-import hashlib
 import json
 import os
 import random
@@ -56,13 +55,17 @@ def generate_config_id(config_path: str) -> str:
     return "_".join(config_path_parts[1:]) if config_path_parts[0] == "configs" else "_".join(config_path_parts)
 
 
-def generate_wandb_id(run_name: str) -> str:
-    """Generate a W&B-safe run ID from run_name (max 64 chars, alphanumeric + dash/underscore)."""
-    # Use first 8 chars of MD5 hash for uniqueness, prepend readable prefix
-    hash_suffix = hashlib.md5(run_name.encode()).hexdigest()[:8]
-    # Take last portion of run_name (usually has timestamp) and combine with hash
-    short_name = run_name[-20:] if len(run_name) > 20 else run_name
-    return f"{short_name}_{hash_suffix}"
+def generate_wandb_id(config_path: str, timestamp: str, max_length: int = 64) -> str:
+    """Generate a W&B-safe run ID from config filename + timestamp.
+
+    Example: 01_frozen_base-teacher_kl_2026-01-31_01-53Z
+    Truncates config name if needed, always keeps full timestamp for uniqueness.
+    """
+    config_name = Path(config_path).stem
+    max_name_length = max_length - len(timestamp) - 1  # -1 for underscore
+    if len(config_name) > max_name_length:
+        config_name = config_name[:max_name_length]
+    return f"{config_name}_{timestamp}"
 
 
 def load_run_metadata(output_dir: Path) -> dict | None:
@@ -238,8 +241,8 @@ def main():
         print(f"Loaded metadata: wandb_run_id={wandb_run_id}")
     else:
         # New run: generate wandb_run_id and save metadata
-        wandb_run_id = generate_wandb_id(run_name)
         config_id = generate_config_id(args.config)
+        wandb_run_id = generate_wandb_id(args.config, timestamp)
         metadata = {
             "run_name": run_name,
             "wandb_run_id": wandb_run_id,
