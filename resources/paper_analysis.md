@@ -28,6 +28,12 @@
 
 **Key:** Student is freshly initialized (not pretrained DistilBERT checkpoint)
 
+> ⚠️ **Paper vs Code Discrepancy:**
+> - **Paper text (Section 3.1):** *"a freshly initialized 'distilbert-base-uncased' model configuration was loaded for the student model"*
+> - **Actual code:** Uses `AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.2-1B-Instruct")` - pretrained weights
+>
+> Our configs use `student_init: pretrained` which matches the actual code behavior, not the paper text.
+
 ### Llama 3.2 (Translation)
 
 | Model | Parameters | Notes |
@@ -165,10 +171,10 @@ This would prove: "Distillation adds X% accuracy over training without a teacher
 ## Reproduction Checklist
 
 ### Must Have
-- [ ] Match hyperparameters exactly (lr=2e-05, batch=16, temp=2, α=0.5)
-- [ ] Fresh student initialization (not pretrained weights)
-- [ ] 3 epochs training
-- [ ] Same loss function (KL divergence + CE)
+- [x] Match hyperparameters exactly (lr=2e-05, batch=16, temp=2, α=0.5)
+- [x] Student initialization: pretrained weights (matches actual code, not paper text)
+- [x] 3 epochs training
+- [x] Same loss function (KL divergence + CE)
 
 ### Should Add (for stronger paper)
 - [ ] Baseline configs (α=0) to show distillation delta

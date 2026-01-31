@@ -13,6 +13,8 @@ All experiments use:
 - **Task**: MNLI (393K training examples, 3-way classification)
 - **Training**: 3 epochs, batch size 16, lr 2e-5
 
+> **Note on student initialization:** Our configs use `student_init: pretrained` (HuggingFace DistilBERT weights). The paper text mentions "freshly initialized" students, but the actual code repositories use pretrained weights. Our implementation matches the code behavior.
+
 ## Baselines and Context
 
 | Model | Description | MNLI Accuracy |
