@@ -22,6 +22,9 @@
 #   sbatch scripts/run_slurm.sh configs/... my_experiment
 #   -> outputs/my_experiment (resumes if exists)
 #
+# Environment variables:
+#   MAX_STEPS=10 sbatch scripts/run_slurm.sh configs/...  # For testing
+#
 # First-time setup:
 #   ssh login.explorer.northeastern.edu
 #   module load anaconda3/2024.06
@@ -58,6 +61,13 @@ fi
 
 OUTPUT_DIR="./outputs/$RUN_NAME"
 STATE_FILE="$OUTPUT_DIR/training_state.json"
+
+# Optional: max_steps for testing (via environment variable)
+MAX_STEPS_ARG=""
+if [ -n "$MAX_STEPS" ]; then
+    MAX_STEPS_ARG="--max_steps $MAX_STEPS"
+    echo "Testing mode: max_steps=$MAX_STEPS"
+fi
 
 # Create logs directory
 mkdir -p logs
@@ -96,9 +106,9 @@ echo ""
 
 # Use --run_name for new runs (--new), resume otherwise
 if [ -d "$OUTPUT_DIR" ]; then
-    python train.py --run_name "$RUN_NAME"
+    python train.py --run_name "$RUN_NAME" $MAX_STEPS_ARG
 else
-    python train.py --config "$CONFIG" --run_name "$RUN_NAME" --new
+    python train.py --config "$CONFIG" --run_name "$RUN_NAME" --new $MAX_STEPS_ARG
 fi
 
 EXIT_CODE=$?
