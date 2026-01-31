@@ -13,6 +13,16 @@ All experiments use:
 - **Task**: MNLI (393K training examples, 3-way classification)
 - **Training**: 3 epochs, batch size 16, lr 2e-5
 
+## Baselines and Context
+
+| Model | Description | MNLI Accuracy |
+|-------|-------------|---------------|
+| Pretrained DistilBERT (no fine-tuning) | LM weights only, no task training | ~33% (random) |
+| DistilBERT + CE (fine-tuned) | Student trained on ground truth labels | ~79-80% |
+| BERT (teacher, fine-tuned) | Teacher model trained on MNLI | ~84% |
+
+The goal of knowledge distillation is to close the gap between the student baseline (~80%) and the teacher (~84%). The pretrained baseline (~33%) demonstrates the value of fine-tuning itself, while the CE-only baseline shows what the student can achieve without teacher guidance.
+
 ## Ablation Configurations
 
 ### 1. CE Only (No Distillation Baseline)
