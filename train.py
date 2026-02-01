@@ -49,26 +49,53 @@ def setup_logging(debug: bool = False):
 
 
 class TeeWriter:
-    """Write to both a file and the original stream (stdout/stderr)."""
+    """Write to both a file and the original stream (stdout/stderr).
+
+    Handles carriage returns so tqdm progress bars don't spam the log file.
+    Terminal gets full interactive experience; file gets clean final states.
+    """
 
     def __init__(self, file_path: Path, original_stream):
         self.file = open(file_path, 'a')
         self.original = original_stream
+        self.encoding = getattr(original_stream, 'encoding', 'utf-8')
+        self._line_buffer = ""
 
     def write(self, data):
+        # Terminal: write immediately (preserves interactive behavior)
         self.original.write(data)
-        self.file.write(data)
-        self.file.flush()
+
+        # File: buffer lines, \r clears buffer (keeps only final state)
+        for char in data:
+            if char == '\r':
+                self._line_buffer = ""
+            elif char == '\n':
+                self.file.write(self._line_buffer + '\n')
+                self.file.flush()
+                self._line_buffer = ""
+            else:
+                self._line_buffer += char
 
     def flush(self):
         self.original.flush()
-        self.file.flush()
+
+    def close(self):
+        if self._line_buffer:
+            self.file.write(self._line_buffer + '\n')
+        self.file.close()
+
+    def isatty(self):
+        return self.original.isatty()
+
+    def fileno(self):
+        return self.original.fileno()
 
 
 def add_file_logging(output_dir: Path, debug: bool = False):
-    """Add file handler to log all output to the run's output directory.
+    """Add file logging to capture all output to the run's output directory.
 
-    Captures both Python logging and direct print/tqdm output from HuggingFace Trainer.
+    Uses TeeWriter to capture stdout/stderr (print, tqdm, wandb) plus FileHandler
+    for Python logging. Handles \\r so progress bars don't spam the log file.
 
     Args:
         output_dir: Path to the output directory
@@ -77,18 +104,9 @@ def add_file_logging(output_dir: Path, debug: bool = False):
     output_dir.mkdir(parents=True, exist_ok=True)
     log_file = output_dir / "output.log"
 
-    # Redirect stdout/stderr to also write to file (captures print, tqdm, etc.)
+    # Capture stdout/stderr (print, tqdm, wandb output)
     sys.stdout = TeeWriter(log_file, sys.stdout)
     sys.stderr = TeeWriter(log_file, sys.stderr)
-
-    # Also add logging file handler for proper log formatting
-    level = logging.DEBUG if debug else logging.INFO
-    format_str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-
-    file_handler = logging.FileHandler(log_file, mode='a')
-    file_handler.setLevel(level)
-    file_handler.setFormatter(logging.Formatter(format_str))
-    logging.getLogger().addHandler(file_handler)
 
     logger.info(f"Logging to file: {log_file}")
 
