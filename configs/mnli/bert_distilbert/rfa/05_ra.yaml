@@ -15,8 +15,9 @@ data:
 
 training:
   num_epochs: 3
-  batch_size: 256           # A100/H200 optimized
-  learning_rate: 0.00032    # Linear scaling: 16x base
+  batch_size: 64                      # Reduced for memory (attention is expensive)
+  gradient_accumulation_steps: 4      # Effective batch = 64×4 = 256
+  learning_rate: 0.00032              # Linear scaling: 16x base (uses effective batch)
   warmup_steps: 500
   weight_decay: 0.01
   max_grad_norm: 2.0
