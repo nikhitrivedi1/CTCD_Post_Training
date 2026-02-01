@@ -463,7 +463,8 @@ def main():
     Path(".last_run").write_text(f"{run_name}\n{output_dir}\n")
 
     # Setup W&B
-    os.environ.setdefault("WANDB_PROJECT", "Knowledge Distillation")
+    wandb_project = "Test" if args.debug else "Knowledge Distillation"
+    os.environ.setdefault("WANDB_PROJECT", wandb_project)
     os.environ["WANDB_RUN_ID"] = wandb_run_id
     os.environ["WANDB_RESUME"] = "allow"
 
