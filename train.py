@@ -47,6 +47,30 @@ def setup_logging(debug: bool = False):
         # Suppress verbose warnings in production
         warnings.filterwarnings("ignore")
 
+
+def add_file_logging(output_dir: Path, debug: bool = False):
+    """Add file handler to log all output to the run's output directory.
+
+    Args:
+        output_dir: Path to the output directory
+        debug: If True, use DEBUG level; otherwise INFO level
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_file = output_dir / "output.log"
+
+    level = logging.DEBUG if debug else logging.INFO
+    # Always use detailed format for file logs (timestamps help with debugging)
+    format_str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+    file_handler = logging.FileHandler(log_file, mode='a')  # Append mode for resume
+    file_handler.setLevel(level)
+    file_handler.setFormatter(logging.Formatter(format_str))
+
+    # Add to root logger so all modules write to the file
+    logging.getLogger().addHandler(file_handler)
+
+    logger.info(f"Logging to file: {log_file}")
+
 # Add project root to path for running without package install
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -382,6 +406,9 @@ def main():
         config = load_config(args.config)
 
     logger.info(f"Output directory: {args.output_dir}")
+
+    # Add file logging to output directory
+    add_file_logging(output_dir, debug=args.debug)
 
     # Detect environment
     env = detect_environment()
