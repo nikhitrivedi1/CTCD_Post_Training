@@ -1,11 +1,13 @@
 """DistillationTrainer: HuggingFace Trainer subclass for knowledge distillation."""
 
-from typing import Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from transformers import Trainer
 
 from .losses import DistillationLossStrategy, KLDistillationLoss, get_loss_strategy
+from .layer_mapping import get_layer_mapping
+from .projections import create_projection_if_needed
 
 
 class DistillationTrainer(Trainer):
@@ -34,6 +36,9 @@ class DistillationTrainer(Trainer):
             loss_strategy: Optional[DistillationLossStrategy] = None,
             loss_type: Optional[str] = None,
             teacher_label_map: Optional[list] = None,
+            layer_mapping_type: Optional[str] = None,
+            layer_mapping: Optional[List[Tuple[int, int]]] = None,
+            projector: Optional[torch.nn.Module] = None,
             *args,
             **kwargs
     ):
@@ -51,6 +56,11 @@ class DistillationTrainer(Trainer):
             teacher_label_map: Optional list to remap teacher logits to match dataset labels.
                               e.g., [1, 2, 0] means teacher label 1 -> dataset label 0, etc.
                               Use when teacher was trained with different label ordering.
+            layer_mapping_type: Strategy for mapping teacher layers to student layers
+                               (uniform, last_n, first_last). Used for feature/attention distillation.
+            layer_mapping: Explicit list of (teacher_idx, student_idx) pairs.
+                          Overrides layer_mapping_type if provided.
+            projector: Optional projection module for dimension alignment in feature distillation.
             *args: Additional arguments for Trainer
             **kwargs: Additional keyword arguments for Trainer
         """
@@ -88,11 +98,24 @@ class DistillationTrainer(Trainer):
                 alpha=alpha
             )
 
+        # Store layer mapping and projector for feature/attention distillation
+        self.layer_mapping = layer_mapping
+        self.layer_mapping_type = layer_mapping_type
+        self.projector = projector
+
+        # Track what outputs we need based on loss strategy requirements
+        self.output_hidden_states = getattr(self.loss_strategy, 'requires_hidden_states', False)
+        self.output_attentions = getattr(self.loss_strategy, 'requires_attentions', False)
+
         print(f"DistillationTrainer initialized:")
         print(f"  Loss strategy: {self.loss_strategy.name}")
         print(f"  Temperature: {temperature}")
         print(f"  Alpha: {alpha}")
         print(f"  Teacher frozen: {freeze_teacher}")
+        if self.output_hidden_states:
+            print(f"  Output hidden states: True (required by {self.loss_strategy.name})")
+        if self.output_attentions:
+            print(f"  Output attentions: True (required by {self.loss_strategy.name})")
 
     def create_optimizer(self):
         """
@@ -126,19 +149,26 @@ class DistillationTrainer(Trainer):
         Returns:
             Loss tensor, or (loss, outputs) if return_outputs=True
         """
+        # Build extra kwargs for model forward pass if needed
+        model_kwargs = {}
+        if self.output_hidden_states:
+            model_kwargs["output_hidden_states"] = True
+        if self.output_attentions:
+            model_kwargs["output_attentions"] = True
+
         # Get student predictions
-        outputs = model(**inputs)
+        outputs = model(**inputs, **model_kwargs)
         student_logits = outputs.logits
 
         # Get teacher predictions
         if self.freeze_teacher:
             # Traditional distillation: no gradients through teacher
             with torch.no_grad():
-                teacher_outputs = self.teacher(**inputs)
+                teacher_outputs = self.teacher(**inputs, **model_kwargs)
                 teacher_logits = teacher_outputs.logits
         else:
             # Co-training: gradients flow through teacher
-            teacher_outputs = self.teacher(**inputs)
+            teacher_outputs = self.teacher(**inputs, **model_kwargs)
             teacher_logits = teacher_outputs.logits
 
         # Remap teacher logits if label ordering differs from dataset
@@ -153,12 +183,22 @@ class DistillationTrainer(Trainer):
         # Get labels if available
         labels = inputs.get("labels", None)
 
+        # Build kwargs for loss strategy
+        loss_kwargs = {}
+        if self.layer_mapping is not None:
+            loss_kwargs["layer_mapping"] = self.layer_mapping
+        if self.projector is not None:
+            loss_kwargs["projector"] = self.projector
+
         # Compute loss using strategy
         loss_output = self.loss_strategy.compute(
             student_logits=student_logits,
             teacher_logits=teacher_logits,
             ce_loss=ce_loss,
-            labels=labels
+            labels=labels,
+            student_outputs=outputs,
+            teacher_outputs=teacher_outputs,
+            **loss_kwargs
         )
 
         # Log individual components for monitoring
@@ -168,3 +208,98 @@ class DistillationTrainer(Trainer):
         self.log(log_dict)
 
         return (loss_output.total_loss, outputs) if return_outputs else loss_output.total_loss
+
+    @classmethod
+    def setup_from_config(
+        cls,
+        config: Dict[str, Any],
+        teacher_model: torch.nn.Module,
+        student_model: torch.nn.Module,
+    ) -> Tuple[Dict[str, Any], Optional[List[Tuple[int, int]]], Optional[torch.nn.Module]]:
+        """
+        Parse distillation config and prepare trainer arguments.
+
+        This factory method extracts distillation-related configuration and
+        sets up layer mapping and projections for feature/attention distillation.
+
+        Args:
+            config: Full configuration dictionary (with 'distillation' key)
+            teacher_model: Teacher model (for layer/dimension info)
+            student_model: Student model (for layer/dimension info)
+
+        Returns:
+            Tuple of (trainer_kwargs, layer_mapping, projector)
+            - trainer_kwargs: Dict of arguments to pass to DistillationTrainer
+            - layer_mapping: List of (teacher_idx, student_idx) pairs or None
+            - projector: Projection module or None
+
+        Example:
+            trainer_kwargs, layer_mapping, projector = DistillationTrainer.setup_from_config(
+                config, teacher, student
+            )
+            trainer = DistillationTrainer(
+                teacher_model=teacher,
+                model=student,
+                **trainer_kwargs,
+                layer_mapping=layer_mapping,
+                projector=projector,
+                ...
+            )
+        """
+        distill_config = config.get("distillation", {})
+
+        # Basic distillation parameters
+        trainer_kwargs = {
+            "temperature": distill_config.get("temperature", 2.0),
+            "alpha": distill_config.get("alpha", 0.5),
+            "loss_type": distill_config.get("loss_type", "kl_divergence"),
+        }
+
+        # Teacher label remapping
+        if "teacher_label_map" in distill_config:
+            trainer_kwargs["teacher_label_map"] = distill_config["teacher_label_map"]
+
+        # Layer mapping for feature/attention distillation
+        layer_mapping = None
+        layer_mapping_config = distill_config.get("layer_mapping", {})
+        if layer_mapping_config:
+            mapping_type = layer_mapping_config.get("type", "uniform")
+
+            # Get layer counts from model configs
+            teacher_layers = getattr(teacher_model.config, "num_hidden_layers", 12)
+            student_layers = getattr(student_model.config, "num_hidden_layers", 6)
+
+            if mapping_type == "custom" and "mapping" in layer_mapping_config:
+                # Explicit mapping provided
+                layer_mapping = [
+                    (pair["teacher"], pair["student"])
+                    for pair in layer_mapping_config["mapping"]
+                ]
+            else:
+                # Use a mapping strategy
+                mapper = get_layer_mapping(mapping_type)
+                layer_mapping = mapper.map(teacher_layers, student_layers)
+
+            trainer_kwargs["layer_mapping_type"] = mapping_type
+
+        # Projection for dimension alignment
+        projector = None
+        projection_config = distill_config.get("projection", {})
+        if projection_config:
+            teacher_dim = getattr(teacher_model.config, "hidden_size", 768)
+            student_dim = getattr(student_model.config, "hidden_size", 768)
+
+            if teacher_dim != student_dim or projection_config.get("force", False):
+                proj_type = projection_config.get("type", "linear")
+                projector = create_projection_if_needed(
+                    teacher_dim=teacher_dim,
+                    student_dim=student_dim,
+                    projection_type=proj_type,
+                    hidden_dim=projection_config.get("hidden_dim"),
+                    activation=projection_config.get("activation", "relu"),
+                )
+                # Move projector to same device as student model
+                if hasattr(student_model, "device"):
+                    projector = projector.to(student_model.device)
+
+        return trainer_kwargs, layer_mapping, projector

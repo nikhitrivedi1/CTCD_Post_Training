@@ -171,6 +171,87 @@ This framework isn't just a course project—it's a **learning laboratory** desi
 
 ---
 
+## Experiment Levels (Current Focus)
+
+Within each phase, experiments are structured in three levels of depth:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    EXPERIMENT DEPTH LEVELS                          │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  L0: ABLATION STUDIES                                               │
+│  ├── Purpose: Isolate what matters                                  │
+│  ├── Method: Toggle one variable at a time                          │
+│  ├── Example: frozen vs co-train, SFT vs base teacher               │
+│  └── Status: ✓ MNLI/QQP 5-config ablation complete (2 seeds each)  │
+│                                                                      │
+│  L1: KD STRATEGY EXPLORATION                                        │
+│  ├── Purpose: Explore different distillation approaches             │
+│  ├── Method: Implement and compare strategies                       │
+│  ├── Options:                                                       │
+│  │   ├── Response-based (current): Soft label matching (KL)        │
+│  │   ├── Feature-based: Hidden state matching, attention transfer  │
+│  │   ├── Relation-based: Similarity preservation, contrastive      │
+│  │   └── Progressive: Curriculum, layer-wise training              │
+│  └── Status: □ Planning                                             │
+│                                                                      │
+│  L2: HYPERPARAMETER OPTIMIZATION                                    │
+│  ├── Purpose: Fine-tune for best performance                        │
+│  ├── Method: Systematic search over hyperparameters                 │
+│  ├── Approaches:                                                    │
+│  │   ├── Grid Search: Exhaustive over defined ranges               │
+│  │   ├── Random Search: Sample from distributions                  │
+│  │   ├── Optuna/Ray Tune: Bayesian optimization                    │
+│  │   └── Population-based: Evolve configurations                   │
+│  ├── Key Parameters:                                                │
+│  │   ├── Temperature (T): 1, 2, 4, 8                               │
+│  │   ├── Alpha (α): 0.0, 0.3, 0.5, 0.7, 1.0                       │
+│  │   ├── Learning rate, batch size, warmup                         │
+│  │   └── Layer mapping (for feature distillation)                  │
+│  └── Status: □ Not started                                          │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Current Progress
+
+| Level | Task | Seeds | Status |
+|-------|------|-------|--------|
+| **L0** | MNLI ablations (5 configs) | 42, 84 | ✓ Complete |
+| **L0** | QQP ablations (5 configs) | 42, 84 | ✓ Complete |
+| **L1** | Feature-based KD | - | □ Next |
+| **L1** | Attention transfer | - | □ Planned |
+| **L2** | Temperature sweep | - | □ After L1 |
+| **L2** | Alpha sweep | - | □ After L1 |
+
+### L1 Strategy Combinations
+
+Three core distillation signals and their combinations:
+
+| ID | Config | R (KL) | F (MSE) | A (Attn) | Description |
+|----|--------|:------:|:-------:|:--------:|-------------|
+| 00 | Baseline | - | - | - | CE-only, no teacher |
+| 01 | R | ✓ | - | - | Response-based (current KL) |
+| 05 | F | - | ✓ | - | Feature/hidden states only |
+| 06 | A | - | - | ✓ | Attention transfer only |
+| 07 | R+F | ✓ | ✓ | - | DistilBERT-style hybrid |
+| 08 | R+A | ✓ | - | ✓ | Logits + attention |
+| 09 | F+A | - | ✓ | ✓ | Intermediate signals only |
+| 10 | R+F+A | ✓ | ✓ | ✓ | Full combination |
+
+**Implementation priority:**
+1. **F** and **R+F** - most impactful, well-documented in literature
+2. **A** and **R+A** - complementary attention signal
+3. **R+F+A** - test if all three helps or hurts
+
+**Key implementation details:**
+- **Feature (F)**: MSE loss on hidden states, requires layer mapping (BERT 12 → DistilBERT 6)
+- **Attention (A)**: KL divergence on attention distributions
+- **Loss weighting**: New hyperparameters (β for feature, γ for attention)
+
+---
+
 ## Skills Roadmap
 
 ### Technical Skills
