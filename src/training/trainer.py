@@ -161,6 +161,12 @@ class DistillationTrainer(Trainer):
 
         # Get student predictions
         outputs = model(**inputs, **model_kwargs)
+
+        # During evaluation, just return CE loss (skip distillation loss computation)
+        # Distillation loss requires hidden_states/attentions which are disabled during
+        # eval to avoid OOM from accumulating large intermediate tensors
+        if not model.training:
+            return (outputs.loss, outputs) if return_outputs else outputs.loss
         student_logits = outputs.logits
 
         # Get teacher predictions
