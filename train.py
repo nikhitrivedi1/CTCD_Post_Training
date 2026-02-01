@@ -108,6 +108,18 @@ def add_file_logging(output_dir: Path, debug: bool = False):
     sys.stdout = TeeWriter(log_file, sys.stdout)
     sys.stderr = TeeWriter(log_file, sys.stderr)
 
+    # Update existing logging handlers to use TeeWriter
+    # (StreamHandlers created before TeeWriter hold old stdout reference)
+    for handler in logging.root.handlers:
+        if isinstance(handler, logging.StreamHandler):
+            handler.stream = sys.stdout
+
+    # Also update transformers' logging handlers
+    import transformers.utils.logging as tf_logging
+    for handler in tf_logging.get_logger().handlers:
+        if isinstance(handler, logging.StreamHandler):
+            handler.stream = sys.stdout
+
     logger.info(f"Logging to file: {log_file}")
 
 # Add project root to path for running without package install
