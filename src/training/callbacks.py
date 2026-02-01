@@ -1,8 +1,11 @@
 """Callbacks for SLURM signal handling and job chaining."""
 
+import logging
 import signal
 
 from transformers import TrainerCallback
+
+logger = logging.getLogger(__name__)
 
 
 class SLURMSignalCallback(TrainerCallback):
@@ -30,7 +33,7 @@ class SLURMSignalCallback(TrainerCallback):
         signal.signal(signal.SIGUSR1, self._handler)
         signal.signal(signal.SIGTERM, self._handler)
 
-        print("SLURM signal handler registered (SIGUSR1, SIGTERM)")
+        logger.info("SLURM signal handler registered (SIGUSR1, SIGTERM)")
 
     def _handler(self, signum, frame):
         """
@@ -41,15 +44,15 @@ class SLURMSignalCallback(TrainerCallback):
             frame: Current stack frame
         """
         self.caught_signal = True
-        print(f"\n{'=' * 60}")
-        print(f"Caught signal {signum} - saving checkpoint...")
-        print(f"{'=' * 60}\n")
+        logger.warning("=" * 60)
+        logger.warning(f"Caught signal {signum} - saving checkpoint...")
+        logger.warning("=" * 60)
 
         # Save model and trainer state
         self.trainer.save_model()
         self.trainer.save_state()
 
-        print("Checkpoint saved successfully")
+        logger.info("Checkpoint saved successfully")
 
     def on_step_end(self, args, state, control, **kwargs):
         """
@@ -69,6 +72,6 @@ class SLURMSignalCallback(TrainerCallback):
         if self.caught_signal:
             control.should_save = True
             control.should_training_stop = True
-            print("Training will stop at the end of this step")
+            logger.info("Training will stop at the end of this step")
 
         return control

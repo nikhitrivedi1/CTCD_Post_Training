@@ -1,9 +1,12 @@
 """Evaluation metrics for different tasks."""
 
+import logging
 from typing import Dict, Any, Optional, Callable
 
 import evaluate
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def compute_metrics_classification(eval_pred) -> Dict[str, float]:
@@ -95,7 +98,7 @@ def compute_metrics_translation(tokenizer):
             # comet_result = comet_metric.compute(predictions=decoded_preds, references=decoded_labels)
             # metrics["comet"] = comet_result["mean_score"]
         except Exception as e:
-            print(f"Skipping COMET metric: {e}")
+            logger.warning(f"Skipping COMET metric: {e}")
 
         return metrics
 

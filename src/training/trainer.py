@@ -1,5 +1,6 @@
 """DistillationTrainer: HuggingFace Trainer subclass for knowledge distillation."""
 
+import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
@@ -8,6 +9,8 @@ from transformers import Trainer
 from .losses import DistillationLossStrategy, KLDistillationLoss, get_loss_strategy
 from .layer_mapping import get_layer_mapping
 from .projections import create_projection_if_needed
+
+logger = logging.getLogger(__name__)
 
 
 class DistillationTrainer(Trainer):
@@ -107,15 +110,15 @@ class DistillationTrainer(Trainer):
         self.output_hidden_states = getattr(self.loss_strategy, 'requires_hidden_states', False)
         self.output_attentions = getattr(self.loss_strategy, 'requires_attentions', False)
 
-        print(f"DistillationTrainer initialized:")
-        print(f"  Loss strategy: {self.loss_strategy.name}")
-        print(f"  Temperature: {temperature}")
-        print(f"  Alpha: {alpha}")
-        print(f"  Teacher frozen: {freeze_teacher}")
+        logger.info("DistillationTrainer initialized:")
+        logger.info(f"  Loss strategy: {self.loss_strategy.name}")
+        logger.info(f"  Temperature: {temperature}")
+        logger.info(f"  Alpha: {alpha}")
+        logger.info(f"  Teacher frozen: {freeze_teacher}")
         if self.output_hidden_states:
-            print(f"  Output hidden states: True (required by {self.loss_strategy.name})")
+            logger.info(f"  Output hidden states: True (required by {self.loss_strategy.name})")
         if self.output_attentions:
-            print(f"  Output attentions: True (required by {self.loss_strategy.name})")
+            logger.info(f"  Output attentions: True (required by {self.loss_strategy.name})")
 
     def create_optimizer(self):
         """
@@ -132,7 +135,7 @@ class DistillationTrainer(Trainer):
             teacher_params = list(self.teacher.parameters())
             # Add teacher params to existing optimizer's param groups
             self.optimizer.add_param_group({"params": teacher_params})
-            print(f"  Added {len(teacher_params)} teacher parameter groups to optimizer")
+            logger.info(f"  Added {len(teacher_params)} teacher parameter groups to optimizer")
 
         return self.optimizer
 

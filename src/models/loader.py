@@ -1,5 +1,7 @@
 """Load teacher and student model pairs for knowledge distillation."""
 
+import logging
+
 import torch
 from peft import LoraConfig, get_peft_model
 from transformers import (
@@ -8,6 +10,8 @@ from transformers import (
     AutoConfig,
     PreTrainedTokenizer
 )
+
+logger = logging.getLogger(__name__)
 
 
 def load_teacher_student(config: dict, device: str, tokenizer: PreTrainedTokenizer, num_labels: int = None):
@@ -65,7 +69,7 @@ def _load_classification_models(config: dict, device: str, tokenizer: PreTrained
     # Load student
     if student_init == "fresh":
         # Fresh initialization: load config, create new model with random weights
-        print(f"Initializing fresh {student_name} model...")
+        logger.info(f"Initializing fresh {student_name} model...")
         student_config = AutoConfig.from_pretrained(student_name)
         student_config.num_labels = num_labels
 
@@ -84,8 +88,8 @@ def _load_classification_models(config: dict, device: str, tokenizer: PreTrained
             num_labels=num_labels
         ).to(device)
 
-    print(f"Teacher: {teacher_name} ({sum(p.numel() for p in teacher.parameters()) / 1e6:.1f}M params)")
-    print(f"Student: {student_name} ({sum(p.numel() for p in student.parameters()) / 1e6:.1f}M params)")
+    logger.info(f"Teacher: {teacher_name} ({sum(p.numel() for p in teacher.parameters()) / 1e6:.1f}M params)")
+    logger.info(f"Student: {student_name} ({sum(p.numel() for p in student.parameters()) / 1e6:.1f}M params)")
 
     return teacher, student
 
@@ -108,7 +112,7 @@ def _load_translation_models(config: dict, device: str, tokenizer: PreTrainedTok
     use_lora = config.get("training", {}).get("use_lora", False)
 
     # Load teacher (pretrained, fp16)
-    print(f"Loading teacher: {teacher_name}...")
+    logger.info(f"Loading teacher: {teacher_name}...")
     teacher = AutoModelForCausalLM.from_pretrained(
         teacher_name,
         torch_dtype=torch.float16 if device == "cuda" else torch.float32,
@@ -117,13 +121,13 @@ def _load_translation_models(config: dict, device: str, tokenizer: PreTrainedTok
 
     # Resize embeddings if custom tokens added
     if len(tokenizer) > teacher.config.vocab_size:
-        print(f"Resizing teacher embeddings: {teacher.config.vocab_size} -> {len(tokenizer)}")
+        logger.info(f"Resizing teacher embeddings: {teacher.config.vocab_size} -> {len(tokenizer)}")
         teacher.resize_token_embeddings(len(tokenizer))
 
     teacher.eval()
 
     # Load student
-    print(f"Loading student: {student_name}...")
+    logger.info(f"Loading student: {student_name}...")
     if student_init == "fresh":
         # Fresh initialization
         student_config = AutoConfig.from_pretrained(student_name)
@@ -140,12 +144,12 @@ def _load_translation_models(config: dict, device: str, tokenizer: PreTrainedTok
 
     # Resize student embeddings
     if len(tokenizer) > student.config.vocab_size:
-        print(f"Resizing student embeddings: {student.config.vocab_size} -> {len(tokenizer)}")
+        logger.info(f"Resizing student embeddings: {student.config.vocab_size} -> {len(tokenizer)}")
         student.resize_token_embeddings(len(tokenizer))
 
     # Apply LoRA to student if specified
     if use_lora:
-        print("Applying LoRA to student model...")
+        logger.info("Applying LoRA to student model...")
         lora_config = LoraConfig(
             r=config["training"]["lora"]["r"],
             lora_alpha=config["training"]["lora"]["alpha"],
@@ -157,12 +161,12 @@ def _load_translation_models(config: dict, device: str, tokenizer: PreTrainedTok
         student = get_peft_model(student, lora_config)
         student.print_trainable_parameters()
 
-    print(f"Teacher: {teacher_name} ({sum(p.numel() for p in teacher.parameters()) / 1e6:.1f}M params)")
+    logger.info(f"Teacher: {teacher_name} ({sum(p.numel() for p in teacher.parameters()) / 1e6:.1f}M params)")
     if use_lora:
         trainable = sum(p.numel() for p in student.parameters() if p.requires_grad)
         total = sum(p.numel() for p in student.parameters())
-        print(f"Student: {student_name} ({trainable / 1e6:.1f}M trainable / {total / 1e6:.1f}M total params)")
+        logger.info(f"Student: {student_name} ({trainable / 1e6:.1f}M trainable / {total / 1e6:.1f}M total params)")
     else:
-        print(f"Student: {student_name} ({sum(p.numel() for p in student.parameters()) / 1e6:.1f}M params)")
+        logger.info(f"Student: {student_name} ({sum(p.numel() for p in student.parameters()) / 1e6:.1f}M params)")
 
     return teacher, student

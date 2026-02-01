@@ -16,6 +16,9 @@ import yaml
 import numpy as np
 import torch
 
+# Module-level logger
+logger = logging.getLogger(__name__)
+
 
 def setup_logging(debug: bool = False):
     """Configure logging level for the training run.
@@ -39,7 +42,7 @@ def setup_logging(debug: bool = False):
     if debug:
         # Enable additional debug info
         logging.getLogger("src").setLevel(logging.DEBUG)
-        print("DEBUG logging enabled")
+        logger.debug("DEBUG logging enabled")
     else:
         # Suppress verbose warnings in production
         warnings.filterwarnings("ignore")
@@ -170,7 +173,7 @@ def create_loss_strategy_from_config(
             mapper = get_layer_mapping(mapping_type)
             layer_mapping = mapper.map(teacher_layers, student_layers)
 
-        print(f"  Layer mapping ({mapping_type}): {layer_mapping}")
+        logger.debug(f"  Layer mapping ({mapping_type}): {layer_mapping}")
 
     # Setup projection if needed (for feature distillation with dimension mismatch)
     projector = None
@@ -188,7 +191,7 @@ def create_loss_strategy_from_config(
             )
             if projector is not None and device == "cuda":
                 projector = projector.cuda()
-            print(f"  Projection: {student_dim} -> {teacher_dim} ({proj_type})")
+            logger.debug(f"  Projection: {student_dim} -> {teacher_dim} ({proj_type})")
 
     return loss_strategy, layer_mapping, projector
 
@@ -298,7 +301,7 @@ def main():
         if output_dir.exists():
             if args.force:
                 # Force overwrite: delete existing and start fresh
-                print(f"\n--force specified. Deleting existing run: {output_dir}")
+                logger.info(f"--force specified. Deleting existing run: {output_dir}")
                 shutil.rmtree(output_dir)
                 if args.config is None:
                     sys.exit(
@@ -307,12 +310,12 @@ def main():
                         "  python train.py --run_name NAME --config CONFIG [--force]\n"
                     )
                 is_resume = False
-                print(f"Starting fresh run: {run_name}")
+                logger.info(f"Starting fresh run: {run_name}")
             else:
                 # Resume existing run
                 is_resume = True
-                print(f"\nRun '{run_name}' exists at {output_dir}/")
-                print(f"Resuming existing run. Use --force to overwrite.\n")
+                logger.info(f"Run '{run_name}' exists at {output_dir}/")
+                logger.info(f"Resuming existing run. Use --force to overwrite.")
         else:
             # Create new run
             if args.config is None:
@@ -324,7 +327,7 @@ def main():
                     f"  Overwrite:  python train.py --run_name NAME --config CONFIG --force\n"
                 )
             is_resume = False
-            print(f"Starting new run: {run_name}")
+            logger.info(f"Starting new run: {run_name}")
     else:
         # New run: auto-generate name from config
         if args.config is None:
@@ -336,21 +339,21 @@ def main():
                 "  Resume:     python train.py --run_name EXISTING_RUN\n"
             )
         if args.force:
-            print("Warning: --force without --run_name is redundant (auto-generated names are always unique)")
+            logger.warning("--force without --run_name is redundant (auto-generated names are always unique)")
         if args.timestamp:
-            print("Warning: --timestamp without --run_name is redundant (auto-generated names include timestamps)")
+            logger.warning("--timestamp without --run_name is redundant (auto-generated names include timestamps)")
         config_id = generate_config_id(args.config)
         run_name = f"{config_id}_{timestamp}"
         output_dir = Path(f"./outputs/{run_name}")
         is_resume = False
-        print(f"Starting new run: {run_name}")
+        logger.info(f"Starting new run: {run_name}")
 
     # Convert to string for compatibility
     args.output_dir = str(output_dir)
 
     # Set reproducibility seed early
     set_reproducibility_seed(args.seed)
-    print(f"Random seed set to: {args.seed}")
+    logger.info(f"Random seed set to: {args.seed}")
 
     # Load configuration
     if is_resume:
@@ -372,35 +375,35 @@ def main():
                 f"  Delete and restart:  python train.py --run_name {run_name} --config CONFIG --force\n"
                 f"  Or manually delete:  rm -rf {output_dir}\n"
             )
-        print(f"Loaded stored config from: {output_dir / 'config.yaml'}")
+        logger.info(f"Loaded stored config from: {output_dir / 'config.yaml'}")
     else:
         # New run: --config already validated above
-        print(f"Loading config from {args.config}")
+        logger.info(f"Loading config from {args.config}")
         config = load_config(args.config)
 
-    print(f"Output directory: {args.output_dir}")
+    logger.info(f"Output directory: {args.output_dir}")
 
     # Detect environment
     env = detect_environment()
     device = get_device()
-    print(f"\n{'=' * 60}")
-    print(f"Environment: {env}")
-    print(f"Device: {device}")
-    print(f"{'=' * 60}\n")
+    logger.info("=" * 60)
+    logger.info(f"Environment: {env}")
+    logger.info(f"Device: {device}")
+    logger.info("=" * 60)
 
     # Initialize state tracking for SLURM job chaining
     state = TrainingState(args.output_dir)
     state.set_targets(epochs=config["training"]["num_epochs"])
 
     if state.is_complete():
-        print("Training already complete!")
+        logger.info("Training already complete!")
         return
 
     # Load dataset
-    print("Loading dataset...")
+    logger.info("Loading dataset...")
     train_dataset, eval_dataset, tokenizer = load_dataset_for_task(config)
-    print(f"Train size: {len(train_dataset)}")
-    print(f"Eval size: {len(eval_dataset)}")
+    logger.info(f"Train size: {len(train_dataset)}")
+    logger.info(f"Eval size: {len(eval_dataset)}")
 
     # Determine number of labels for classification tasks
     task = config.get("data", {}).get("task", "").lower()
@@ -412,20 +415,20 @@ def main():
         num_labels = None  # Not a classification task
 
     # Load teacher and student models
-    print("\nLoading models...")
+    logger.info("Loading models...")
     teacher, student = load_teacher_student(config, device, tokenizer, num_labels)
 
     # Find checkpoint to resume from
     resume_checkpoint = state.get_resume_checkpoint(args.output_dir)
     if resume_checkpoint:
-        print(f"\nResuming from checkpoint: {resume_checkpoint}")
+        logger.info(f"Resuming from checkpoint: {resume_checkpoint}")
 
     # Handle run metadata
     metadata = load_run_metadata(output_dir)
     if is_resume:
         if metadata:
             wandb_run_id = metadata.get("wandb_run_id")
-            print(f"Resuming run: wandb_run_id={wandb_run_id}")
+            logger.info(f"Resuming run: wandb_run_id={wandb_run_id}")
         else:
             # Corrupted run: config.yaml exists but run_metadata.json missing
             # Regenerate metadata from available info
@@ -438,7 +441,7 @@ def main():
                 "seed": args.seed,
             }
             save_run_metadata(output_dir, metadata)
-            print(f"Warning: Recovered missing run_metadata.json for: {run_name}")
+            logger.warning(f"Recovered missing run_metadata.json for: {run_name}")
     else:
         # New run
         config_id = generate_config_id(args.config)
@@ -454,7 +457,7 @@ def main():
         output_dir.mkdir(parents=True, exist_ok=True)
         save_run_metadata(output_dir, metadata)
         save_config_snapshot(output_dir, config)
-        print(f"Created run metadata: {output_dir / 'run_metadata.json'}")
+        logger.info(f"Created run metadata: {output_dir / 'run_metadata.json'}")
 
     # Write .last_run for SLURM auto-resubmission (works with any run type)
     Path(".last_run").write_text(f"{run_name}\n{output_dir}\n")
@@ -467,9 +470,9 @@ def main():
     report_to = config["logging"]["report_to"]
     if os.environ.get("WANDB_MODE") == "disabled":
         report_to = "none"
-        print("W&B disabled - logging to console only")
+        logger.info("W&B disabled - logging to console only")
     else:
-        print(f"W&B run ID: {wandb_run_id}")
+        logger.info(f"W&B run ID: {wandb_run_id}")
 
     # Training arguments
     training_args = TrainingArguments(
@@ -503,7 +506,7 @@ def main():
     compute_metrics = get_compute_metrics(task, tokenizer=tokenizer)
 
     # Create loss strategy (supports single and combined RFA strategies)
-    print("\nSetting up distillation loss strategy...")
+    logger.info("Setting up distillation loss strategy...")
     loss_strategy, layer_mapping, projector = create_loss_strategy_from_config(
         config["distillation"],
         teacher,
@@ -531,13 +534,13 @@ def main():
 
     # Add SLURM signal handler
     if env == "slurm":
-        print("Adding SLURM signal handler...")
+        logger.info("Adding SLURM signal handler...")
         trainer.add_callback(SLURMSignalCallback(trainer))
 
     # Train
-    print("\n" + "=" * 60)
-    print("Starting training...")
-    print("=" * 60 + "\n")
+    logger.info("=" * 60)
+    logger.info("Starting training...")
+    logger.info("=" * 60)
 
     trainer.train(resume_from_checkpoint=resume_checkpoint)
 
@@ -553,7 +556,7 @@ def main():
                 metadata["wandb_run_id"] = wandb.run.id
                 metadata.setdefault("wandb_run_id_history", []).append(old_id)
                 save_run_metadata(output_dir, metadata)
-                print(f"W&B ID changed: {old_id} → {wandb.run.id}")
+                logger.info(f"W&B ID changed: {old_id} → {wandb.run.id}")
     except Exception:
         pass  # W&B not available or disabled
 
@@ -564,17 +567,17 @@ def main():
     )
 
     # Save final model
-    print("\nSaving final model...")
+    logger.info("Saving final model...")
     trainer.save_model()
 
     # Evaluate
-    print("\nFinal evaluation:")
+    logger.info("Final evaluation:")
     metrics = trainer.evaluate()
-    print(metrics)
+    logger.info(metrics)
 
-    print("\n" + "=" * 60)
-    print("Training complete!")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("Training complete!")
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":
