@@ -44,6 +44,7 @@
 #   MAX_STEPS=10  - Limit steps (for testing)
 #   TIMESTAMP=1   - Append timestamp to run_name
 #   FORCE=1       - Overwrite existing run
+#   DEBUG=1       - Enable verbose DEBUG logging
 #
 # First-time setup:
 #   ssh login.explorer.northeastern.edu
@@ -114,6 +115,12 @@ fi
 if [ -n "$FORCE" ]; then
     ARGS="$ARGS --force"
     echo "Force mode: will overwrite existing run"
+fi
+
+# Optional: debug logging
+if [ -n "$DEBUG" ]; then
+    ARGS="$ARGS --debug"
+    echo "Debug mode: verbose logging enabled"
 fi
 
 # Create logs directory

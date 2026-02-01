@@ -495,6 +495,65 @@ def test_empty_layer_mapping():
 
 
 # =============================================================================
+# Test: Combined Loss Strategy (RFA Matrix)
+# =============================================================================
+
+def test_combined_loss_rfa():
+    """Test combined loss with Feature + Attention (for RFA matrix experiments)."""
+    print("\n=== Test: Combined Loss (Feature + Attention) ===")
+
+    from src.training import CombinedDistillationLoss
+
+    # Create individual strategies
+    feature_strategy = get_loss_strategy("feature_mse", alpha=0.5)
+    attention_strategy = get_loss_strategy("attention_kl", alpha=0.5)
+
+    # Combine Feature + Attention
+    combined = CombinedDistillationLoss(
+        strategies=[feature_strategy, attention_strategy],
+        weights=[1.0, 1.0],
+        alpha=0.5,
+    )
+
+    # Verify aggregated flags
+    assert combined.requires_hidden_states == True, "Should require hidden_states from Feature"
+    assert combined.requires_attentions == True, "Should require attentions from Attention"
+    print("  ✓ Aggregates requires_hidden_states=True from Feature")
+    print("  ✓ Aggregates requires_attentions=True from Attention")
+
+    # Create mock outputs with both hidden states and attentions
+    teacher_out = create_mock_outputs(
+        num_layers=12, hidden_dim=768, num_heads=12,
+        include_hidden=True, include_attention=True
+    )
+    student_out = create_mock_outputs(
+        num_layers=6, hidden_dim=768, num_heads=6,
+        include_hidden=True, include_attention=True
+    )
+
+    mapping = get_layer_mapping("uniform").map(12, 6)
+
+    result = combined.compute(
+        student_logits=student_out.logits,
+        teacher_logits=teacher_out.logits,
+        ce_loss=student_out.loss,
+        student_outputs=student_out,
+        teacher_outputs=teacher_out,
+        layer_mapping=mapping,
+    )
+
+    assert result.total_loss.shape == ()
+    assert "ce_weighted" in result.components
+    # Should have components from both strategies
+    assert any("feature" in k for k in result.components), "Missing feature components"
+    assert any("attention" in k for k in result.components), "Missing attention components"
+
+    print(f"  Total loss: {result.total_loss.item():.4f}")
+    print(f"  Components: {list(result.components.keys())}")
+    print("  ✓ Combined Feature+Attention loss works correctly!")
+
+
+# =============================================================================
 # Main
 # =============================================================================
 
@@ -515,6 +574,7 @@ def run_all_tests():
     test_error_handling()
     test_alpha_edge_cases()
     test_empty_layer_mapping()
+    test_combined_loss_rfa()
 
     print("\n" + "=" * 60)
     print("ALL TESTS PASSED!")

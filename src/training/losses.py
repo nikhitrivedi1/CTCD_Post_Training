@@ -277,7 +277,8 @@ class CombinedDistillationLoss(DistillationLossStrategy):
     """
     Combines multiple loss strategies with configurable weights.
 
-    Useful for experimentation: e.g., KL + MSE + Cosine together.
+    Useful for experimentation: e.g., KL + MSE + Cosine together,
+    or Response + Feature + Attention for RFA matrix experiments.
     """
 
     def __init__(self, strategies: list, weights: list, alpha: float = 0.5):
@@ -288,6 +289,10 @@ class CombinedDistillationLoss(DistillationLossStrategy):
         # Normalize weights
         total = sum(weights)
         self.weights = [w / total for w in weights]
+
+        # Aggregate requirement flags from all sub-strategies
+        self.requires_hidden_states = any(s.requires_hidden_states for s in strategies)
+        self.requires_attentions = any(s.requires_attentions for s in strategies)
 
     @property
     def name(self) -> str:
@@ -315,7 +320,16 @@ class CombinedDistillationLoss(DistillationLossStrategy):
         distill_loss = torch.tensor(0.0, device=student_logits.device)
 
         for strategy, weight in zip(self.strategies, self.weights):
-            output = strategy.compute(student_logits, teacher_logits, ce_loss, labels)
+            # Pass full outputs and kwargs to sub-strategies (needed for Feature/Attention)
+            output = strategy.compute(
+                student_logits=student_logits,
+                teacher_logits=teacher_logits,
+                ce_loss=ce_loss,
+                labels=labels,
+                student_outputs=student_outputs,
+                teacher_outputs=teacher_outputs,
+                **kwargs,
+            )
             # Extract the distillation component (total - ce contribution)
             strategy_distill = output.total_loss - (1 - strategy.alpha) * ce_loss
             distill_loss = distill_loss + weight * strategy_distill

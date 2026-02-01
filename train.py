@@ -1,14 +1,13 @@
 """Main training script for knowledge distillation."""
 
-import warnings
-warnings.filterwarnings("ignore")
-
 import argparse
 import json
+import logging
 import os
 import random
 import shutil
 import sys
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -16,6 +15,34 @@ import yaml
 
 import numpy as np
 import torch
+
+
+def setup_logging(debug: bool = False):
+    """Configure logging level for the training run.
+
+    Args:
+        debug: If True, use DEBUG level; otherwise INFO level
+    """
+    level = logging.DEBUG if debug else logging.INFO
+    format_str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s" if debug else "%(message)s"
+
+    logging.basicConfig(
+        level=level,
+        format=format_str,
+        handlers=[logging.StreamHandler(sys.stdout)],
+    )
+
+    # Set transformers logging
+    import transformers
+    transformers.logging.set_verbosity(logging.DEBUG if debug else logging.INFO)
+
+    if debug:
+        # Enable additional debug info
+        logging.getLogger("src").setLevel(logging.DEBUG)
+        print("DEBUG logging enabled")
+    else:
+        # Suppress verbose warnings in production
+        warnings.filterwarnings("ignore")
 
 # Add project root to path for running without package install
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -43,8 +70,127 @@ from src.evaluation.metrics import get_compute_metrics
 from src.models.loader import load_teacher_student
 from src.training.callbacks import SLURMSignalCallback
 from src.training.trainer import DistillationTrainer
+from src.training.losses import (
+    get_loss_strategy,
+    CombinedDistillationLoss,
+    FeatureLossStrategy,
+    AttentionLossStrategy,
+)
+from src.training.layer_mapping import get_layer_mapping
+from src.training.projections import create_projection_if_needed
 from src.utils.checkpoint import TrainingState
 from src.utils.config import load_config
+
+
+def create_loss_strategy_from_config(
+    distill_config: dict,
+    teacher_model,
+    student_model,
+    device: str,
+):
+    """
+    Create loss strategy from distillation config, supporting RFA combinations.
+
+    Config format for single strategy:
+        distillation:
+          loss_type: kl_divergence
+          alpha: 0.5
+
+    Config format for combined strategies (RFA matrix):
+        distillation:
+          loss_strategies:
+            - type: kl_divergence
+              weight: 1.0
+            - type: feature_mse
+              weight: 0.5
+            - type: attention_kl
+              weight: 0.5
+          alpha: 0.5
+          layer_mapping:
+            type: uniform
+
+    Returns:
+        Tuple of (loss_strategy, layer_mapping, projector)
+    """
+    alpha = distill_config.get("alpha", 0.5)
+    temperature = distill_config.get("temperature", 2.0)
+
+    # Check for combined strategies (RFA matrix)
+    loss_strategies_config = distill_config.get("loss_strategies")
+    if loss_strategies_config:
+        # Multiple strategies: create CombinedDistillationLoss
+        strategies = []
+        weights = []
+
+        for strat_config in loss_strategies_config:
+            strat_type = strat_config["type"]
+            strat_weight = strat_config.get("weight", 1.0)
+
+            strategy = get_loss_strategy(
+                strat_type,
+                temperature=temperature,
+                alpha=alpha,  # Each strategy gets same alpha
+            )
+            strategies.append(strategy)
+            weights.append(strat_weight)
+
+        combined = CombinedDistillationLoss(
+            strategies=strategies,
+            weights=weights,
+            alpha=alpha,
+        )
+        loss_strategy = combined
+    else:
+        # Single strategy
+        loss_type = distill_config.get("loss_type", "kl_divergence")
+        loss_strategy = get_loss_strategy(
+            loss_type,
+            temperature=temperature,
+            alpha=alpha,
+        )
+
+    # Setup layer mapping if needed (for feature/attention distillation)
+    layer_mapping = None
+    layer_mapping_config = distill_config.get("layer_mapping", {})
+    if layer_mapping_config or loss_strategy.requires_hidden_states or loss_strategy.requires_attentions:
+        mapping_type = layer_mapping_config.get("type", "uniform")
+
+        # Get layer counts from model configs
+        teacher_layers = getattr(teacher_model.config, "num_hidden_layers", 12)
+        student_layers = getattr(student_model.config, "num_hidden_layers", 6)
+
+        if mapping_type == "custom" and "mapping" in layer_mapping_config:
+            # Explicit mapping provided
+            layer_mapping = [
+                (pair["teacher"], pair["student"])
+                for pair in layer_mapping_config["mapping"]
+            ]
+        else:
+            # Use a mapping strategy
+            mapper = get_layer_mapping(mapping_type)
+            layer_mapping = mapper.map(teacher_layers, student_layers)
+
+        print(f"  Layer mapping ({mapping_type}): {layer_mapping}")
+
+    # Setup projection if needed (for feature distillation with dimension mismatch)
+    projector = None
+    projection_config = distill_config.get("projection", {})
+    if loss_strategy.requires_hidden_states:
+        teacher_dim = getattr(teacher_model.config, "hidden_size", 768)
+        student_dim = getattr(student_model.config, "hidden_size", 768)
+
+        if teacher_dim != student_dim or projection_config.get("force", False):
+            proj_type = projection_config.get("type", "linear")
+            projector = create_projection_if_needed(
+                teacher_dim=teacher_dim,
+                student_dim=student_dim,
+                projection_type=proj_type,
+            )
+            if projector is not None and device == "cuda":
+                projector = projector.cuda()
+            print(f"  Projection: {student_dim} -> {teacher_dim} ({proj_type})")
+
+    return loss_strategy, layer_mapping, projector
 
 
 def generate_config_id(config_path: str) -> str:
@@ -131,7 +277,12 @@ def main():
                         help="Overwrite existing run (deletes existing outputs and starts fresh).")
     parser.add_argument("--max_steps", type=int, default=-1, help="Max training steps (for testing)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
+    parser.add_argument("--debug", action="store_true",
+                        help="Enable DEBUG level logging for verbose output")
     args = parser.parse_args()
+
+    # Setup logging early
+    setup_logging(debug=args.debug)
 
     # Timestamp for new runs
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%MZ")
@@ -351,14 +502,25 @@ def main():
     # Get compute metrics function
     compute_metrics = get_compute_metrics(task, tokenizer=tokenizer)
 
+    # Create loss strategy (supports single and combined RFA strategies)
+    print("\nSetting up distillation loss strategy...")
+    loss_strategy, layer_mapping, projector = create_loss_strategy_from_config(
+        config["distillation"],
+        teacher,
+        student,
+        device,
+    )
+
     # Initialize trainer with configurable loss strategy
     trainer = DistillationTrainer(
         teacher_model=teacher,
         temperature=config["distillation"]["temperature"],
         alpha=config["distillation"]["alpha"],
         freeze_teacher=config["distillation"].get("freeze_teacher", True),
-        loss_type=config["distillation"].get("loss_type", "kl_divergence"),
+        loss_strategy=loss_strategy,  # Use pre-built strategy (supports RFA combinations)
         teacher_label_map=config["distillation"].get("teacher_label_map"),
+        layer_mapping=layer_mapping,
+        projector=projector,
         model=student,
         args=training_args,
         train_dataset=train_dataset,
