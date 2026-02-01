@@ -48,8 +48,27 @@ def setup_logging(debug: bool = False):
         warnings.filterwarnings("ignore")
 
 
+class TeeWriter:
+    """Write to both a file and the original stream (stdout/stderr)."""
+
+    def __init__(self, file_path: Path, original_stream):
+        self.file = open(file_path, 'a')
+        self.original = original_stream
+
+    def write(self, data):
+        self.original.write(data)
+        self.file.write(data)
+        self.file.flush()
+
+    def flush(self):
+        self.original.flush()
+        self.file.flush()
+
+
 def add_file_logging(output_dir: Path, debug: bool = False):
     """Add file handler to log all output to the run's output directory.
+
+    Captures both Python logging and direct print/tqdm output from HuggingFace Trainer.
 
     Args:
         output_dir: Path to the output directory
@@ -58,15 +77,17 @@ def add_file_logging(output_dir: Path, debug: bool = False):
     output_dir.mkdir(parents=True, exist_ok=True)
     log_file = output_dir / "output.log"
 
+    # Redirect stdout/stderr to also write to file (captures print, tqdm, etc.)
+    sys.stdout = TeeWriter(log_file, sys.stdout)
+    sys.stderr = TeeWriter(log_file, sys.stderr)
+
+    # Also add logging file handler for proper log formatting
     level = logging.DEBUG if debug else logging.INFO
-    # Always use detailed format for file logs (timestamps help with debugging)
     format_str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-    file_handler = logging.FileHandler(log_file, mode='a')  # Append mode for resume
+    file_handler = logging.FileHandler(log_file, mode='a')
     file_handler.setLevel(level)
     file_handler.setFormatter(logging.Formatter(format_str))
-
-    # Add to root logger so all modules write to the file
     logging.getLogger().addHandler(file_handler)
 
     logger.info(f"Logging to file: {log_file}")
