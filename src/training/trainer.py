@@ -306,3 +306,38 @@ class DistillationTrainer(Trainer):
                     projector = projector.to(student_model.device)
 
         return trainer_kwargs, layer_mapping, projector
+
+    def prediction_step(
+        self,
+        model,
+        inputs,
+        prediction_loss_only,
+        ignore_keys=None,
+    ):
+        """
+        Override prediction_step to disable hidden states/attentions during eval.
+
+        During training, we need hidden_states and attentions for distillation loss.
+        During evaluation, we only need logits for metrics - outputting hidden states
+        and attentions causes OOM when accumulated across the full eval set.
+
+        We temporarily disable self.output_hidden_states and self.output_attentions
+        so that compute_loss (if called) won't add these kwargs to the forward pass.
+        """
+        # Temporarily disable hidden states/attentions for eval
+        old_hidden = self.output_hidden_states
+        old_attn = self.output_attentions
+        self.output_hidden_states = False
+        self.output_attentions = False
+
+        try:
+            return super().prediction_step(
+                model,
+                inputs,
+                prediction_loss_only,
+                ignore_keys=ignore_keys,
+            )
+        finally:
+            # Restore original settings
+            self.output_hidden_states = old_hidden
+            self.output_attentions = old_attn
