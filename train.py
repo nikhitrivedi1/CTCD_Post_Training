@@ -310,6 +310,80 @@ def truncate_for_wandb(run_id: str, max_length: int = 64) -> str:
     return run_id[:max_length]
 
 
+def load_incomplete_jobs() -> dict:
+    """Load incomplete jobs registry.
+
+    Returns:
+        Dict mapping job_id to {"run_name": ..., "output_dir": ...}
+    """
+    path = Path(".incomplete_jobs")
+    if path.exists():
+        try:
+            return json.loads(path.read_text())
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def save_incomplete_jobs(jobs: dict):
+    """Save incomplete jobs registry atomically.
+
+    Args:
+        jobs: Dict mapping job_id to {"run_name": ..., "output_dir": ...}
+    """
+    path = Path(".incomplete_jobs")
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(jobs, indent=2))
+    tmp.rename(path)
+
+
+def get_job_key() -> str:
+    """Get unique key for current job (SLURM_JOB_ID or local_{pid})."""
+    return os.environ.get("SLURM_JOB_ID") or f"local_{os.getpid()}"
+
+
+def remove_incomplete_job(job_key: str = None):
+    """Remove a job from incomplete jobs registry.
+
+    Args:
+        job_key: Job ID to remove. Defaults to current job.
+    """
+    if job_key is None:
+        job_key = get_job_key()
+
+    jobs = load_incomplete_jobs()
+    if job_key in jobs:
+        del jobs[job_key]
+        save_incomplete_jobs(jobs)
+        logger.info(f"Removed job from incomplete registry: {job_key}")
+
+
+def add_incomplete_job(run_name: str, output_dir: Path):
+    """Add current job to incomplete jobs registry.
+
+    Uses SLURM_JOB_ID if available, otherwise falls back to local_{pid}.
+    Also removes previous job entry if PREV_JOB_ID is set (for SLURM resubmission).
+
+    Args:
+        run_name: The actual run name (with timestamp if applicable)
+        output_dir: Path to the output directory
+    """
+    # Remove previous job entry if this is a resubmission
+    prev_job_id = os.environ.get("PREV_JOB_ID")
+    if prev_job_id:
+        remove_incomplete_job(prev_job_id)
+
+    # Add current job
+    job_key = get_job_key()
+    jobs = load_incomplete_jobs()
+    jobs[job_key] = {
+        "run_name": run_name,
+        "output_dir": str(output_dir),
+    }
+    save_incomplete_jobs(jobs)
+    logger.info(f"Added job to incomplete registry: {job_key}")
+
+
 def load_run_metadata(output_dir: Path) -> dict | None:
     """Load run metadata if it exists."""
     metadata_path = output_dir / "run_metadata.json"
@@ -537,8 +611,8 @@ def main():
         save_config_snapshot(output_dir, config)
         logger.info(f"Created run metadata: {output_dir / 'run_metadata.json'}")
 
-    # Write .last_run for SLURM auto-resubmission (works with any run type)
-    Path(".last_run").write_text(f"{run_name}\n{output_dir}\n")
+    # Track job in incomplete registry for SLURM auto-resubmission
+    add_incomplete_job(run_name, output_dir)
 
     # Setup W&B
     wandb_project = "Test" if args.debug else "Knowledge Distillation"
@@ -653,6 +727,9 @@ def main():
     logger.info("Final evaluation:")
     metrics = trainer.evaluate()
     logger.info(metrics)
+
+    # Remove from incomplete registry
+    remove_incomplete_job()
 
     logger.info("=" * 60)
     logger.info("Training complete!")

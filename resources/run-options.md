@@ -291,6 +291,136 @@ outputs/
 
 ---
 
+## Invocation Modes & Job Tracking
+
+The `.incomplete_jobs` file tracks running/incomplete jobs for SLURM auto-resubmission.
+
+### Job Key Logic
+
+```python
+job_key = os.environ.get("SLURM_JOB_ID") or f"local_{os.getpid()}"
+```
+
+| Environment | Job Key | Example |
+|-------------|---------|---------|
+| SLURM (sbatch/srun) | `SLURM_JOB_ID` | `12345` |
+| Local (direct) | `local_{pid}` | `local_98765` |
+
+---
+
+### Mode 1: Direct Local Run
+
+```bash
+python train.py --config configs/.../config.yaml
+python train.py --run_name my_run --config configs/.../config.yaml
+python train.py --run_name my_run --timestamp --config configs/.../config.yaml
+```
+
+| Event | Action |
+|-------|--------|
+| Start | `job_key = local_{pid}`, adds entry |
+| Complete | Removes entry |
+| Ctrl+C/crash | Entry stays (stale) |
+
+---
+
+### Mode 2: Direct Local Resume
+
+```bash
+python train.py --run_name existing_run_2026-02-01_12-00Z
+```
+
+| Event | Action |
+|-------|--------|
+| Start | New `local_{pid}`, adds entry |
+| Original entry | Stays stale (no `PREV_JOB_ID`) |
+
+---
+
+### Mode 3: srun (Interactive SLURM)
+
+```bash
+srun --gres=gpu:1 python train.py --run_name my_run --config ...
+```
+
+| Event | Action |
+|-------|--------|
+| Start | `job_key = SLURM_JOB_ID`, adds entry |
+| Complete | Removes entry |
+| Timeout/cancel | Entry stays, no auto-resubmit |
+
+---
+
+### Mode 4: sbatch (Batch SLURM)
+
+```bash
+sbatch scripts/run_slurm.sh my_run configs/.../config.yaml
+TIMESTAMP=1 sbatch scripts/run_slurm.sh my_run configs/.../config.yaml
+```
+
+| Event | Action |
+|-------|--------|
+| Start | `job_key = 12345`, adds entry with actual run_name |
+| Complete | Removes entry |
+| Timeout | Entry stays, triggers auto-resubmit |
+
+---
+
+### Mode 5: sbatch Auto-Resubmit
+
+When job 12345 times out:
+
+```bash
+# run_slurm.sh automatically does:
+PREV_JOB_ID=12345 sbatch scripts/run_slurm.sh my_run_2026-02-01_12-00Z
+```
+
+| Event | Action |
+|-------|--------|
+| New job 12346 starts | Reads `PREV_JOB_ID=12345` |
+| | Removes entry `12345` |
+| | Adds entry `12346` |
+| Complete | Removes `12346` |
+
+---
+
+### Mode 6: Concurrent SLURM Jobs
+
+```bash
+sbatch scripts/run_slurm.sh rfa-01 configs/.../01.yaml  # Job 12345
+sbatch scripts/run_slurm.sh rfa-07 configs/.../07.yaml  # Job 12346
+```
+
+Each job gets unique key, no collision:
+
+```json
+{
+  "12345": {"run_name": "rfa-01_2026...", "output_dir": "..."},
+  "12346": {"run_name": "rfa-07_2026...", "output_dir": "..."}
+}
+```
+
+---
+
+### Edge Cases
+
+| Case | Behavior |
+|------|----------|
+| Crash before cleanup | Entry stays stale, manual cleanup |
+| PID reuse (local) | New job overwrites old entry (acceptable) |
+| Missing `.incomplete_jobs` | Returns `{}`, self-healing |
+| Corrupted JSON | `JSONDecodeError` caught, returns `{}` |
+
+---
+
+### Future Enhancements
+
+- [ ] Cleanup script for stale entries
+- [ ] `--prev_job_id` flag for manual handoff
+- [ ] Notification on job completion/failure
+
+---
+
 ## Related Documents
 
 | Document | Purpose |

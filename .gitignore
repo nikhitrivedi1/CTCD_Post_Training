@@ -60,7 +60,8 @@ logs/
 checkpoints/
 wandb/
 *.log
-.last_run
+.incomplete_jobs
+.incomplete_jobs.tmp
 
 # Model files (too large for git)
 *.bin

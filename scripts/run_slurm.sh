@@ -14,8 +14,8 @@
 #
 # Auto-resubmission: When training is incomplete after 8 hours, the script
 # automatically resubmits with the actual run name. This works for ALL run
-# types (auto-named, named, timestamped). The .last_run file tracks the
-# actual output directory across job boundaries.
+# types (auto-named, named, timestamped). The .incomplete_jobs file tracks
+# jobs by SLURM_JOB_ID, supporting concurrent job execution.
 #
 # Usage:
 #   sbatch scripts/run_slurm.sh <run_name> <config>   # Named run (new or resume)
@@ -184,22 +184,34 @@ if [ -n "$RUN_NAME" ]; then
         python train.py --run_name "$RUN_NAME" --config "$CONFIG" $ARGS || EXIT_CODE=$?
     fi
 else
-    # Auto-named run: always start fresh, clear any stale .last_run
-    rm -f .last_run
+    # Auto-named run: always start fresh
     python train.py --config "$CONFIG" $ARGS || EXIT_CODE=$?
 fi
 
 EXIT_CODE=${EXIT_CODE:-0}
 
 # Check if more training needed and resubmit if so
-# Read actual output dir from .last_run (works for all run types)
-if [ $EXIT_CODE -eq 0 ] && [ -f ".last_run" ]; then
-    ACTUAL_RUN_NAME=$(sed -n '1p' .last_run)
-    ACTUAL_OUTPUT_DIR=$(sed -n '2p' .last_run)
-    STATE_FILE="$ACTUAL_OUTPUT_DIR/training_state.json"
+# Read job info from .incomplete_jobs using SLURM_JOB_ID
+if [ $EXIT_CODE -eq 0 ] && [ -f ".incomplete_jobs" ]; then
+    JOB_INFO=$(python -c "
+import json
+try:
+    jobs = json.load(open('.incomplete_jobs'))
+    info = jobs.get('$SLURM_JOB_ID', {})
+    print(info.get('run_name', ''))
+    print(info.get('output_dir', ''))
+except:
+    print('')
+    print('')
+")
+    ACTUAL_RUN_NAME=$(echo "$JOB_INFO" | sed -n '1p')
+    ACTUAL_OUTPUT_DIR=$(echo "$JOB_INFO" | sed -n '2p')
 
-    if [ -f "$STATE_FILE" ]; then
-        COMPLETE=$(python -c "
+    if [ -n "$ACTUAL_RUN_NAME" ] && [ -n "$ACTUAL_OUTPUT_DIR" ]; then
+        STATE_FILE="$ACTUAL_OUTPUT_DIR/training_state.json"
+
+        if [ -f "$STATE_FILE" ]; then
+            COMPLETE=$(python -c "
 import json
 try:
     with open('$STATE_FILE') as f:
@@ -211,25 +223,31 @@ except:
     print('false')
 ")
 
-        if [ "$COMPLETE" = "false" ]; then
-            echo ""
-            echo "========================================="
-            echo "Training incomplete. Resubmitting job..."
-            echo "Run: $ACTUAL_RUN_NAME"
-            echo "========================================="
+            if [ "$COMPLETE" = "false" ]; then
+                echo ""
+                echo "========================================="
+                echo "Training incomplete. Resubmitting job..."
+                echo "Run: $ACTUAL_RUN_NAME"
+                echo "========================================="
 
-            # Resubmit with run_name only (resume mode, config not needed)
-            SEED="$SEED" MAX_STEPS="$MAX_STEPS" sbatch "$0" "$ACTUAL_RUN_NAME"
+                # Resubmit with PREV_JOB_ID for handoff (new job removes old entry)
+                PREV_JOB_ID="$SLURM_JOB_ID" SEED="$SEED" MAX_STEPS="$MAX_STEPS" sbatch "$0" "$ACTUAL_RUN_NAME"
+            else
+                echo ""
+                echo "========================================="
+                echo "Training complete!"
+                echo "========================================="
+            fi
         else
             echo ""
             echo "========================================="
-            echo "Training complete!"
+            echo "Training complete! (no state file)"
             echo "========================================="
         fi
     else
         echo ""
         echo "========================================="
-        echo "Training complete! (no state file)"
+        echo "Training complete! (no job entry found)"
         echo "========================================="
     fi
 else
