@@ -498,6 +498,123 @@ Both MNLI and QQP show the same pattern:
 
 ---
 
+## RFA Factorial Study
+
+**Date:** 2026-02-02
+
+### Overview
+
+Factorial study of three distillation signals:
+- **R (Response)**: KL divergence on output logits - classic Hinton distillation
+- **F (Feature)**: MSE on hidden states - FitNets-style intermediate matching
+- **A (Attention)**: KL on attention distributions - attention transfer
+
+8 configurations testing all combinations: 000, 001, 010, 011, 100, 101, 110, 111.
+
+### Setup
+
+| Parameter | Value |
+|-----------|-------|
+| Task | MNLI |
+| Teacher | bert-base-uncased (frozen, untrained) |
+| Student | distilbert-base-uncased |
+| Alpha | 0.5 (50% CE + 50% distillation) |
+| Temperature | 2.0 |
+| Signal weights | Equal (1:1:1 when combined) |
+| Training steps | 4602 |
+| Runs per config | 2 |
+
+### Results
+
+| Config | R | F | A | Accuracy (Run 1) | Accuracy (Run 2) | Mean | Rank |
+|--------|---|---|---|------------------|------------------|------|------|
+| rfa-01 | 1 | 0 | 0 | 81.13% | 81.13% | **81.13%** | **1** |
+| rfa-05 | 1 | 0 | 1 | 80.59% | 80.59% | 80.59% | 2 |
+| rfa-04 | 1 | 1 | 0 | 80.49% | 80.49% | 80.49% | 3 |
+| rfa-07 | 1 | 1 | 1 | 79.68% | 80.77% | 80.23% | 4 |
+| rfa-02 | 0 | 1 | 0 | 79.42% | 79.42% | 79.42% | 5 |
+| rfa-06 | 0 | 1 | 1 | 79.43% | 79.43% | 79.43% | 6 |
+| rfa-03 | 0 | 0 | 1 | 78.69% | 78.69% | 78.69% | 7 |
+| rfa-00 | 0 | 0 | 0 | 78.55% | 78.55% | 78.55% | 8 |
+
+### Key Finding: R-Only Wins
+
+**Classic KL distillation (R-only) outperforms all multi-signal combinations.**
+
+```
+rfa-01 (R only):  81.13%  ← Best
+rfa-07 (RFA all): 80.23%  ← -0.9% worse
+rfa-00 (CE only): 78.55%  ← Baseline
+```
+
+Adding Feature (F) or Attention (A) signals to Response (R) **hurts** performance:
+- R → RF: 81.13% → 80.49% (-0.64%)
+- R → RA: 81.13% → 80.59% (-0.54%)
+- R → RFA: 81.13% → 80.23% (-0.90%)
+
+### Signal Contribution Analysis
+
+**Individual signal value (vs baseline rfa-00):**
+
+| Signal | Config | Δ Accuracy |
+|--------|--------|------------|
+| R | rfa-01 | +2.58% |
+| F | rfa-02 | +0.87% |
+| A | rfa-03 | +0.14% |
+
+**Ranking: R >> F > A > baseline**
+
+### Why Combinations Underperform: Gradient Conflict
+
+Observation from training metrics:
+- **rfa-02 (F only)**: `feature_raw` decreases ✓
+- **rfa-03 (A only)**: `attention_raw` decreases ✓
+- **rfa-07 (RFA)**: `feature_raw` **increases**, `attention_raw` **increases** ✗
+
+When combined, F and A signals *diverge* instead of converging. The optimizer cannot satisfy all three objectives simultaneously - gradients pull in conflicting directions.
+
+**The conflict:**
+```
+R gradient: "adjust weights to match output distribution"
+F gradient: "adjust weights to match hidden states"
+A gradient: "adjust weights to match attention patterns"
+
+These often point in different directions. Equal weighting (1:1:1) creates
+a tug-of-war where no objective is satisfied well.
+```
+
+### Reproducibility
+
+Results are highly reproducible:
+- 7/8 configs: Identical accuracy across both runs (to 5 decimal places)
+- rfa-07: Slight variance (79.68% vs 80.77%) - possibly due to combined signal instability
+
+### Implications
+
+1. **Simpler is better**: For BERT→DistilBERT on MNLI, classic KL distillation beats complex multi-signal approaches
+
+2. **Signal interference**: Combining distillation signals requires careful tuning - equal weighting causes gradient conflict
+
+3. **Diminishing returns**: Each additional signal adds complexity but reduces performance
+
+4. **F and A work alone**: Both Feature and Attention signals improve over baseline when used individually, but interfere when combined
+
+### Potential Improvements (Not Tested)
+
+1. **Staged training**: Train F→A→R sequentially instead of simultaneously
+2. **Adaptive weighting**: Reduce F/A weights as training progresses
+3. **Gradient projection**: Project F/A gradients to not conflict with R
+4. **Lower F/A weights**: Use R=0.8, F=0.1, A=0.1 instead of equal
+
+### Conclusion
+
+For knowledge distillation with a frozen untrained teacher:
+- **Use R-only (KL divergence)** - it's simpler and performs best
+- Feature and Attention signals add complexity without benefit in this setup
+- Multi-signal distillation may require more sophisticated weighting or scheduling
+
+---
+
 ## Future Findings
 
 (Add new observations here as experiments progress)
