@@ -107,11 +107,10 @@ Testing Response (R), Feature (F), Attention (A) combinations:
 
 ## Priority Order
 
-### Phase 1: Classification × Depth (Current)
+### Phase 1: Classification × Depth (Complete)
 1. ✓ Response distillation ablations (MNLI, QQP)
-2. → Feature distillation experiments
-3. → Attention distillation experiments
-4. → RFA factorial study
+2. ✓ RFA factorial study (MNLI) - R-only wins, F/A cause gradient conflict
+3. → Translation experiments
 
 ### Phase 2: Translation × Depth
 5. Response distillation (Llama 3B → 1B)

@@ -516,8 +516,9 @@ Factorial study of three distillation signals:
 | Parameter | Value |
 |-----------|-------|
 | Task | MNLI |
-| Teacher | bert-base-uncased (frozen, untrained) |
+| Teacher | textattack/bert-base-uncased-MNLI (SFT) |
 | Student | distilbert-base-uncased |
+| Freeze Teacher | No (Adaptive Domain-Expert) |
 | Alpha | 0.5 (50% CE + 50% distillation) |
 | Temperature | 2.0 |
 | Signal weights | Equal (1:1:1 when combined) |
@@ -608,10 +609,11 @@ Results are highly reproducible:
 
 ### Conclusion
 
-For knowledge distillation with a frozen untrained teacher:
+For knowledge distillation with an Adaptive Domain-Expert (co-trained SFT teacher):
 - **Use R-only (KL divergence)** - it's simpler and performs best
 - Feature and Attention signals add complexity without benefit in this setup
 - Multi-signal distillation may require more sophisticated weighting or scheduling
+- Even with the best teacher setup, adding F/A causes gradient conflict
 
 ---
 

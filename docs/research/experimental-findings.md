@@ -133,3 +133,54 @@ Both MNLI and QQP show the same pattern:
 2. **Untrained > Trained-misaligned** for frozen distillation
 3. **Balanced α > Extreme α** for stable learning
 4. **Ground truth is essential** when teacher quality is uncertain
+
+---
+
+## RFA Factorial Study
+
+Testing Response (R), Feature (F), Attention (A) combinations on MNLI with Adaptive Domain-Expert.
+
+### Setup
+
+| Parameter | Value |
+|-----------|-------|
+| Teacher | textattack/bert-base-uncased-MNLI (SFT) |
+| Freeze Teacher | No (Adaptive Domain-Expert) |
+| Alpha | 0.5 |
+| Temperature | 2.0 |
+
+### Results
+
+| Config | R | F | A | Accuracy | Rank |
+|--------|---|---|---|----------|------|
+| rfa-01 | 1 | 0 | 0 | **81.13%** | **1** |
+| rfa-05 | 1 | 0 | 1 | 80.59% | 2 |
+| rfa-04 | 1 | 1 | 0 | 80.49% | 3 |
+| rfa-07 | 1 | 1 | 1 | 80.23% | 4 |
+| rfa-02 | 0 | 1 | 0 | 79.42% | 5 |
+| rfa-06 | 0 | 1 | 1 | 79.43% | 6 |
+| rfa-03 | 0 | 0 | 1 | 78.69% | 7 |
+| rfa-00 | 0 | 0 | 0 | 78.55% | 8 |
+
+### Key Finding: R-Only Wins
+
+**Classic KL distillation (R-only) outperforms all multi-signal combinations.**
+
+Individual signal contribution (vs baseline):
+- R: +2.58%
+- F: +0.87%
+- A: +0.14%
+
+**Ranking: R >> F > A**
+
+Adding F or A to R **hurts** performance due to gradient conflict:
+- R → RF: -0.64%
+- R → RA: -0.54%
+- R → RFA: -0.90%
+
+### Conclusion
+
+Even with the best teacher setup (Adaptive Domain-Expert):
+- **Use R-only (KL divergence)** - simpler and best performing
+- Feature and Attention signals cause gradient conflict when combined
+- Multi-signal distillation needs sophisticated weighting, not equal 1:1:1
