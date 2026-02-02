@@ -6,7 +6,7 @@ Draft paper structure for the knowledge distillation research findings.
 
 ## Abstract
 
-Knowledge distillation (KD) transfers knowledge from large teacher models to smaller students. Standard practice freezes the teacher and trains the student to match soft labels. We present a systematic ablation study revealing that **frozen fine-tuned teachers can underperform no teacher at all**, while **co-training enables self-correction**. Key insight: teacher accuracy measures correctness frequency, not distillation quality—overconfident wrong predictions harm learning more than random noise.
+Knowledge distillation (KD) transfers knowledge from large teacher models to smaller students. Standard practice freezes the teacher and trains the student to match soft labels. We present a systematic ablation study revealing that **a Stubborn Domain-Expert teacher (84.5% accuracy) produces worse students than an Adaptive Teacher starting at 33%**. The key is adaptability: co-training enables self-correction. Following the principle of "Strong Opinions, Loosely Held," adaptive teachers outperform stubborn experts. Teacher accuracy measures correctness frequency, not distillation quality—overconfident wrong predictions harm learning more than uncertain guidance.
 
 ---
 
@@ -76,13 +76,15 @@ Knowledge distillation (KD) transfers knowledge from large teacher models to sma
 
 ### The Paradox
 
-**The 84% accurate teacher produces worse students than a 31% random teacher:**
+**A Stubborn Domain-Expert produces worse students than an Adaptive Teacher with no prior knowledge:**
 
-| Comparison | Result |
-|------------|--------|
-| Frozen SFT (02) vs No teacher (00) | 79.26% < 80.94% |
-| Frozen SFT (02) vs Frozen base (01) | 79.26% < 81.25% |
-| Co-train SFT (04) vs Frozen SFT (02) | 82.62% > 79.26% |
+| Comparison | Result | Insight |
+|------------|--------|---------|
+| Stubborn Domain-Expert vs Adaptive Teacher | 79.26% < 82.06% | Adaptability beats expertise |
+| Stubborn Domain-Expert vs No Teacher | 79.26% < 80.94% | Stubbornness hurts |
+| Adaptive vs Stubborn Domain-Expert | 82.62% > 79.26% | Same knowledge, different mindset |
+
+The critical variable is not initial accuracy—it's whether the teacher can update.
 
 ---
 
@@ -105,20 +107,28 @@ Knowledge distillation (KD) transfers knowledge from large teacher models to sma
 
 **Trained teacher (low entropy):** Confident errors fight CE
 
-### Why Co-Training Wins
+### Why Co-Training Wins: Strong Opinions, Loosely Held
 
-"Strong beliefs, loosely held"
+The principle of "Strong Opinions, Loosely Held" explains our results. We identify four teacher tiers:
 
-| Config | Strong Beliefs | Loosely Held | Outcome |
-|--------|---------------|--------------|---------|
-| 02 (frozen SFT) | ✓ | ✗ | Dogmatic |
-| 04 (co-train SFT) | ✓ | ✓ | Adaptive |
+| Tier | Config | Accuracy | Adaptive | Outcome |
+|------|--------|----------|----------|---------|
+| **Adaptive Domain-Expert** | 04 (co-train SFT) | 84.5% | Yes | **82.62%** |
+| **Adaptive Teacher** | 03 (co-train base) | 33% | Yes | 82.06% |
+| **No Teacher** | 00 (CE only) | - | - | 80.94% |
+| **Stubborn Domain-Expert** | 02 (frozen SFT) | 84.5% | No | 79.26% |
 
-Co-training teachers self-correct:
+**Stubborn Domain-Expert (02):** Worst outcome. Combines confidence with inflexibility—cannot update when wrong.
+
+**Adaptive Teacher (03):** Starts uncertain but learns alongside the student. Initial 33% accuracy doesn't matter—adaptability does.
+
+**Adaptive Domain-Expert (04):** Best outcome. Strong prior knowledge + willingness to update.
+
+Co-training self-correction mechanism:
 1. Teacher makes confident wrong prediction
-2. CE loss signals error to teacher
+2. CE loss signals error to both teacher and student
 3. Teacher updates, soft labels improve
-4. Student receives better guidance
+4. Student receives progressively better guidance
 
 ---
 
@@ -143,12 +153,13 @@ Co-training teachers self-correct:
 
 ## 7. Conclusion
 
-1. **Accuracy ≠ Distillation Quality:** An 84.5% teacher underperforms a 33% random one
-2. **Overconfidence Harms:** Confident wrong predictions fight ground truth gradients
-3. **Co-Training Self-Corrects:** Adaptive teachers outperform frozen ones
-4. **Baselines Matter:** Without α=0 baseline, distillation's contribution is unmeasured
+1. **Adaptability > Accuracy:** A Stubborn Domain-Expert (84.5%) underperforms an Adaptive Teacher (33%)
+2. **Strong Opinions, Loosely Held:** Adaptive teachers outperform stubborn experts
+3. **Overconfidence Harms:** Confident wrong predictions fight ground truth gradients
+4. **Same Knowledge, Different Outcome:** The same SFT teacher improves +3.4% when made adaptive
+5. **Baselines Matter:** Without a No Teacher baseline, distillation's contribution is unmeasured
 
-Key insight: *Random noise is less harmful than confident misinformation.*
+Key insight: *A teacher's willingness to learn matters more than its starting knowledge.*
 
 ---
 
