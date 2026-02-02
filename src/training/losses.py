@@ -334,10 +334,10 @@ class CombinedDistillationLoss(DistillationLossStrategy):
             strategy_distill = output.total_loss - (1 - strategy.alpha) * ce_loss
             distill_loss = distill_loss + weight * strategy_distill
 
-            # Collect components with prefixed names (exclude ce_raw/ce_weighted/alpha)
+            # Collect components (exclude ce_raw/ce_weighted/alpha - already tracked)
             for k, v in output.components.items():
                 if k not in ("ce_raw", "ce_weighted", "alpha"):
-                    all_components[f"{strategy.name}_{k}"] = v
+                    all_components[k] = v
 
         total_loss = ce_weighted + self.alpha * distill_loss
 
