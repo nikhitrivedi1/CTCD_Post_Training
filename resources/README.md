@@ -2,49 +2,111 @@
 
 Documentation and reference materials for the Knowledge Distillation project.
 
+---
+
 ## Structure
 
 ```
 resources/
-├── archive/          # Original documentation (22 docs, preserved)
-├── guides/           # How-to & operational guides (planned)
-├── gpu/              # GPU/hardware documentation (planned)
-├── training/         # Training theory & dynamics (planned)
-├── research/         # Research findings & methodology (planned)
-├── planning/         # Direction & roadmaps (planned)
-├── architecture/     # Technical reference (planned)
-└── paper/            # Publication materials (planned)
+├── archive/          # Original documentation (preserved)
+├── guides/           # How-to & operational guides
+├── gpu/              # GPU/hardware documentation
+├── training/         # Training theory & dynamics
+├── research/         # Research findings & methodology
+├── planning/         # Direction & roadmaps
+├── architecture/     # Technical reference
+└── paper/            # Publication materials
 ```
 
-## Archive Contents
+---
 
-All original documentation has been moved to `archive/` for reorganization:
+## Quick Navigation
 
-| Document | Purpose |
-|----------|---------|
-| [future-direction.md](archive/future-direction.md) | Task × Depth framework, experiment planning |
-| [research-framing.md](archive/research-framing.md) | Research questions, hypotheses |
-| [experimental_findings.md](archive/experimental_findings.md) | Experiment results and analysis |
-| [architecture.md](archive/architecture.md) | Framework implementation details |
-| [run-options.md](archive/run-options.md) | CLI reference and run management |
-| [explorer_hpc_guide.md](archive/explorer_hpc_guide.md) | HPC cluster setup guide |
-| [config_parameters_explained.md](archive/config_parameters_explained.md) | Config parameter reference |
-| [diffusion-distillation.md](archive/diffusion-distillation.md) | Diffusion model distillation guide |
-| [paper_draft.md](archive/paper_draft.md) | Publication manuscript |
-| [paper_analysis.md](archive/paper_analysis.md) | Original paper analysis |
-| [paper_critique.md](archive/paper_critique.md) | Paper methodology critique |
-| [ablation_study.md](archive/ablation_study.md) | Ablation study design |
-| [framework-direction.md](archive/framework-direction.md) | Mastery path and vision |
-| [distillation-tasks.md](archive/distillation-tasks.md) | Task catalog |
-| [experiment-decision-tree.md](archive/experiment-decision-tree.md) | Experiment hierarchy |
-| [gpu_memory_math.md](archive/gpu_memory_math.md) | GPU memory calculations |
-| [gpu_utilization_guide.md](archive/gpu_utilization_guide.md) | GPU utilization optimization |
-| [gpu_comparison_guide.md](archive/gpu_comparison_guide.md) | GPU hardware comparison |
-| [balancing_training_dynamics_gpu_utilization.md](archive/balancing_training_dynamics_gpu_utilization.md) | Training dynamics vs GPU balance |
-| [batch_size_learning_rate_scaling.md](archive/batch_size_learning_rate_scaling.md) | Batch size and LR scaling |
-| [training_dynamics_batch_size.md](archive/training_dynamics_batch_size.md) | Training dynamics theory |
-| [optimizers_and_learning_rates.md](archive/optimizers_and_learning_rates.md) | Optimizer deep dive |
+### Guides
+Operational how-to documentation.
 
-## Planned Reorganization
+| Document | Description |
+|----------|-------------|
+| [config-parameters.md](guides/config-parameters.md) | Config file parameter reference |
+| [run-options.md](guides/run-options.md) | CLI reference and run management |
+| [explorer-hpc.md](guides/explorer-hpc.md) | HPC cluster setup and job submission |
 
-The documentation will be reorganized into thematic folders with merged and deduplicated content. See archive for all original materials.
+### GPU
+Hardware and memory optimization.
+
+| Document | Description |
+|----------|-------------|
+| [memory-math.md](gpu/memory-math.md) | GPU memory calculations and optimization |
+| [comparison.md](gpu/comparison.md) | GPU hardware comparison (V100, A100, H100) |
+
+### Training
+Training theory and dynamics.
+
+| Document | Description |
+|----------|-------------|
+| [optimizers-and-lr.md](training/optimizers-and-lr.md) | Optimizer deep dive (SGD, Adam, AdamW) |
+| [batch-size-lr-scaling.md](training/batch-size-lr-scaling.md) | Linear scaling rule and warmup |
+| [training-dynamics.md](training/training-dynamics.md) | Small vs large batch training |
+
+### Research
+Findings and methodology.
+
+| Document | Description |
+|----------|-------------|
+| [research-framing.md](research/research-framing.md) | Research questions and key findings |
+| [experimental-findings.md](research/experimental-findings.md) | Experiment results and analysis |
+| [ablation-study.md](research/ablation-study.md) | 5-config ablation study design |
+| [paper-evaluation.md](research/paper-evaluation.md) | Original paper analysis and critique |
+
+### Planning
+Direction and roadmaps.
+
+| Document | Description |
+|----------|-------------|
+| [future-direction.md](planning/future-direction.md) | Task x Depth framework, experiment planning |
+| [framework-direction.md](planning/framework-direction.md) | Mastery path and learning roadmap |
+| [distillation-tasks.md](planning/distillation-tasks.md) | Task catalog (MNLI, QQP, Translation) |
+| [experiment-decision-tree.md](planning/experiment-decision-tree.md) | L0/L1/L2 experiment hierarchy |
+
+### Architecture
+Technical implementation reference.
+
+| Document | Description |
+|----------|-------------|
+| [architecture.md](architecture/architecture.md) | Framework modules and extension points |
+| [diffusion-distillation.md](architecture/diffusion-distillation.md) | Diffusion model distillation guide |
+
+### Paper
+Publication materials.
+
+| Document | Description |
+|----------|-------------|
+| [paper-draft.md](paper/paper-draft.md) | Draft manuscript structure |
+
+---
+
+## Key Concepts
+
+### The Overconfident-Wrong Teacher Paradox
+Our key finding: frozen SFT teachers can **hurt** student performance because confident wrong predictions fight ground truth gradients. See [research-framing.md](research/research-framing.md).
+
+### Ablation Results (MNLI)
+
+| Rank | Config | Accuracy | Description |
+|------|--------|----------|-------------|
+| 1 | 04 | 82.62% | Co-train SFT teacher |
+| 2 | 03 | 82.06% | Co-train base teacher |
+| 3 | 01 | 81.25% | Frozen base teacher |
+| 4 | 00 | 80.94% | No teacher (CE only) |
+| 5 | 02 | 79.26% | Frozen SFT teacher |
+
+### RFA Factorial Design
+Testing Response (R), Feature (F), Attention (A) combinations. See [experiment-decision-tree.md](planning/experiment-decision-tree.md).
+
+---
+
+## Archive
+
+All original documentation is preserved in `archive/`. These files are the unedited source materials that were condensed into the reorganized structure above.
+
+See [archive/](archive/) for the 22 original documents.
