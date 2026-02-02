@@ -55,26 +55,6 @@ Most KD papers:
 
 ---
 
-## The Original Paper: "Less is More"
-
-### Paper Claims
-
-Yue & Venkatesan's "Less is More for Long Document Summary Evaluation by LLMs" claims:
-- Knowledge distillation improves student performance
-- Co-training (teacher learns alongside student) works well
-- Various α values and temperatures tested
-
-### What The Paper Didn't Test
-
-| Missing Experiment | Why It Matters |
-|-------------------|----------------|
-| **α=0 baseline** | Can't prove distillation helped without it |
-| **Frozen SFT teacher** | Standard KD approach not tested |
-| **Untrained teacher comparison** | Would reveal teacher quality effects |
-| **Fresh vs pretrained student** | Paper used pretrained but claims "fresh" |
-
----
-
 ## Our Experimental Design
 
 ### Ablation Configurations
@@ -721,9 +701,6 @@ Based on our findings:
 ### Knowledge Distillation Foundations
 - Hinton et al., 2015 - "Distilling the Knowledge in a Neural Network"
 - Sanh et al., 2019 - "DistilBERT, a distilled version of BERT"
-
-### The Original Paper
-- Yue & Venkatesan - "Less is More for Long Document Summary Evaluation by LLMs"
 
 ### Teacher Quality in KD
 - (Literature search needed for related work on teacher overconfidence)
