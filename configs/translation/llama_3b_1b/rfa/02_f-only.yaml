@@ -1,0 +1,25 @@
+# RFA 02: Feature distillation only (hidden state MSE)
+# R=0, F=1, A=0
+# Transfer intermediate representations
+# Note: Requires projection due to dim mismatch (3072 → 2048)
+
+inherit: ../base.yaml
+
+model:
+  teacher: meta-llama/Llama-3.2-3B-Instruct
+  student: meta-llama/Llama-3.2-1B-Instruct
+  student_init: pretrained
+
+distillation:
+  temperature: 2.0
+  alpha: 0.5
+  freeze_teacher: false   # Adaptive Domain-Expert
+  loss_type: feature_mse
+  layer_mapping:
+    type: uniform         # Maps 28 teacher layers → 16 student layers
+  projection:
+    enabled: true         # Project 3072 → 2048
+    type: linear
+
+logging:
+  wandb_tags: ["translation", "rfa", "f-only", "feature"]

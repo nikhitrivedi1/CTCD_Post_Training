@@ -1,0 +1,19 @@
+# RFA 00: CE-only baseline (no distillation)
+# R=0, F=0, A=0
+# Student learns from ground truth only - establishes baseline
+
+inherit: ../base.yaml
+
+model:
+  teacher: meta-llama/Llama-3.2-3B-Instruct
+  student: meta-llama/Llama-3.2-1B-Instruct
+  student_init: pretrained
+
+distillation:
+  temperature: 2.0
+  alpha: 0.0              # CE only: (1-0)CE + 0*KL = pure CE
+  freeze_teacher: true    # Teacher not used anyway
+  loss_type: none
+
+logging:
+  wandb_tags: ["translation", "rfa", "baseline", "ce-only"]

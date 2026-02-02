@@ -74,15 +74,24 @@ Student:     [1]     [2]     [3]     [4]      [5]      [6]
 
 | Depth | Implementation | Challenges |
 |-------|----------------|------------|
-| **Response** | Token-level KL across vocabulary | Large vocab = memory intensive |
-| **Feature** | Layer mapping with projection | Different hidden dims (4096 → 2048) |
+| **Response** | Token-level KL across vocabulary | Large vocab (128K) × SeqLen = memory intensive |
+| **Feature** | Layer mapping with projection | Hidden dim mismatch (3072 → 2048) |
+| **Attention** | Head averaging + layer mapping | Head count mismatch (24 → 8) |
 
-**Llama 3B (32 layers) → Llama 1B (16 layers):**
+**Llama 3.2 3B (28 layers) → Llama 3.2 1B (16 layers):**
 ```
-Teacher:  [2] [4] [6] ... [30] [32]
-           ↓   ↓   ↓        ↓    ↓
-Student:  [1] [2] [3] ... [15] [16]
+Teacher:  [2] [4] [5] [7] [9] [10] [12] [14] [16] [17] [19] [21] [23] [24] [26] [28]
+           ↓   ↓   ↓   ↓   ↓    ↓    ↓    ↓    ↓    ↓    ↓    ↓    ↓    ↓    ↓    ↓
+Student:  [1] [2] [3] [4] [5]  [6]  [7]  [8]  [9] [10] [11] [12] [13] [14] [15] [16]
 ```
+
+**Model Architecture Comparison:**
+| Attribute | Llama 3.2 3B | Llama 3.2 1B | Mapping |
+|-----------|--------------|--------------|---------|
+| Layers | 28 | 16 | Uniform (28:16 ≈ 1.75:1) |
+| Hidden dim | 3072 | 2048 | Linear projection |
+| Attention heads | 24 | 8 | Average groups of 3 |
+| Vocab size | 128,256 | 128,256 | Same |
 
 ---
 
@@ -112,10 +121,10 @@ Testing Response (R), Feature (F), Attention (A) combinations:
 2. ✓ RFA factorial study (MNLI) - R-only wins, F/A cause gradient conflict
 3. → Translation experiments
 
-### Phase 2: Translation × Depth
-5. Response distillation (Llama 3B → 1B)
-6. Feature distillation if response shows promise
-7. Cross-task comparison with classification
+### Phase 2: Translation × Depth (Configs Ready)
+5. ✓ L0: Teacher taxonomy ablations (configs/translation/llama_3b_1b/ablations/00-04)
+6. ✓ L1: RFA factorial study (configs/translation/llama_3b_1b/rfa/00-07)
+7. → Run experiments, compare with classification findings
 
 ### Phase 3: Diffusion × Depth (Stretch)
 8. Literature review on progressive/consistency distillation

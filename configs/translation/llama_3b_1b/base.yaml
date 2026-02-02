@@ -6,7 +6,7 @@ inherit: ../../base.yaml
 model:
   teacher: meta-llama/Llama-3.2-3B-Instruct
   student: meta-llama/Llama-3.2-1B-Instruct
-  student_init: fresh  # Start from random initialization
+  student_init: pretrained  # Use pretrained weights (matches MNLI setup)
 
 data:
   task: translation
@@ -34,7 +34,7 @@ training:
 
 distillation:
   temperature: 2.0
-  alpha: 1.0  # Pure distillation (no task loss) - paper default
+  alpha: 0.5  # Balanced: (1-α)CE + αKL. Paper used α=1 (pure KL) but we test balanced.
 
 checkpointing:
   save_steps: 500
