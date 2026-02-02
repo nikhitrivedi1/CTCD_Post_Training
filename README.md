@@ -54,7 +54,7 @@ python train.py --config configs/... --max_steps 10
 sbatch scripts/run_slurm.sh configs/your_config.yaml
 ```
 
-See [resources/run-options.md](resources/run-options.md) for complete CLI reference.
+See [docs/guides/run-options.md](docs/guides/run-options.md) for complete CLI reference.
 
 ## Using with Your Own Models
 

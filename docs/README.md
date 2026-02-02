@@ -1,4 +1,4 @@
-# Resources
+# Documentation
 
 Documentation and reference materials for the Knowledge Distillation project.
 
@@ -7,7 +7,7 @@ Documentation and reference materials for the Knowledge Distillation project.
 ## Structure
 
 ```
-resources/
+docs/
 ├── archive/          # Original documentation (preserved)
 ├── guides/           # How-to & operational guides
 ├── gpu/              # GPU/hardware documentation
