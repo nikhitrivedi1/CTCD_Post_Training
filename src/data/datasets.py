@@ -78,30 +78,35 @@ def load_qqp(tokenizer: PreTrainedTokenizer, max_length: int = 128):
     return train_dataset, eval_dataset, tokenizer
 
 
-def load_europarl(tokenizer: PreTrainedTokenizer, max_samples: int = 45715, max_length: int = 256):
+def load_europarl(
+    tokenizer: PreTrainedTokenizer,
+    max_samples: int = 45715,
+    max_length: int = 256,
+    source_lang: str = "en",
+    target_lang: str = "fr"
+):
     """
-    Load Europarl EN-FR translation dataset.
+    Load Europarl translation dataset for any language pair.
 
     Loads a subset of the Europarl dataset with custom formatting:
-    - Adds a custom <|end_of_translation|> token to prevent hallucination
-    - Formats with a professional translator prompt template
+    - Formats with chat template (if available) or simple prompt
+    - Relies on model's built-in EOS token for stopping
     - Splits into 70/20/10 train/test/val
 
     Args:
-        tokenizer: HuggingFace tokenizer (should be Llama tokenizer)
+        tokenizer: HuggingFace tokenizer
         max_samples: Number of examples to use (paper uses 45,715)
         max_length: Maximum sequence length
+        source_lang: Source language code (e.g., 'en')
+        target_lang: Target language code (e.g., 'fr')
 
     Returns:
         Tuple of (train_dataset, val_dataset, tokenizer)
     """
-    # Add custom end token to prevent hallucination in small models
-    special_token = "<|end_of_translation|>"
-    if special_token not in tokenizer.get_vocab():
-        tokenizer.add_special_tokens({"additional_special_tokens": [special_token]})
 
     # Load Europarl dataset (Helsinki-NLP version with config-based language pairs)
-    dataset = load_dataset("Helsinki-NLP/europarl", "en-fr", split="train")
+    lang_pair = f"{source_lang}-{target_lang}"
+    dataset = load_dataset("Helsinki-NLP/europarl", lang_pair, split="train")
 
     # Subsample to match paper (45,715 examples)
     if len(dataset) > max_samples:
@@ -114,47 +119,57 @@ def load_europarl(tokenizer: PreTrainedTokenizer, max_samples: int = 45715, max_
     val_data = temp_splits["train"]  # This is ~20% of total
     test_data = temp_splits["test"]  # This is ~10% of total
 
-    # Prompt template from paper
-    prompt_template = """You are a professional translator. Translate the provided text from English to French, remaining true to the source text. Do not add any additional commentary or conversational elements to your response.
+    # Language name mapping for prompts
+    lang_names = {
+        "en": "English", "fr": "French", "de": "German", "es": "Spanish",
+        "it": "Italian", "pt": "Portuguese", "nl": "Dutch", "da": "Danish",
+        "sv": "Swedish", "fi": "Finnish", "el": "Greek", "cs": "Czech",
+        "pl": "Polish", "hu": "Hungarian", "ro": "Romanian", "bg": "Bulgarian"
+    }
+    source_lang_name = lang_names.get(source_lang, source_lang.upper())
+    target_lang_name = lang_names.get(target_lang, target_lang.upper())
 
-{source_text}
+    # Prompt template with dynamic language names
+    system_message = f"You are a professional translator. Translate the provided text from {source_lang_name} to {target_lang_name}, remaining true to the source text. Do not add any additional commentary or conversational elements to your response."
+    prompt_template = f"""{system_message}
 
-{special_token}"""
+{{source_text}}"""
 
     def format_translation(example):
-        """Format with prompt and add end token."""
-        source_text = example["translation"]["en"]
-        target_text = example["translation"]["fr"]
+        """Format with chat template (if available) or simple prompt."""
+        source_text = example["translation"][source_lang]
+        target_text = example["translation"][target_lang]
 
-        # Create input with prompt
-        input_text = prompt_template.format(
-            source_text=source_text,
-            special_token=special_token
-        )
+        # Try using chat template if available (Llama, Mistral, etc.)
+        if hasattr(tokenizer, 'chat_template') and tokenizer.chat_template:
+            messages = [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": source_text},
+                {"role": "assistant", "content": target_text}
+            ]
+            # Format with chat template (returns string)
+            formatted_text = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=False
+            )
+        else:
+            # Fallback to simple prompt for models without chat template
+            formatted_text = prompt_template.format(
+                source_text=source_text
+            ) + "\n" + target_text
 
-        # Target includes the French text plus end token
-        full_target = target_text + " " + special_token
-
-        # Tokenize (left padding for causal LM)
+        # Tokenize without padding (DataCollator will handle padding dynamically)
         model_inputs = tokenizer(
-            input_text,
+            formatted_text,
             max_length=max_length,
             truncation=True,
-            padding="max_length",
             return_tensors=None
         )
 
-        # Tokenize labels
-        with tokenizer.as_target_tokenizer():
-            labels = tokenizer(
-                full_target,
-                max_length=max_length,
-                truncation=True,
-                padding="max_length",
-                return_tensors=None
-            )
-
-        model_inputs["labels"] = labels["input_ids"]
+        # For causal LM, labels are same as input_ids (model predicts next token)
+        # DataCollatorForSeq2Seq will automatically mask padding with -100
+        model_inputs["labels"] = model_inputs["input_ids"].copy()
 
         return model_inputs
 
@@ -196,6 +211,13 @@ def load_dataset_for_task(config: dict):
         return load_qqp(tokenizer)
     elif task_name == "translation" or task_name == "europarl":
         max_samples = config.get("data", {}).get("max_samples", 45715)
-        return load_europarl(tokenizer, max_samples=max_samples)
+        source_lang = config.get("data", {}).get("source_lang", "en")
+        target_lang = config.get("data", {}).get("target_lang", "fr")
+        return load_europarl(
+            tokenizer,
+            max_samples=max_samples,
+            source_lang=source_lang,
+            target_lang=target_lang
+        )
     else:
         raise ValueError(f"Unknown task: {task_name}")

@@ -129,7 +129,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # (override=False means Colab/HPC env vars take precedence)
 from src.utils.environment import detect_environment, get_device
 
-from transformers import TrainingArguments, set_seed
+from transformers import TrainingArguments, set_seed, DataCollatorForSeq2Seq
 
 
 def set_reproducibility_seed(seed: int = 42):
@@ -684,6 +684,17 @@ def main():
         device,
     )
 
+    # Create data collator for seq2seq tasks (handles padding and label masking)
+    data_collator = None
+    if num_labels is None:  # Translation/seq2seq task
+        logger.info("Using DataCollatorForSeq2Seq for dynamic padding and label masking")
+        data_collator = DataCollatorForSeq2Seq(
+            tokenizer=tokenizer,
+            model=student,
+            padding=True,
+            pad_to_multiple_of=8 if device == "cuda" else None,  # Optimize for GPU
+        )
+
     # Initialize trainer with configurable loss strategy
     trainer = DistillationTrainer(
         teacher_model=teacher,
@@ -700,6 +711,7 @@ def main():
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
         compute_metrics=compute_metrics,
+        data_collator=data_collator,  # Seq2seq: handles dynamic padding + label masking
     )
 
     # Add SLURM signal handler
