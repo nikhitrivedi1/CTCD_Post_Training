@@ -45,15 +45,21 @@ Computation:
 An MLP stacks multiple layers of neurons:
 
 ```
-Input Layer      Hidden Layer(s)      Output Layer
+    Input        Hidden        Output
+    Layer        Layer         Layer
 
-    x₁ ─────────●─────────●─────────→ y₁
-         ╲    ╱ ╲       ╱ ╲
-    x₂ ───●─●───●─────●───●─────────→ y₂
-         ╱    ╲ ╱       ╲ ╱
-    x₃ ─────────●─────────●─────────→ y₃
+      ●            ●             ●
+     (x₁)                       (y₁)
 
-Each connection has a weight. Each neuron has a bias.
+      ●            ●             ●
+     (x₂)                       (y₂)
+
+      ●            ●             ●
+     (x₃)                       (y₃)
+
+    (3 nodes)    (3 nodes)    (3 nodes)
+
+Fully connected: every node connects to all nodes in next layer.
 ```
 
 **Matrix Form:**
