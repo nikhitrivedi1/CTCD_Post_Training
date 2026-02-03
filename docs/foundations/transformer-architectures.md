@@ -274,51 +274,52 @@ A transformer block combines attention with feed-forward processing.
 ### Block Structure
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                  Transformer Block                   │
-│                                                      │
-│   Input ─────────────────┬───────────────────────   │
-│      │                   │                           │
-│      ↓                   │ (residual)                │
-│  ┌────────────┐          │                           │
-│  │ LayerNorm  │          │                           │
-│  └────────────┘          │                           │
-│      │                   │                           │
-│      ↓                   │                           │
-│  ┌────────────┐          │                           │
-│  │ Multi-Head │          │                           │
-│  │ Attention  │          │                           │
-│  └────────────┘          │                           │
-│      │                   │                           │
-│      ↓                   │                           │
-│  ┌────────────┐          │                           │
-│  │  Dropout   │          │                           │
-│  └────────────┘          │                           │
-│      │                   │                           │
-│      └──────────(+)──────┘                           │
-│                 │                                    │
-│      ┌──────────┴──────────────┬─────────────────   │
-│      │                         │                     │
-│      ↓                         │ (residual)          │
-│  ┌────────────┐                │                     │
-│  │ LayerNorm  │                │                     │
-│  └────────────┘                │                     │
-│      │                         │                     │
-│      ↓                         │                     │
-│  ┌────────────┐                │                     │
-│  │ Feed-Fwd   │                │                     │
-│  │  Network   │                │                     │
-│  └────────────┘                │                     │
-│      │                         │                     │
-│      ↓                         │                     │
-│  ┌────────────┐                │                     │
-│  │  Dropout   │                │                     │
-│  └────────────┘                │                     │
-│      │                         │                     │
-│      └──────────(+)────────────┘                     │
-│                 │                                    │
-│              Output                                  │
-└─────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────┐
+│           Transformer Block               │
+├───────────────────────────────────────────┤
+│                                           │
+│   Input ───────────┬──────────────────    │
+│      │             │                      │
+│      ↓             │ (residual)           │
+│  ┌──────────┐      │                      │
+│  │LayerNorm │      │                      │
+│  └──────────┘      │                      │
+│      │             │                      │
+│      ↓             │                      │
+│  ┌──────────┐      │                      │
+│  │Multi-Head│      │                      │
+│  │Attention │      │                      │
+│  └──────────┘      │                      │
+│      │             │                      │
+│      ↓             │                      │
+│  ┌──────────┐      │                      │
+│  │ Dropout  │      │                      │
+│  └──────────┘      │                      │
+│      │             │                      │
+│      └─────(+)─────┘                      │
+│            │                              │
+│   ┌────────┴────────┬─────────────────    │
+│   │                 │                     │
+│   ↓                 │ (residual)          │
+│  ┌──────────┐       │                     │
+│  │LayerNorm │       │                     │
+│  └──────────┘       │                     │
+│   │                 │                     │
+│   ↓                 │                     │
+│  ┌──────────┐       │                     │
+│  │   FFN    │       │                     │
+│  └──────────┘       │                     │
+│   │                 │                     │
+│   ↓                 │                     │
+│  ┌──────────┐       │                     │
+│  │ Dropout  │       │                     │
+│  └──────────┘       │                     │
+│   │                 │                     │
+│   └─────(+)─────────┘                     │
+│         │                                 │
+│      Output                               │
+│                                           │
+└───────────────────────────────────────────┘
 ```
 
 ### Pre-Norm vs Post-Norm
@@ -569,80 +570,78 @@ Query at position 3 ("sat"):
 **Architecture:**
 
 ```
-Input: "The cat sat"              Output: "Die Katze saß"
+Input: "The cat sat"                    Output: "Die Katze saß"
 
-┌─────────────────────────────────────────────────────────────┐
-│                                                             │
-│   ENCODER (Bidirectional)          DECODER (Causal)         │
-│                                                             │
-│   [The] [cat] [sat]                [<s>] [Die] [Katze]     │
-│      │     │     │                    │     │      │        │
-│      ↓     ↓     ↓                    ↓     ↓      ↓        │
-│   ┌───────────────┐               ┌────────────────────┐    │
-│   │   Embedding   │               │    Embedding       │    │
-│   └───────────────┘               └────────────────────┘    │
-│      │     │     │                    │     │      │        │
-│      ↓     ↓     ↓                    ↓     ↓      ↓        │
-│   ┌───────────────┐               ┌────────────────────┐    │
-│   │   Encoder     │               │  Causal Self-Attn  │    │
-│   │   Self-Attn   │               │  (masked)          │    │
-│   │   (bidir)     │               └────────────────────┘    │
-│   └───────────────┘                   │     │      │        │
-│      │     │     │                    ↓     ↓      ↓        │
-│      ↓     ↓     ↓               ┌────────────────────┐    │
-│   ┌───────────────┐              │  Cross-Attention   │←───┤
-│   │   FFN         │              │  Q: decoder        │    │
-│   └───────────────┘              │  K,V: encoder      │    │
-│      │     │     │               └────────────────────┘    │
-│      │     │     │                    │     │      │        │
-│      │     │     │                    ↓     ↓      ↓        │
-│   Encoder Output ─────────────→  ┌────────────────────┐    │
-│   (memory)                       │       FFN          │    │
-│                                  └────────────────────┘    │
-│                                       │     │      │        │
-│                                       ↓     ↓      ↓        │
-│                                    [Die] [Katze] [saß]     │
-│                                   (shifted predictions)     │
-└─────────────────────────────────────────────────────────────┘
+        ENCODER                                 DECODER
+    (Bidirectional)                            (Causal)
+
+  [The] [cat] [sat]                      [<s>] [Die] [Katze]
+     │     │     │                          │     │      │
+     ↓     ↓     ↓                          ↓     ↓      ↓
+  ┌─────────────────┐                   ┌─────────────────┐
+  │    Embedding    │                   │    Embedding    │
+  └─────────────────┘                   └─────────────────┘
+     │     │     │                          │     │      │
+     ↓     ↓     ↓                          ↓     ↓      ↓
+  ┌─────────────────┐                   ┌─────────────────┐
+  │  Encoder Block  │                   │Causal Self-Attn │
+  │  (Self-Attn +   │                   │    (masked)     │
+  │      FFN)       │                   └─────────────────┘
+  └─────────────────┘                       │     │      │
+     │     │     │                          ↓     ↓      ↓
+     │     │     │                      ┌─────────────────┐
+     │     │     │    ──────────────→   │ Cross-Attention │
+     │     │     │    K, V from encoder │  Q: decoder     │
+     ↓     ↓     ↓                      └─────────────────┘
+  Encoder Output                            │     │      │
+    (memory)                                ↓     ↓      ↓
+                                        ┌─────────────────┐
+                                        │       FFN       │
+                                        └─────────────────┘
+                                            │     │      │
+                                            ↓     ↓      ↓
+                                        [Die] [Katze] [saß]
 ```
 
 **Decoder Block (with Cross-Attention):**
 
 ```
-┌─────────────────────────────────────────────┐
-│          Encoder-Decoder Block              │
-│                                             │
-│   Input ───────────────┬────────────────   │
-│      │                 │                    │
-│      ↓                 │                    │
-│  ┌──────────┐          │                    │
-│  │ Masked   │          │                    │
-│  │ Self-Attn│  ←── Causal mask              │
-│  └──────────┘          │                    │
-│      │                 │                    │
-│      └────────(+)──────┘                    │
-│               │                             │
-│      ┌────────┴────────┬───────────────    │
-│      │                 │                    │
-│      ↓                 │                    │
-│  ┌──────────┐          │                    │
-│  │ Cross-   │          │                    │
-│  │ Attention│  ←── K,V from encoder        │
-│  └──────────┘          │                    │
-│      │                 │                    │
-│      └────────(+)──────┘                    │
-│               │                             │
-│      ┌────────┴────────┬───────────────    │
-│      │                 │                    │
-│      ↓                 │                    │
-│  ┌──────────┐          │                    │
-│  │   FFN    │          │                    │
-│  └──────────┘          │                    │
-│      │                 │                    │
-│      └────────(+)──────┘                    │
-│               │                             │
-│            Output                           │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────┐
+│      Encoder-Decoder Block          │
+├─────────────────────────────────────┤
+│                                     │
+│  Input ─────────┬───────────────    │
+│     │           │                   │
+│     ↓           │ (residual)        │
+│  ┌────────┐     │                   │
+│  │ Masked │     │                   │
+│  │Self-Att│ ← Causal mask           │
+│  └────────┘     │                   │
+│     │           │                   │
+│     └───(+)─────┘                   │
+│         │                           │
+│  ┌──────┴───────┬───────────────    │
+│  │              │                   │
+│  ↓              │ (residual)        │
+│  ┌────────┐     │                   │
+│  │ Cross- │     │                   │
+│  │  Attn  │ ← K,V from encoder      │
+│  └────────┘     │                   │
+│  │              │                   │
+│  └───(+)────────┘                   │
+│      │                              │
+│  ┌───┴──────────┬───────────────    │
+│  │              │                   │
+│  ↓              │ (residual)        │
+│  ┌────────┐     │                   │
+│  │  FFN   │     │                   │
+│  └────────┘     │                   │
+│  │              │                   │
+│  └───(+)────────┘                   │
+│      │                              │
+│   Output                            │
+│                                     │
+└─────────────────────────────────────┘
 ```
 
 **Characteristics:**
@@ -674,33 +673,34 @@ Input: "The cat sat"              Output: "Die Katze saß"
 ### Attention Patterns Visualized
 
 ```
-ENCODER-ONLY (BERT):                 DECODER-ONLY (GPT):
-"The cat sat on mat"                 "The cat sat on mat"
+ENCODER-ONLY (BERT)                      DECODER-ONLY (GPT)
+───────────────────                      ──────────────────
+"The cat sat on mat"                     "The cat sat on mat"
 
-  T c s o m                            T c s o m
-T[● ● ● ● ●]                        T[● · · · ·]
-c[● ● ● ● ●]                        c[● ● · · ·]
-s[● ● ● ● ●]                        s[● ● ● · ·]
-o[● ● ● ● ●]                        o[● ● ● ● ·]
-m[● ● ● ● ●]                        m[● ● ● ● ●]
+    T c s o m                                T c s o m
+  T[● ● ● ● ●]                            T[● · · · ·]
+  c[● ● ● ● ●]                            c[● ● · · ·]
+  s[● ● ● ● ●]                            s[● ● ● · ·]
+  o[● ● ● ● ●]                            o[● ● ● ● ·]
+  m[● ● ● ● ●]                            m[● ● ● ● ●]
 
-All tokens attend to all             Each token attends only to
-                                     previous tokens (lower triangle)
+All tokens attend                        Each token attends only
+to all tokens                            to previous (lower triangle)
 
 
-ENCODER-DECODER (T5):
-Encoder side: Full attention (like BERT)
-Decoder side: Causal + cross-attention
+ENCODER-DECODER (T5)
+────────────────────
+Encoder: Full attention | Decoder: Causal + cross-attention
 
-Decoder Self-Attention:              Decoder Cross-Attention:
+Decoder Self-Attention               Decoder Cross-Attention
 (to decoder tokens)                  (to encoder tokens)
 
-  D1 D2 D3                             E1 E2 E3 E4
-D1[●  ·  · ]                        D1[●  ●  ●  ● ]
-D2[●  ●  · ]                        D2[●  ●  ●  ● ]
-D3[●  ●  ● ]                        D3[●  ●  ●  ● ]
+    D1 D2 D3                             E1 E2 E3 E4
+ D1[●  ·  · ]                         D1[●  ●  ●  ● ]
+ D2[●  ●  · ]                         D2[●  ●  ●  ● ]
+ D3[●  ●  ● ]                         D3[●  ●  ●  ● ]
 
-Causal within decoder                Full attention to encoder
+Causal (lower triangle)              Full attention to encoder
 ```
 
 ### Parameter Distribution
