@@ -64,10 +64,12 @@ Papers introducing Feature and Attention distillation show gains over baselines,
 
 ### Teacher Configuration
 
-Based on prior ablation work, we use the optimal teacher setup:
+Based on prior ablation work (Paper 1), we use the optimal teacher setup:
 - **Adaptive Domain-Expert:** Co-trained SFT teacher (not frozen)
 - **Alpha:** 0.5 (balanced CE and distillation)
 - **Temperature:** 2.0
+
+**Note:** This is a separate experiment series from the ablation study. Absolute accuracies differ slightly due to hyperparameter variations, but relative rankings within each study are consistent and reproducible.
 
 ### Factorial Design
 
@@ -158,9 +160,9 @@ Feature distillation (MSE on hidden states) forces the student to match teacher 
 ### Attention Pattern Concerns
 
 Attention distillation assumes teacher attention is optimal for the student. But:
-- Different head counts (12 vs 6) require averaging
-- Teacher's attention may be overspecialized
-- Attention is emergent, not the goal
+- Different layer counts (12 vs 6) mean attention patterns emerge differently
+- Teacher's attention may be overspecialized for the deeper architecture
+- Attention is emergent behavior, not the optimization target
 
 ---
 
@@ -182,9 +184,10 @@ Our study used equal weighting (1:1:1). Multi-signal might work with:
 
 ### Limitations
 
-- Single task (MNLI)
-- Single model pair (BERT → DistilBERT)
-- Equal loss weighting only
+- Single task (MNLI) — cross-task validation needed
+- Single model pair (BERT → DistilBERT) — architecture-specific effects possible
+- Equal loss weighting only — optimal λ ratios unexplored
+- Separate experiment series from ablation study — absolute numbers not directly comparable
 
 ---
 
@@ -206,6 +209,13 @@ Our study used equal weighting (1:1:1). Multi-signal might work with:
 - Zagoruyko & Komodakis (2017) - Attention Transfer
 - Sun et al. (2019) - Patient Knowledge Distillation (PKD)
 - Jiao et al. (2020) - TinyBERT (multi-stage distillation)
+
+---
+
+## Related Papers in This Series
+
+- [Paper 1: Ablation Study](paper-1-ablation.md) - Establishes that co-trained SFT teacher (Adaptive Domain-Expert) is optimal; this study builds on that finding
+- [Paper 3: Translation](paper-3-translation.md) - Tests if R >> F > A holds for generation tasks
 
 ---
 
