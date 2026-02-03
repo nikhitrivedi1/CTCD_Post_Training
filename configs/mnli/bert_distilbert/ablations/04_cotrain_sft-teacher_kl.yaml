@@ -27,8 +27,8 @@ distillation:
   temperature: 2
   alpha: 0.5              # CE + KL
   freeze_teacher: false   # Co-training (SFT teacher continues learning)
-  # TextAttack uses [contradiction, entailment, neutral] but dataset uses [entailment, neutral, contradiction]
-  teacher_label_map: [1, 2, 0]
+  # TextAttack model uses [neutral, contradiction, entailment] but dataset uses [entailment, neutral, contradiction]
+  teacher_label_map: [2, 0, 1]
 
 checkpointing:
   save_steps: 2000

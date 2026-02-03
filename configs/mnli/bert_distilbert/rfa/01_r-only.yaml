@@ -30,7 +30,7 @@ distillation:
   alpha: 0.5
   freeze_teacher: false
   loss_type: kl_divergence
-  teacher_label_map: [1, 2, 0]  # TextAttack to HuggingFace label mapping
+  teacher_label_map: [2, 0, 1]  # TextAttack to HuggingFace label mapping
 
 checkpointing:
   save_steps: 250

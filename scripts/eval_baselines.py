@@ -12,7 +12,7 @@ from tqdm import tqdm
 def evaluate_model(model_name: str, task: str = "qqp", batch_size: int = 32):
     """Evaluate a model on a GLUE task without any training."""
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     print(f"\nEvaluating: {model_name}")
     print(f"Task: {task}, Device: {device}")
 
@@ -67,6 +67,11 @@ def evaluate_model(model_name: str, task: str = "qqp", batch_size: int = 32):
             outputs = model(**inputs)
             preds = torch.argmax(outputs.logits, dim=-1)
 
+        # Apply label mapping for models with non-standard label order
+        if ("textattack" in model_name) and task == "mnli":
+            label_map = torch.tensor([2, 0, 1], device=device)  # [neutral, contradiction, entailment] -> [entailment, neutral, contradiction]
+            preds = label_map[preds]
+
         all_preds.extend(preds.cpu().numpy())
         all_labels.extend(batch["label"])
 
@@ -90,14 +95,14 @@ def main():
     # Models to evaluate
     if args.task == "qqp":
         models = [
-            ("distilbert-base-uncased", "Student"),
-            ("bert-base-uncased", "Teacher (base)"),
+            # ("distilbert-base-uncased", "Student (base)"),
+            # ("bert-base-uncased", "Teacher (base)"),
             ("textattack/bert-base-uncased-QQP", "Teacher (SFT)"),
         ]
     else:  # mnli
         models = [
-            ("distilbert-base-uncased", "Student"),
-            ("bert-base-uncased", "Teacher (base)"),
+            # ("distilbert-base-uncased", "Student (base)"),
+            # ("bert-base-uncased", "Teacher (base)"),
             ("textattack/bert-base-uncased-MNLI", "Teacher (SFT)"),
         ]
 
