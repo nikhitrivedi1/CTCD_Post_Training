@@ -170,6 +170,14 @@ For large models, full fine-tuning is impractical:
 
 **Finding:** Adaptability > Expertise. Config 04 wins.
 
+**Ranking:** 04 (Adaptive Domain-Expert) > 00 (No Teacher) > 02 (Stubborn Domain-Expert)
+
+**Critical insight:** A frozen expert (02) performs *worse* than no teacher at all (00). The expert's overconfident mistakes actively mislead the student.
+
+**Cross-task validation:** This pattern replicates across both MNLI (3-class) and QQP (2-class). Since QQP has no label mapping complexity, this eliminates implementation bugs as an explanation. The "stubborn expert hurts" finding is robust.
+
+**Contrast with DistilBERT:** The DistilBERT paper reports success with frozen teacher distillation during fine-tuning (SQuAD). However, they used a freshly fine-tuned teacher, not a pre-existing checkpoint. Our finding suggests teacher quality and calibration matter - a frozen teacher can hurt if its errors are systematic.
+
 ### L1: Signal Depth (What to Transfer)
 
 **Question:** Which layers/signals should we distill?

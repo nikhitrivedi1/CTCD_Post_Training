@@ -22,7 +22,7 @@ dependencies:
       - sacrebleu>=2.3.0
       - unbabel-comet>=2.2.0
       - wandb>=0.16.0
-      - peft>=0.7.0
+      - peft>=0.18.0
       - accelerate>=0.25.0
       - pyyaml>=6.0
       - scikit-learn>=1.3.0
