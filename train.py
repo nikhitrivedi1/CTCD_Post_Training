@@ -262,6 +262,11 @@ def create_loss_strategy_from_config(
         else:
             # Use a mapping strategy
             mapper = get_layer_mapping(mapping_type)
+            if not mapper.validate(teacher_layers, student_layers):
+                raise ValueError(
+                    f"Invalid layer mapping '{mapping_type}' for "
+                    f"teacher={teacher_layers}, student={student_layers} layers"
+                )
             layer_mapping = mapper.map(teacher_layers, student_layers)
 
         logger.debug(f"  Layer mapping ({mapping_type}): {layer_mapping}")
@@ -280,8 +285,8 @@ def create_loss_strategy_from_config(
                 student_dim=student_dim,
                 projection_type=proj_type,
             )
-            if projector is not None and device == "cuda":
-                projector = projector.cuda()
+            if projector is not None:
+                projector = projector.to(device)
             logger.debug(f"  Projection: {student_dim} -> {teacher_dim} ({proj_type})")
 
     return loss_strategy, layer_mapping, projector
@@ -767,8 +772,10 @@ def main():
                 metadata.setdefault("wandb_run_id_history", []).append(old_id)
                 save_run_metadata(output_dir, metadata)
                 logger.info(f"W&B ID changed: {old_id} → {wandb.run.id}")
-    except Exception:
-        pass  # W&B not available or disabled
+    except ImportError:
+        pass  # W&B not installed
+    except Exception as e:
+        logger.debug(f"W&B config update failed: {e}")
 
     # Update state
     state.save(

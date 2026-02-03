@@ -123,8 +123,8 @@ class TranslationMetricsCallback(TrainerCallback):
             self.bleu_metric = evaluate.load("sacrebleu")
             self.comet_metric = evaluate.load("comet")
             logger.info(f"Translation metrics callback initialized ({self.num_samples} samples)")
-        except Exception as e:
-            logger.warning(f"Failed to load metrics: {e}")
+        except ImportError as e:
+            logger.warning(f"Failed to load metrics (missing dependency): {e}")
             self.bleu_metric = None
             self.comet_metric = None
 
@@ -200,7 +200,7 @@ class TranslationMetricsCallback(TrainerCallback):
                 except Exception as e:
                     logger.warning(f"Failed to log to W&B: {e}")
 
-        except Exception as e:
+        except (ValueError, RuntimeError) as e:
             logger.error(f"Failed to compute metrics: {e}")
 
         logger.info("=" * 60)

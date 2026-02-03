@@ -97,7 +97,7 @@ def compute_metrics_translation(tokenizer):
             # For now, we'll skip COMET during training and compute it separately
             # comet_result = comet_metric.compute(predictions=decoded_preds, references=decoded_labels)
             # metrics["comet"] = comet_result["mean_score"]
-        except Exception as e:
+        except (ImportError, FileNotFoundError) as e:
             logger.warning(f"Skipping COMET metric: {e}")
 
         return metrics

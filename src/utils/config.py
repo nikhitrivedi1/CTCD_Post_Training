@@ -5,8 +5,11 @@ from typing import Dict, Any
 
 import yaml
 
+# Maximum inheritance depth to prevent circular references
+MAX_INHERITANCE_DEPTH = 10
 
-def load_config(config_path: str) -> Dict[str, Any]:
+
+def load_config(config_path: str, _depth: int = 0) -> Dict[str, Any]:
     """
     Load a YAML configuration file with inheritance support.
 
@@ -15,10 +18,20 @@ def load_config(config_path: str) -> Dict[str, Any]:
 
     Args:
         config_path: Path to the YAML config file
+        _depth: Internal counter to prevent circular inheritance (do not set manually)
 
     Returns:
         Dict containing the merged configuration
+
+    Raises:
+        RecursionError: If inheritance depth exceeds MAX_INHERITANCE_DEPTH
     """
+    if _depth > MAX_INHERITANCE_DEPTH:
+        raise RecursionError(
+            f"Config inheritance depth exceeded {MAX_INHERITANCE_DEPTH}. "
+            f"Check for circular inheritance in: {config_path}"
+        )
+
     config_path = Path(config_path)
 
     with open(config_path, 'r') as f:
@@ -27,7 +40,7 @@ def load_config(config_path: str) -> Dict[str, Any]:
     # Handle inheritance
     if 'inherit' in config:
         parent_path = config_path.parent / config['inherit']
-        parent_config = load_config(str(parent_path))
+        parent_config = load_config(str(parent_path), _depth=_depth + 1)
 
         # Remove the inherit key and merge
         del config['inherit']
