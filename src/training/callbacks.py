@@ -348,9 +348,19 @@ class PeakMetricsCallback(TrainerCallback):
                 }
                 logger.info(f"New peak {metric_name}: {value:.4f} at step {state.global_step}")
 
+                # Update W&B summary immediately
+                try:
+                    import wandb
+                    if wandb.run is not None:
+                        wandb.run.summary[f"peak/{metric_name}"] = value
+                        wandb.run.summary[f"peak/{metric_name}_step"] = state.global_step
+                        wandb.run.summary[f"peak/{metric_name}_epoch"] = state.epoch
+                except ImportError:
+                    pass
+
     def on_train_end(self, args, state, control, **kwargs):
         """
-        Log peak metrics to W&B at end of training.
+        Log peak metrics summary at end of training.
 
         Args:
             args: Training arguments
@@ -360,22 +370,7 @@ class PeakMetricsCallback(TrainerCallback):
         if not self.peaks:
             return
 
-        # Log to W&B if available
-        try:
-            import wandb
-            if wandb.run is not None:
-                peak_summary = {}
-                for metric_name, peak_info in self.peaks.items():
-                    peak_summary[f"peak/{metric_name}"] = peak_info["value"]
-                    peak_summary[f"peak/{metric_name}_step"] = peak_info["step"]
-                    peak_summary[f"peak/{metric_name}_epoch"] = peak_info["epoch"]
-
-                wandb.log(peak_summary)
-                logger.info(f"Logged peak metrics to W&B: {list(self.peaks.keys())}")
-        except ImportError:
-            pass
-
-        # Log summary
+        # Log summary to console
         logger.info("=" * 50)
         logger.info("PEAK METRICS SUMMARY")
         logger.info("=" * 50)
