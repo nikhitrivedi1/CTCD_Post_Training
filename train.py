@@ -603,8 +603,8 @@ def main():
     task = config.get("data", {}).get("task", "").lower()
     if task == "mnli":
         num_labels = 3  # entailment, neutral, contradiction
-    elif task == "qqp":
-        num_labels = 2  # duplicate, not duplicate
+    elif task in ("qqp", "sst2", "cola"):
+        num_labels = 2  # binary classification
     else:
         num_labels = None  # Not a classification task
 
