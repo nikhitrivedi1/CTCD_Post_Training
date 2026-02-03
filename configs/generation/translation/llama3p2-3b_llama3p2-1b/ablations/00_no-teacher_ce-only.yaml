@@ -2,7 +2,7 @@
 # Student trains on EN-FR translation with cross-entropy loss only
 # No teacher supervision - establishes baseline for distillation comparison
 
-inherit: ../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: meta-llama/Llama-3.2-3B  # Unused but required by trainer

@@ -3,7 +3,7 @@
 # This is the "standard" KD setup - Stubborn Domain-Expert
 # Tests: Does a frozen expert teacher help or hurt?
 
-inherit: ../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: meta-llama/Llama-3.2-3B-Instruct  # Instruction-tuned

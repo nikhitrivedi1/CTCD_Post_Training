@@ -3,7 +3,7 @@
 # Adaptive Domain-Expert - best setup from classification experiments
 # Tests: Does "Strong Opinions, Loosely Held" transfer to translation?
 
-inherit: ../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: meta-llama/Llama-3.2-3B-Instruct  # Instruction-tuned, continues learning
