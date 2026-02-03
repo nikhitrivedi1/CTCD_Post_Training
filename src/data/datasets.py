@@ -3,6 +3,8 @@
 from datasets import load_dataset
 from transformers import PreTrainedTokenizer
 
+from src.tasks import TASKS, is_translation_task
+
 
 def load_mnli(tokenizer: PreTrainedTokenizer, max_length: int = 128):
     """
@@ -268,12 +270,17 @@ def load_dataset_for_task(config: dict):
     tokenizer = AutoTokenizer.from_pretrained(teacher_model)
 
     # Set padding side for causal LM (translation)
-    if "llama" in teacher_model.lower() or task_name == "translation":
+    if "llama" in teacher_model.lower() or is_translation_task(task_name):
         tokenizer.padding_side = "left"
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
+    # Validate task exists in registry
+    if task_name not in TASKS:
+        raise ValueError(f"Unknown task: {task_name}. Supported: {list(TASKS.keys())}")
+
     # Load dataset based on task
+    # Note: Each task has unique preprocessing, so explicit dispatch is needed
     if task_name == "mnli":
         return load_mnli(tokenizer)
     elif task_name == "qqp":
@@ -282,7 +289,7 @@ def load_dataset_for_task(config: dict):
         return load_sst2(tokenizer)
     elif task_name == "cola":
         return load_cola(tokenizer)
-    elif task_name == "translation" or task_name == "europarl":
+    elif task_name == "europarl":
         max_samples = config.get("data", {}).get("max_samples", 45715)
         source_lang = config.get("data", {}).get("source_lang", "en")
         target_lang = config.get("data", {}).get("target_lang", "fr")
@@ -292,5 +299,3 @@ def load_dataset_for_task(config: dict):
             source_lang=source_lang,
             target_lang=target_lang
         )
-    else:
-        raise ValueError(f"Unknown task: {task_name}")

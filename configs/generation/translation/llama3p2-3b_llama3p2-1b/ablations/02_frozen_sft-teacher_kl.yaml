@@ -11,7 +11,7 @@ model:
   student_init: pretrained
 
 data:
-  task: translation
+  task: europarl
   dataset: europarl
   source_lang: en
   target_lang: fr

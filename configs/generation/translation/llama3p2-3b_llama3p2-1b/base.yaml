@@ -9,7 +9,7 @@ model:
   student_init: pretrained  # Use pretrained weights (matches MNLI setup)
 
 data:
-  task: translation
+  task: europarl
   dataset: europarl
   source_lang: en
   target_lang: fr

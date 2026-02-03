@@ -11,6 +11,8 @@ from transformers import (
     PreTrainedTokenizer
 )
 
+from src.tasks import is_translation_task
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,7 +38,7 @@ def load_teacher_student(config: dict, device: str, tokenizer: PreTrainedTokeniz
     task = config.get("data", {}).get("task", "").lower()
 
     # Determine model type
-    if "llama" in teacher_name.lower() or task == "translation":
+    if "llama" in teacher_name.lower() or is_translation_task(task):
         return _load_translation_models(config, device, tokenizer)
     else:
         return _load_classification_models(config, device, tokenizer, num_labels)

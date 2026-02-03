@@ -145,8 +145,9 @@ def set_reproducibility_seed(seed: int = 42):
 
 from src.data.datasets import load_dataset_for_task
 from src.evaluation.metrics import get_compute_metrics
+from src.tasks import get_num_labels, get_primary_metric
 from src.models.loader import load_teacher_student
-from src.training.callbacks import SLURMSignalCallback, TranslationMetricsCallback
+from src.training.callbacks import SLURMSignalCallback, TranslationMetricsCallback, PeakMetricsCallback
 from src.training.trainer import DistillationTrainer
 from src.training.losses import (
     get_loss_strategy,
@@ -601,12 +602,7 @@ def main():
 
     # Determine number of labels for classification tasks
     task = config.get("data", {}).get("task", "").lower()
-    if task == "mnli":
-        num_labels = 3  # entailment, neutral, contradiction
-    elif task in ("qqp", "sst2", "cola"):
-        num_labels = 2  # binary classification
-    else:
-        num_labels = None  # Not a classification task
+    num_labels = get_num_labels(task)
 
     # Load teacher and student models
     logger.info("Loading models...")
@@ -692,7 +688,8 @@ def main():
         run_name=wandb_run_id,
         max_steps=args.max_steps if args.max_steps > 0 else -1,
         load_best_model_at_end=True,
-        metric_for_best_model="eval_loss",
+        metric_for_best_model=f"eval_{get_primary_metric(task)}" if get_primary_metric(task) else "eval_loss",
+        greater_is_better=get_primary_metric(task) is not None,  # Higher is better for accuracy/f1/mcc/bleu
         prediction_loss_only=num_labels is None,  # Seq2seq tasks: prevents OOM, metrics need generation anyway
         seed=args.seed,
         data_seed=args.seed,
@@ -744,6 +741,10 @@ def main():
     if env == "slurm":
         logger.info("Adding SLURM signal handler...")
         trainer.add_callback(SLURMSignalCallback(trainer))
+
+    # Add peak metrics tracking
+    logger.info("Adding peak metrics callback...")
+    trainer.add_callback(PeakMetricsCallback())
 
     # Add translation metrics callback for seq2seq tasks
     if num_labels is None and config.get("evaluation", {}).get("compute_translation_metrics", False):

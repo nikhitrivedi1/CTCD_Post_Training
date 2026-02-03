@@ -294,3 +294,98 @@ class TranslationMetricsCallback(TrainerCallback):
                 predictions.append(translation)
 
         return predictions
+
+
+class PeakMetricsCallback(TrainerCallback):
+    """
+    Track and log peak metric values with checkpoint info.
+
+    Records the best value achieved for each metric along with the
+    step/epoch where it occurred. Logs to W&B at end of training.
+    """
+
+    def __init__(self, metrics_to_track: list[str] = None):
+        """
+        Initialize peak metrics tracker.
+
+        Args:
+            metrics_to_track: List of metric names to track (e.g., ["accuracy", "f1", "mcc"]).
+                              If None, tracks all eval metrics.
+        """
+        self.metrics_to_track = metrics_to_track
+        self.peaks = {}  # metric_name -> {"value": float, "step": int, "epoch": float}
+
+    def on_evaluate(self, args, state, control, metrics=None, **kwargs):
+        """
+        Update peak values after each evaluation.
+
+        Args:
+            args: Training arguments
+            state: Trainer state
+            control: Trainer control
+            metrics: Evaluation metrics dict
+        """
+        if metrics is None:
+            return
+
+        for key, value in metrics.items():
+            # Skip non-eval metrics and loss (lower is better for loss)
+            if not key.startswith("eval_") or "loss" in key:
+                continue
+
+            metric_name = key.replace("eval_", "")
+
+            # Filter to tracked metrics if specified
+            if self.metrics_to_track and metric_name not in self.metrics_to_track:
+                continue
+
+            # Update peak if this is a new best (higher is better)
+            if metric_name not in self.peaks or value > self.peaks[metric_name]["value"]:
+                self.peaks[metric_name] = {
+                    "value": value,
+                    "step": state.global_step,
+                    "epoch": state.epoch,
+                }
+                logger.info(f"New peak {metric_name}: {value:.4f} at step {state.global_step}")
+
+    def on_train_end(self, args, state, control, **kwargs):
+        """
+        Log peak metrics to W&B at end of training.
+
+        Args:
+            args: Training arguments
+            state: Trainer state
+            control: Trainer control
+        """
+        if not self.peaks:
+            return
+
+        # Log to W&B if available
+        try:
+            import wandb
+            if wandb.run is not None:
+                peak_summary = {}
+                for metric_name, peak_info in self.peaks.items():
+                    peak_summary[f"peak/{metric_name}"] = peak_info["value"]
+                    peak_summary[f"peak/{metric_name}_step"] = peak_info["step"]
+                    peak_summary[f"peak/{metric_name}_epoch"] = peak_info["epoch"]
+
+                wandb.log(peak_summary)
+                logger.info(f"Logged peak metrics to W&B: {list(self.peaks.keys())}")
+        except ImportError:
+            pass
+
+        # Log summary
+        logger.info("=" * 50)
+        logger.info("PEAK METRICS SUMMARY")
+        logger.info("=" * 50)
+        for metric_name, peak_info in self.peaks.items():
+            logger.info(
+                f"  {metric_name}: {peak_info['value']:.4f} "
+                f"(step {peak_info['step']}, epoch {peak_info['epoch']:.2f})"
+            )
+        logger.info("=" * 50)
+
+    def get_peaks(self) -> dict:
+        """Return the current peak metrics."""
+        return self.peaks

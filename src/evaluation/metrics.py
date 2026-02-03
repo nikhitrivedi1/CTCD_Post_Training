@@ -6,37 +6,50 @@ from typing import Dict, Any, Optional, Callable
 import evaluate
 import numpy as np
 
+from src.tasks import is_classification_task, is_translation_task
+
 logger = logging.getLogger(__name__)
 
 
-def compute_metrics_classification(eval_pred) -> Dict[str, float]:
+def compute_classification_metrics(eval_pred) -> Dict[str, float]:
     """
-    Compute metrics for classification tasks (MNLI, QQP).
+    Compute metrics for classification tasks.
+
+    Computes all standard metrics so they're available for any task.
+    The task registry specifies which is the primary metric for each task.
 
     Args:
         eval_pred: Tuple of (predictions, labels)
 
     Returns:
-        Dictionary with accuracy and F1 scores
+        Dictionary with accuracy, F1, and MCC scores
     """
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
 
+    # Handle empty predictions
+    if len(predictions) == 0:
+        logger.warning("Empty predictions array, returning zero metrics")
+        return {"accuracy": 0.0, "f1": 0.0, "mcc": 0.0}
+
     # Load metrics
     accuracy_metric = evaluate.load("accuracy")
     f1_metric = evaluate.load("f1")
+    mcc_metric = evaluate.load("matthews_correlation")
 
-    # Compute metrics
+    # Compute all metrics
     accuracy = accuracy_metric.compute(predictions=predictions, references=labels)
     f1 = f1_metric.compute(predictions=predictions, references=labels, average="weighted")
+    mcc = mcc_metric.compute(predictions=predictions, references=labels)
 
     return {
         "accuracy": accuracy["accuracy"],
         "f1": f1["f1"],
+        "mcc": mcc["matthews_correlation"],
     }
 
 
-def compute_metrics_translation(tokenizer):
+def compute_translation_metrics(tokenizer):
     """
     Create a compute_metrics function for translation tasks.
 
@@ -110,17 +123,17 @@ def get_compute_metrics(task: str, tokenizer: Optional[Any] = None) -> Optional[
     Get the appropriate compute_metrics function for a task.
 
     Args:
-        task: Task name ('mnli', 'qqp', 'translation')
-        tokenizer: Tokenizer (required for translation tasks)
+        task: Task name (see src/tasks/registry.py for supported tasks)
+        tokenizer: Tokenizer (required for generation tasks)
 
     Returns:
         Compute metrics function or None
     """
-    if task in ["mnli", "qqp"]:
-        return compute_metrics_classification
-    elif task in ["translation", "europarl"]:
+    if is_classification_task(task):
+        return compute_classification_metrics
+    elif is_translation_task(task):
         if tokenizer is None:
             raise ValueError("Tokenizer required for translation metrics")
-        return compute_metrics_translation(tokenizer)
+        return compute_translation_metrics(tokenizer)
     else:
         return None
