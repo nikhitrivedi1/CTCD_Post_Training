@@ -29,7 +29,8 @@ Core concepts for understanding ML tasks, modalities, and knowledge distillation
 
 | Document | Description |
 |----------|-------------|
-| [tasks-models-datasets.md](foundations/tasks-models-datasets.md) | ML modalities, task types, datasets, architectures, model selection |
+| [tasks-models-datasets.md](foundations/tasks-models-datasets.md) | ML paradigms, task types, datasets, model selection |
+| [transformer-architectures.md](foundations/transformer-architectures.md) | Transformer internals: MLP, attention, encoder/decoder architectures |
 
 ### Guides
 Operational how-to documentation.
@@ -90,7 +91,10 @@ Publication materials.
 
 | Document | Description |
 |----------|-------------|
-| [paper-draft.md](paper/paper-draft.md) | Draft manuscript structure |
+| [README.md](paper/README.md) | Paper series overview and narrative arc |
+| [paper-1-ablation.md](paper/paper-1-ablation.md) | When Teachers Fail: Frozen vs Co-training |
+| [paper-2-rfa.md](paper/paper-2-rfa.md) | Simplicity Wins: R-only beats multi-signal |
+| [paper-3-translation.md](paper/paper-3-translation.md) | Cross-task validation on generation |
 
 ### Maintenance
 Code quality and maintenance tracking.
