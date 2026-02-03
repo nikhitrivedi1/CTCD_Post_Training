@@ -10,9 +10,9 @@ model:
   student_init: pretrained
 
 distillation:
-  temperature: 2.0
-  alpha: 0.0              # CE only: (1-0)CE + 0*KL = pure CE
-  freeze_teacher: true    # Teacher not used anyway
+  # temperature inherited from base.yaml (unused when α=0)
+  alpha: 0.0              # CE only: no distillation
+  freeze_teacher: true
   loss_type: none
 
 logging:

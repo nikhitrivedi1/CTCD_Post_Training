@@ -29,7 +29,7 @@ distillation:
   temperature: 2
   alpha: 0.5
   freeze_teacher: false
-  loss_type: kl_divergence
+  loss_type: response_kl
   teacher_label_map: [1, 2, 0]  # TextAttack to HuggingFace label mapping
 
 checkpointing:

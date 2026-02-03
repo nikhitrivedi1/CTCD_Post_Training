@@ -33,9 +33,9 @@ distillation:
 
   # Staged distillation: F then R (2 epochs each)
   stages:
-    - strategy: feature_mse
+    - strategy: feature_cosine
       until_progress: 0.5           # Epochs 1-2: structural knowledge
-    - strategy: kl_divergence
+    - strategy: response_kl
       until_progress: 1.0           # Epochs 3-4: task decisions
 
   layer_mapping:

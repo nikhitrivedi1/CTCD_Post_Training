@@ -559,6 +559,17 @@ def main():
     logger.info(f"Device: {device}")
     logger.info("=" * 60)
 
+    # Print resolved config for reference
+    logger.info("")
+    logger.info("=" * 60)
+    logger.info("CONFIGURATION")
+    logger.info("=" * 60)
+    config_yaml = yaml.dump(config, default_flow_style=False, sort_keys=False)
+    for line in config_yaml.split("\n"):
+        logger.info(line)
+    logger.info("=" * 60)
+    logger.info("")
+
     # Initialize state tracking for SLURM job chaining
     state = TrainingState(args.output_dir)
     state.set_targets(epochs=config["training"]["num_epochs"])

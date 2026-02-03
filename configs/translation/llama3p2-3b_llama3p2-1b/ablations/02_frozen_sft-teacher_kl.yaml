@@ -35,8 +35,8 @@ training:
     target_modules: ["down_proj", "up_proj", "gate_proj"]
 
 distillation:
-  temperature: 2.0
-  alpha: 0.5              # CE + KL
+  temperature: 15.0       # High temp for 128k vocab
+  alpha: 0.2              # Lower than classification since high T softens KL
   freeze_teacher: true    # Traditional distillation (frozen) - Stubborn
 
 checkpointing:

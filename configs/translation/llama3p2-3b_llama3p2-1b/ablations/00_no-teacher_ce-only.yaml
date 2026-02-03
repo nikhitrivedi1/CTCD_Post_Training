@@ -34,9 +34,9 @@ training:
     target_modules: ["down_proj", "up_proj", "gate_proj"]
 
 distillation:
-  temperature: 2.0
-  alpha: 0.0              # CE only, no KL loss
-  freeze_teacher: true    # Teacher not used anyway
+  # temperature irrelevant when α=0
+  alpha: 0.0              # CE only: no distillation
+  freeze_teacher: true
 
 checkpointing:
   save_steps: 500

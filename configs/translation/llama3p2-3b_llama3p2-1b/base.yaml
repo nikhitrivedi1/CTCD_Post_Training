@@ -33,8 +33,8 @@ training:
     target_modules: [ "down_proj", "up_proj", "gate_proj" ]
 
 distillation:
-  temperature: 2.0
-  alpha: 0.5  # Balanced: (1-α)CE + αKL. Paper used α=1 (pure KL) but we test balanced.
+  temperature: 15.0  # High temp for 128k vocab (Hinton: T=20 for MNIST, higher for larger output spaces)
+  alpha: 0.2  # Lower than classification (0.5) since high T already softens KL
 
 checkpointing:
   save_steps: 500

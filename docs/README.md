@@ -8,6 +8,7 @@ Documentation and reference materials for the Knowledge Distillation project.
 
 ```
 docs/
+├── codebase-todo.md  # Code review items needing attention
 ├── archive/          # Original documentation (preserved)
 ├── guides/           # How-to & operational guides
 ├── gpu/              # GPU/hardware documentation
@@ -82,6 +83,13 @@ Publication materials.
 | Document | Description |
 |----------|-------------|
 | [paper-draft.md](paper/paper-draft.md) | Draft manuscript structure |
+
+### Maintenance
+Code quality and maintenance tracking.
+
+| Document | Description |
+|----------|-------------|
+| [codebase-todo.md](codebase-todo.md) | Code review findings and items needing attention |
 
 ---
 

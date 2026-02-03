@@ -5,12 +5,12 @@ Catalog of tasks for systematically understanding knowledge distillation across 
 ## Quick Summary
 
 **Current:** 3 tasks (MNLI, QQP, EN→FR Translation) with BERT/DistilBERT and Llama-3B/1B
-**Proposed:** 41 additional Model-Pair_Dataset combinations across:
-- 12 classification tasks (GLUE benchmark + domain-specific + RoBERTa variants)
+**Proposed:** 43 additional Model-Pair_Dataset combinations across:
+- 14 classification tasks (GLUE benchmark + domain-specific + RoBERTa variants)
 - 16 translation tasks (10 language pairs + 3 datasets + 4 model architectures)
 - 13 advanced tasks (token-level, QA, generation)
 
-**Total Coverage:** 44 task configurations spanning 10+ languages, 4 task types, 8 model architectures
+**Total Coverage:** 46 task configurations spanning 10+ languages, 4 task types, 8 model architectures
 
 ---
 
@@ -26,7 +26,7 @@ Catalog of tasks for systematically understanding knowledge distillation across 
 
 ## Complete Model-Pair_Dataset Matrix
 
-### Classification: 14 Combinations
+### Classification: 16 Combinations
 
 | # | Dataset | Teacher | Student | Size | Type | Status |
 |---|---------|---------|---------|------|------|--------|
@@ -44,6 +44,8 @@ Catalog of tasks for systematically understanding knowledge distillation across 
 | 12 | GLUE SST-2 | roberta-large | roberta-base | 67k | Binary sentiment | Proposed |
 | 13 | financial_phrasebank | bert-base-uncased | distilbert-base-uncased | 4.8k | Sentiment | Proposed |
 | 14 | BC5CDR | biobert-v1.1 | distilbert-base-uncased | 5k abstracts | Biomedical NER | Proposed |
+| 15 | AG News | bert-base-uncased | distilbert-base-uncased | 120k | 4-class topic | Proposed |
+| 16 | IMDB | bert-base-uncased | distilbert-base-uncased | 25k | Binary sentiment | Proposed |
 
 ### Translation: 17 Combinations
 
@@ -67,7 +69,7 @@ Catalog of tasks for systematically understanding knowledge distillation across 
 | 16 | EN → ES | Europarl | NLLB-3.3B | NLLB-600M | 46k | Proposed |
 | 17 | EN → FR | WMT14 | NLLB-3.3B | NLLB-600M | 40M | Proposed |
 
-**Total: 31 Model-Pair_Dataset combinations** (3 implemented + 28 proposed) across Classification and Translation
+**Total: 33 Model-Pair_Dataset combinations** (3 implemented + 30 proposed) across Classification and Translation
 
 ---
 
@@ -209,10 +211,10 @@ Catalog of tasks for systematically understanding knowledge distillation across 
 
 | Category | Implemented | Proposed | Total |
 |----------|-------------|----------|-------|
-| **Classification Tasks (BERT-based)** | 2 (MNLI, QQP) | 12 (SST-2, CoLA, RTE, MRPC, STS-B, QNLI, WNLI + RoBERTa variants + domain-specific) | 14 |
+| **Classification Tasks (BERT-based)** | 2 (MNLI, QQP) | 14 (SST-2, CoLA, RTE, MRPC, STS-B, QNLI, WNLI + RoBERTa variants + domain-specific + AG News, IMDB) | 16 |
 | **Translation Tasks** | 1 (EN→FR) | 16 (5 Europarl pairs, 4 WMT pairs, 3 low-resource, 4 alternative models) | 17 |
 | **Other Tasks** | 0 | 13 (NER, POS, SQuAD, BoolQ, COPA, WinoGrande, summarization, dialogue, code) | 13 |
-| **Total Combinations** | 3 | 41 | 44 |
+| **Total Combinations** | 3 | 43 | 46 |
 
 ---
 

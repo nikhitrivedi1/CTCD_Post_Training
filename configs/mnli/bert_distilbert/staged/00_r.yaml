@@ -32,7 +32,7 @@ distillation:
 
   # Single stage: R throughout (baseline for staged comparison)
   stages:
-    - strategy: kl_divergence
+    - strategy: response_kl
       until_progress: 1.0
 
 checkpointing:

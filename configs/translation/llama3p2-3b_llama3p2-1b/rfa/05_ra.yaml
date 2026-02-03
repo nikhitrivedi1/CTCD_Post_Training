@@ -10,11 +10,10 @@ model:
   student_init: pretrained
 
 distillation:
-  temperature: 2.0
-  alpha: 0.5
+  # temperature and alpha inherited from base.yaml
   freeze_teacher: false   # Adaptive Domain-Expert
   loss_strategies:
-    - type: kl_divergence
+    - type: response_kl
       weight: 1.0
     - type: attention_kl
       weight: 1.0

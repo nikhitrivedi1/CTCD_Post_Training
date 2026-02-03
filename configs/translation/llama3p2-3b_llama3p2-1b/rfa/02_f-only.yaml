@@ -11,8 +11,7 @@ model:
   student_init: pretrained
 
 distillation:
-  temperature: 2.0
-  alpha: 0.5
+  # temperature and alpha inherited from base.yaml
   freeze_teacher: false   # Adaptive Domain-Expert
   loss_type: feature_mse
   layer_mapping:

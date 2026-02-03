@@ -32,11 +32,11 @@ distillation:
 
   # Three-stage progression (2 epochs each)
   stages:
-    - strategy: feature_mse
+    - strategy: feature_cosine
       until_progress: 0.33          # Epochs 1-2: structural knowledge
     - strategy: attention_kl
       until_progress: 0.67          # Epochs 3-4: reasoning patterns
-    - strategy: kl_divergence
+    - strategy: response_kl
       until_progress: 1.0           # Epochs 5-6: task decisions
 
   layer_mapping:

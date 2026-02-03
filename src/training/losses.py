@@ -82,7 +82,7 @@ class KLDistillationLoss(DistillationLossStrategy):
 
     @property
     def name(self) -> str:
-        return "kl_divergence"
+        return "response_kl"
 
     def compute(
         self,
@@ -137,7 +137,7 @@ class MSEDistillationLoss(DistillationLossStrategy):
 
     @property
     def name(self) -> str:
-        return "mse_logits"
+        return "response_mse"
 
     def compute(
         self,
@@ -190,7 +190,7 @@ class CosineDistillationLoss(DistillationLossStrategy):
 
     @property
     def name(self) -> str:
-        return "cosine_embedding"
+        return "response_cosine"
 
     def compute(
         self,
@@ -239,7 +239,7 @@ class SoftTargetDistillationLoss(DistillationLossStrategy):
 
     @property
     def name(self) -> str:
-        return "soft_target"
+        return "response_ce"
 
     def compute(
         self,
@@ -451,6 +451,94 @@ class FeatureLossStrategy(DistillationLossStrategy):
                 "alpha": torch.tensor(self.alpha),
                 "ce_raw": ce_loss,
                 "feature_raw": feature_raw,
+                "num_layers_matched": torch.tensor(len(layer_mapping)),
+            }
+        )
+
+
+class CosineFeatureLoss(DistillationLossStrategy):
+    """
+    Feature-based distillation loss using cosine similarity (DistilBERT-style).
+
+    Loss = (1 - alpha) * CE + alpha * mean(1 - cosine_sim(student_hidden, teacher_hidden))
+
+    Unlike MSE, cosine similarity focuses on the direction of hidden state
+    vectors rather than their magnitude. DistilBERT found this beneficial
+    (+1.46 GLUE points when included).
+
+    References:
+    - Sanh et al. (2019): "DistilBERT, a distilled version of BERT"
+    """
+
+    requires_hidden_states = True
+
+    def __init__(
+        self,
+        alpha: float = 0.5,
+        layer_mapping: Optional[List[Tuple[int, int]]] = None,
+        projector: Optional[Any] = None,
+        **kwargs,
+    ):
+        self.alpha = alpha
+        self.layer_mapping = layer_mapping or []
+        self.projector = projector
+
+    @property
+    def name(self) -> str:
+        return "feature_cosine"
+
+    def compute(
+        self,
+        student_logits: torch.Tensor,
+        teacher_logits: torch.Tensor,
+        ce_loss: torch.Tensor,
+        labels: Optional[torch.Tensor] = None,
+        student_outputs: Optional[Any] = None,
+        teacher_outputs: Optional[Any] = None,
+        **kwargs,
+    ) -> LossOutput:
+        layer_mapping = kwargs.get("layer_mapping", self.layer_mapping)
+        projector = kwargs.get("projector", self.projector)
+
+        student_hidden = getattr(student_outputs, "hidden_states", None)
+        teacher_hidden = getattr(teacher_outputs, "hidden_states", None)
+
+        if student_hidden is None or teacher_hidden is None:
+            raise ValueError(
+                "Feature loss requires hidden_states. "
+                "Ensure output_hidden_states=True in model config."
+            )
+
+        cosine_losses = []
+        for teacher_idx, student_idx in layer_mapping:
+            t_hidden = teacher_hidden[teacher_idx]
+            s_hidden = student_hidden[student_idx]
+
+            if projector is not None:
+                s_hidden = projector(s_hidden)
+
+            # Cosine similarity: 1 - cos(s, t) as loss (0 = identical direction)
+            cos_sim = F.cosine_similarity(s_hidden, t_hidden, dim=-1)
+            layer_loss = (1 - cos_sim).mean()
+            cosine_losses.append(layer_loss)
+
+        if cosine_losses:
+            feature_raw = torch.stack(cosine_losses).mean()
+        else:
+            feature_raw = torch.tensor(0.0, device=student_logits.device)
+
+        ce_weighted = (1 - self.alpha) * ce_loss
+        feature_weighted = self.alpha * feature_raw
+        total_loss = ce_weighted + feature_weighted
+
+        return LossOutput(
+            total_loss=total_loss,
+            components={
+                "ce_weighted": ce_weighted,
+                "feature_cosine_weighted": feature_weighted,
+                "alpha": torch.tensor(self.alpha),
+                "ce_raw": ce_loss,
+                "feature_cosine_raw": feature_raw,
                 "num_layers_matched": torch.tensor(len(layer_mapping)),
             }
         )
@@ -696,14 +784,31 @@ class StagedDistillationLoss(DistillationLossStrategy):
 
 
 # Registry for easy lookup by name
+# Naming convention: {signal}_{method}
+#   signal: response, feature, attention
+#   method: kl, mse, cosine, ce
 LOSS_REGISTRY = {
+    # Response-based (output logits)
+    "response_kl": KLDistillationLoss,
+    "response_mse": MSEDistillationLoss,
+    "response_cosine": CosineDistillationLoss,
+    "response_ce": SoftTargetDistillationLoss,
+
+    # Feature-based (hidden states)
+    "feature_mse": FeatureLossStrategy,
+    "feature_cosine": CosineFeatureLoss,
+
+    # Attention-based (attention weights)
+    "attention_kl": AttentionLossStrategy,
+
+    # Meta/compound strategies
+    "staged": StagedDistillationLoss,
+
+    # Backward compatibility aliases (deprecated)
     "kl_divergence": KLDistillationLoss,
     "mse_logits": MSEDistillationLoss,
     "cosine_embedding": CosineDistillationLoss,
     "soft_target": SoftTargetDistillationLoss,
-    "feature_mse": FeatureLossStrategy,
-    "attention_kl": AttentionLossStrategy,
-    "staged": StagedDistillationLoss,
 }
 
 
@@ -712,14 +817,15 @@ def get_loss_strategy(name: str, **kwargs) -> DistillationLossStrategy:
     Factory function to get a loss strategy by name.
 
     Args:
-        name: Name of the loss strategy
+        name: Name of the loss strategy (format: {signal}_{method})
         **kwargs: Arguments to pass to the strategy constructor
 
     Returns:
         Instantiated loss strategy
 
     Example:
-        loss = get_loss_strategy("kl_divergence", temperature=2.0, alpha=0.5)
+        loss = get_loss_strategy("response_kl", temperature=2.0, alpha=0.5)
+        loss = get_loss_strategy("feature_cosine", alpha=0.3)
     """
     if name not in LOSS_REGISTRY:
         raise ValueError(f"Unknown loss strategy: {name}. Available: {list(LOSS_REGISTRY.keys())}")
