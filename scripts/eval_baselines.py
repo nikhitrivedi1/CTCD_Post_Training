@@ -69,7 +69,7 @@ def evaluate_model(model_name: str, task: str = "qqp", batch_size: int = 32):
 
         # Apply label mapping for models with non-standard label order
         if ("textattack" in model_name) and task == "mnli":
-            label_map = torch.tensor([2, 0, 1], device=device)  # [neutral, contradiction, entailment] -> [entailment, neutral, contradiction]
+            label_map = torch.tensor([2, 0, 1], device=device)  # TextAttack [contradiction, entailment, neutral] -> GLUE [entailment, neutral, contradiction]
             preds = label_map[preds]
 
         all_preds.extend(preds.cpu().numpy())

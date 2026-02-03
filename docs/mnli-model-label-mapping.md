@@ -14,14 +14,14 @@ GLUE MNLI expects:
 ## Model Internal Orderings
 
 ### TextAttack BERT MNLI (`textattack/bert-base-uncased-MNLI`)
-- **Internal ordering**: `[neutral, contradiction, entailment]` (NCE)
+- **Internal ordering**: `[contradiction, entailment, neutral]` (CEN)
 - **Config labels**: Generic `LABEL_0, LABEL_1, LABEL_2` (no semantic meaning)
 - **Distillation logit mapping**: `[1, 2, 0]` (reorders teacher logits)
 - **Evaluation prediction mapping**: `[2, 0, 1]` (maps predictions)
 - **Accuracy**: ~79% distillation accuracy, 84% teacher evaluation accuracy
 
 ### TextAttack DistilBERT MNLI (`textattack/distilbert-base-uncased-MNLI`)
-- **Internal ordering**: `[neutral, contradiction, entailment]` (NCE)
+- **Internal ordering**: `[contradiction, entailment, neutral]` (CEN)
 - **Config labels**: Generic `LABEL_0, LABEL_1, LABEL_2`
 - **Distillation logit mapping**: `[1, 2, 0]` (reorders teacher logits)
 - **Evaluation prediction mapping**: `[2, 0, 1]` (maps predictions)
