@@ -100,8 +100,8 @@ def load_europarl(tokenizer: PreTrainedTokenizer, max_samples: int = 45715, max_
     if special_token not in tokenizer.get_vocab():
         tokenizer.add_special_tokens({"additional_special_tokens": [special_token]})
 
-    # Load Europarl dataset
-    dataset = load_dataset("europarl_bilingual", lang1="en", lang2="fr", split="train")
+    # Load Europarl dataset (Helsinki-NLP version with config-based language pairs)
+    dataset = load_dataset("Helsinki-NLP/europarl", "en-fr", split="train")
 
     # Subsample to match paper (45,715 examples)
     if len(dataset) > max_samples:
