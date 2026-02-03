@@ -1,0 +1,42 @@
+# BERT → DistilBERT on MNLI - H200 Large Batch Variant
+# Batch size: 512 (32× base) - Experimental, may need tuning
+# LR: 3e-4 (conservative for large batch)
+# Use this for maximum GPU utilization experiments
+
+inherit: ../../../../../base.yaml
+
+model:
+  teacher: bert-base-uncased
+  student: distilbert-base-uncased
+  student_init: pretrained
+
+data:
+  task: mnli
+  max_length: 128
+
+training:
+  num_epochs: 3
+  batch_size: 512
+  learning_rate: 0.0003
+  warmup_steps: 1000       # Extra warmup for large batch
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: true
+  dataloader_num_workers: 4
+  dataloader_pin_memory: true
+
+distillation:
+  temperature: 2
+  alpha: 0.5
+
+checkpointing:
+  save_steps: 200
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 50
+
+evaluation:
+  eval_steps: 200
+  eval_strategy: steps

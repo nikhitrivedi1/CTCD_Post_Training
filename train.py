@@ -293,20 +293,28 @@ def create_loss_strategy_from_config(
 
 
 def generate_config_id(config_path: str) -> str:
-    """Generate a config identifier with task prefix.
+    """Generate a config identifier from path.
 
-    configs/mnli/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml → mnli_02_frozen_sft-teacher_kl
-    configs/qqp/bert_distilbert/ablations/00_no-teacher_ce-only.yaml → qqp_00_no-teacher_ce-only
+    Format: {task}_{experiment}_{config}
+
+    Examples:
+        configs/classification/mnli/bert_distilbert/staged/02_a-r.yaml → mnli_staged_02-a-r
+        configs/generation/translation/llama3p2-3b_llama3p2-1b/rfa/07_rfa.yaml → translation_rfa_07-rfa
 
     Full config path is stored in run_metadata for searchability.
     """
     path = Path(config_path)
-    config_name = path.stem
-
-    # Extract task from path: configs/{task}/...
+    config_name = path.stem  # e.g., "02_a-r"
     parts = path.parts
-    if len(parts) > 1 and parts[0] == "configs":
-        task = parts[1]
+
+    # Expected: configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml
+    if len(parts) >= 6 and parts[0] == "configs":
+        task = parts[2]        # mnli, translation, sst2
+        experiment = parts[4]  # rfa, staged, ablations
+        return f"{task}_{experiment}_{config_name}"
+    elif len(parts) >= 3 and parts[0] == "configs":
+        # Fallback: just task + config
+        task = parts[2] if len(parts) > 2 else parts[1]
         return f"{task}_{config_name}"
 
     return config_name
@@ -315,13 +323,15 @@ def generate_config_id(config_path: str) -> str:
 def truncate_for_wandb(run_id: str, max_length: int = 64) -> str:
     """Truncate run_id for W&B's 64-char limit, preserving timestamp suffix.
 
-    Format: {config_name}_{timestamp} where timestamp is YYYY-MM-DD_HH-MMZ (17 chars).
-    If truncation needed, shortens config_name while keeping full timestamp.
+    Format: {task}_{experiment}_{config}_{timestamp}
+    Timestamp format: YYYYMMDD-HHMMZ (14 chars)
+
+    If truncation needed, shortens the prefix while keeping full timestamp.
     """
     if len(run_id) <= max_length:
         return run_id
 
-    timestamp_len = 17  # YYYY-MM-DD_HH-MMZ
+    timestamp_len = 14  # YYYYMMDD-HHMMZ
     if len(run_id) > timestamp_len + 1:
         timestamp = run_id[-timestamp_len:]
         config_name = run_id[:-(timestamp_len + 1)]
@@ -458,7 +468,7 @@ def main():
     setup_logging(debug=args.debug)
 
     # Timestamp for new runs
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%MZ")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%MZ")
 
     # Determine output directory and run name
     if args.run_name is not None:

@@ -10,7 +10,7 @@ Complete reference for `train.py` command-line options and run management.
 |------|-------------|
 | `--config CONFIG` | Path to config file (required for new runs) |
 | `--run_name NAME` | Run name. Creates if not exists, resumes if exists |
-| `--timestamp` | Append timestamp to --run_name (e.g., `mnli_00` → `mnli_00_2026-01-31_12-00Z`) |
+| `--timestamp` | Append timestamp to --run_name (e.g., `mnli_00` → `mnli_00_20260131-1200Z`) |
 | `--force` | Overwrite existing run (deletes and starts fresh) |
 | `--max_steps N` | Max training steps (for testing) |
 | `--seed N` | Random seed (default: 42) |
@@ -21,13 +21,13 @@ Complete reference for `train.py` command-line options and run management.
 
 ```bash
 # New run (auto-named with timestamp)
-python train.py --config configs/mnli/.../00.yaml
+python train.py --config configs/classification/mnli/.../00.yaml
 
 # New run (custom name, no timestamp)
-python train.py --run_name mnli_00 --config configs/mnli/.../00.yaml
+python train.py --run_name mnli_00 --config configs/classification/mnli/.../00.yaml
 
 # New run (custom name + timestamp = unique each time)
-python train.py --run_name mnli_00 --timestamp --config configs/mnli/.../00.yaml
+python train.py --run_name mnli_00 --timestamp --config configs/classification/mnli/.../00.yaml
 
 # Resume existing
 python train.py --run_name mnli_00
@@ -43,14 +43,16 @@ python train.py --run_name mnli_00 --config configs/... --force
 ### 1. Auto-generated name (no --run_name)
 
 ```bash
-python train.py --config configs/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+python train.py --config configs/classification/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
 ```
 
 | Field | Value |
 |-------|-------|
-| **Output Dir** | `./outputs/mnli_00_no-teacher_ce-only_2026-01-31_12-00Z/` |
-| **Run Name** | `mnli_00_no-teacher_ce-only_2026-01-31_12-00Z` |
-| **W&B Run ID** | `mnli_00_no-teacher_ce-only_2026-01-31_12-00Z` |
+| **Output Dir** | `./outputs/mnli_ablations_00_no-teacher_ce-only_20260131-1200Z/` |
+| **Run Name** | `mnli_ablations_00_no-teacher_ce-only_20260131-1200Z` |
+| **W&B Run ID** | `mnli_ablations_00_no-teacher_ce-only_20260131-1200Z` |
+
+**Run Name Format:** `{task}_{experiment}_{config}_{timestamp}`
 
 ---
 
@@ -110,9 +112,9 @@ python train.py --run_name mnli_00 --timestamp --config configs/...
 
 | Field | Value |
 |-------|-------|
-| **Output Dir** | `./outputs/mnli_00_2026-01-31_12-00Z/` |
-| **Run Name** | `mnli_00_2026-01-31_12-00Z` |
-| **W&B Run ID** | `mnli_00_2026-01-31_12-00Z` |
+| **Output Dir** | `./outputs/mnli_00_20260131-1200Z/` |
+| **Run Name** | `mnli_00_20260131-1200Z` |
+| **W&B Run ID** | `mnli_00_20260131-1200Z` |
 
 Each run is unique (timestamp ensures no collision).
 
@@ -126,8 +128,8 @@ python train.py --run_name mnli_00 --timestamp --force --config configs/...
 
 | Field | Value |
 |-------|-------|
-| **Output Dir** | `./outputs/mnli_00_2026-01-31_12-00Z/` |
-| **Run Name** | `mnli_00_2026-01-31_12-00Z` |
+| **Output Dir** | `./outputs/mnli_00_20260131-1200Z/` |
+| **Run Name** | `mnli_00_20260131-1200Z` |
 | **Behavior** | Deletes if exists (rare: same minute), creates fresh |
 
 Mostly redundant since `--timestamp` makes names unique, but valid for re-runs within the same minute.
@@ -138,10 +140,10 @@ Mostly redundant since `--timestamp` makes names unique, but valid for re-runs w
 
 **Auto-generated (preserves timestamp):**
 ```
-Input:  mnli_very_long_experiment_name_with_details_2026-01-31_12-00Z (70 chars)
-Output: mnli_very_long_experiment_name_with_de_2026-01-31_12-00Z (64 chars)
+Input:  mnli_very_long_experiment_name_with_details_20260131-1200Z (70 chars)
+Output: mnli_very_long_experiment_name_with_de_20260131-1200Z (64 chars)
 ```
-Truncation: `{config_name[:46]}_{timestamp}`
+Truncation: `{prefix[:49]}_{timestamp}` (timestamp is 14 chars: YYYYMMDD-HHMMZ)
 
 **Manual without timestamp (simple truncation):**
 ```
@@ -159,9 +161,9 @@ Output: this_is_a_very_long_name_exceeding_64_characters_significantl (64 chars)
 {
   "run_name": "mnli_00",
   "wandb_run_id": "mnli_00",
-  "config": "configs/mnli/.../00_no-teacher_ce-only.yaml",
-  "config_id": "mnli_00_no-teacher_ce-only",
-  "created": "2026-01-31_12-00Z",
+  "config": "configs/classification/mnli/.../00_no-teacher_ce-only.yaml",
+  "config_id": "mnli_ablations_00_no-teacher_ce-only",
+  "created": "20260131-1200Z",
   "seed": 42
 }
 ```
@@ -327,7 +329,7 @@ python train.py --run_name my_run --timestamp --config configs/.../config.yaml
 ### Mode 2: Direct Local Resume
 
 ```bash
-python train.py --run_name existing_run_2026-02-01_12-00Z
+python train.py --run_name existing_run_20260201-1200Z
 ```
 
 | Event | Action |
@@ -372,7 +374,7 @@ When job 12345 times out:
 
 ```bash
 # run_slurm.sh automatically does:
-PREV_JOB_ID=12345 sbatch scripts/run_slurm.sh my_run_2026-02-01_12-00Z
+PREV_JOB_ID=12345 sbatch scripts/run_slurm.sh my_run_20260201-1200Z
 ```
 
 | Event | Action |

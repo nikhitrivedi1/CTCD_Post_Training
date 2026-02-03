@@ -1,0 +1,55 @@
+# Staged Distillation 02: Feature → Attention → Response
+# Full F→A→R progression: structure → reasoning → decisions
+
+inherit: ../../../../base.yaml
+
+model:
+  teacher: textattack/bert-base-uncased-MNLI
+  student: distilbert-base-uncased
+  student_init: pretrained
+
+data:
+  task: mnli
+  max_length: 128
+
+training:
+  num_epochs: 6  # 2 per stage (F: 2, A: 2, R: 2)
+  batch_size: 64
+  gradient_accumulation_steps: 4
+  learning_rate: 0.00032
+  warmup_steps: 500
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: true
+  dataloader_num_workers: 4
+  dataloader_pin_memory: true
+
+distillation:
+  temperature: 2
+  alpha: 0.5
+  freeze_teacher: false
+  teacher_label_map: [1, 2, 0]
+
+  # Three-stage progression (2 epochs each)
+  stages:
+    - strategy: feature_cosine
+      until_progress: 0.33          # Epochs 1-2: structural knowledge
+    - strategy: attention_kl
+      until_progress: 0.67          # Epochs 3-4: reasoning patterns
+    - strategy: response_kl
+      until_progress: 1.0           # Epochs 5-6: task decisions
+
+  layer_mapping:
+    type: uniform
+
+checkpointing:
+  save_steps: 250
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 50
+
+evaluation:
+  eval_steps: 250
+  eval_strategy: steps
