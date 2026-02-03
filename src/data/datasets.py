@@ -1,4 +1,4 @@
-"""Dataset loaders for GLUE tasks (MNLI, QQP) and Europarl translation."""
+"""Dataset loaders for GLUE tasks (MNLI, QQP, SST-2, CoLA) and Europarl translation."""
 
 from datasets import load_dataset
 from transformers import PreTrainedTokenizer
@@ -74,6 +74,75 @@ def load_qqp(tokenizer: PreTrainedTokenizer, max_length: int = 128):
     # Filter out examples with -1 labels (unlabeled)
     train_dataset = tokenized["train"].filter(lambda x: x["labels"] != -1)
     eval_dataset = tokenized["validation"].filter(lambda x: x["labels"] != -1)
+
+    return train_dataset, eval_dataset, tokenizer
+
+
+def load_sst2(tokenizer: PreTrainedTokenizer, max_length: int = 128):
+    """
+    Load SST-2 (Stanford Sentiment Treebank) dataset.
+
+    SST-2 is a binary sentiment classification task on single sentences.
+
+    Args:
+        tokenizer: HuggingFace tokenizer for text preprocessing
+        max_length: Maximum sequence length for tokenization
+
+    Returns:
+        Tuple of (train_dataset, eval_dataset, tokenizer)
+    """
+    dataset = load_dataset("glue", "sst2")
+
+    def preprocess(examples):
+        return tokenizer(
+            examples["sentence"],
+            truncation=True,
+            max_length=max_length,
+            padding="max_length"
+        )
+
+    tokenized = dataset.map(preprocess, batched=True, remove_columns=["sentence", "idx"])
+
+    # Rename label column to labels for HuggingFace Trainer
+    tokenized = tokenized.rename_column("label", "labels")
+
+    train_dataset = tokenized["train"]
+    eval_dataset = tokenized["validation"]
+
+    return train_dataset, eval_dataset, tokenizer
+
+
+def load_cola(tokenizer: PreTrainedTokenizer, max_length: int = 128):
+    """
+    Load CoLA (Corpus of Linguistic Acceptability) dataset.
+
+    CoLA is a binary classification task for grammatical acceptability.
+    Note: Primary metric is Matthews correlation coefficient (MCC).
+
+    Args:
+        tokenizer: HuggingFace tokenizer for text preprocessing
+        max_length: Maximum sequence length for tokenization
+
+    Returns:
+        Tuple of (train_dataset, eval_dataset, tokenizer)
+    """
+    dataset = load_dataset("glue", "cola")
+
+    def preprocess(examples):
+        return tokenizer(
+            examples["sentence"],
+            truncation=True,
+            max_length=max_length,
+            padding="max_length"
+        )
+
+    tokenized = dataset.map(preprocess, batched=True, remove_columns=["sentence", "idx"])
+
+    # Rename label column to labels for HuggingFace Trainer
+    tokenized = tokenized.rename_column("label", "labels")
+
+    train_dataset = tokenized["train"]
+    eval_dataset = tokenized["validation"]
 
     return train_dataset, eval_dataset, tokenizer
 
@@ -209,6 +278,10 @@ def load_dataset_for_task(config: dict):
         return load_mnli(tokenizer)
     elif task_name == "qqp":
         return load_qqp(tokenizer)
+    elif task_name == "sst2":
+        return load_sst2(tokenizer)
+    elif task_name == "cola":
+        return load_cola(tokenizer)
     elif task_name == "translation" or task_name == "europarl":
         max_samples = config.get("data", {}).get("max_samples", 45715)
         source_lang = config.get("data", {}).get("source_lang", "en")
