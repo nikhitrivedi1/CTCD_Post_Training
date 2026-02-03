@@ -9,6 +9,7 @@ Documentation and reference materials for the Knowledge Distillation project.
 ```
 docs/
 ├── codebase-todo.md  # Code review items needing attention
+├── foundations/      # Foundational concepts (tasks, models, datasets)
 ├── archive/          # Original documentation (preserved)
 ├── guides/           # How-to & operational guides
 ├── gpu/              # GPU/hardware documentation
@@ -22,6 +23,13 @@ docs/
 ---
 
 ## Quick Navigation
+
+### Foundations
+Core concepts for understanding ML tasks, modalities, and knowledge distillation.
+
+| Document | Description |
+|----------|-------------|
+| [tasks-models-datasets.md](foundations/tasks-models-datasets.md) | ML modalities, task types, datasets, architectures, model selection |
 
 ### Guides
 Operational how-to documentation.
