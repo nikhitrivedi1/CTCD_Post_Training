@@ -18,7 +18,7 @@ Knowledge distillation (KD) transfers knowledge from large teacher models to sma
 3. When should teachers be frozen vs co-trained?
 
 ### Contributions
-1. Systematic 6-config ablation study isolating distillation components
+1. Systematic 5-config ablation study isolating distillation components
 2. Discovery of the "overconfident-wrong teacher paradox"
 3. Evidence that co-training provides robustness to teacher miscalibration
 4. Practical guidelines for distillation setup selection
@@ -57,7 +57,6 @@ Knowledge distillation (KD) transfers knowledge from large teacher models to sma
 | 02 | SFT | ✓ | 0.5 | Frozen fine-tuned |
 | 03 | Base | ✗ | 0.5 | Co-train untrained |
 | 04 | SFT | ✗ | 0.5 | Co-train fine-tuned |
-| 05 | Base | ✓ | 1.0 | KL only (no CE) |
 
 ---
 
@@ -72,7 +71,6 @@ Knowledge distillation (KD) transfers knowledge from large teacher models to sma
 | 3 | 01 | 81.25% | Frozen base |
 | 4 | 00 | 80.94% | No teacher |
 | 5 | 02 | 79.26% | Frozen SFT |
-| 6 | 05 | 31.61% | KL only |
 
 ### The Paradox
 
