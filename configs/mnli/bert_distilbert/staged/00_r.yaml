@@ -1,0 +1,48 @@
+# Staged Baseline: R-only throughout (for comparison)
+# This is equivalent to RFA 01_r-only but in staged config format
+
+inherit: ../../../base.yaml
+
+model:
+  teacher: textattack/bert-base-uncased-MNLI
+  student: distilbert-base-uncased
+  student_init: pretrained
+
+data:
+  task: mnli
+  max_length: 128
+
+training:
+  num_epochs: 2
+  batch_size: 64
+  gradient_accumulation_steps: 4
+  learning_rate: 0.00032
+  warmup_steps: 500
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: true
+  dataloader_num_workers: 4
+  dataloader_pin_memory: true
+
+distillation:
+  temperature: 2
+  alpha: 0.5
+  freeze_teacher: false
+  teacher_label_map: [1, 2, 0]
+
+  # Single stage: R throughout (baseline for staged comparison)
+  stages:
+    - strategy: kl_divergence
+      until_progress: 1.0
+
+checkpointing:
+  save_steps: 250
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 50
+
+evaluation:
+  eval_steps: 250
+  eval_strategy: steps

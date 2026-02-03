@@ -570,6 +570,131 @@ class AttentionLossStrategy(DistillationLossStrategy):
         )
 
 
+class StagedDistillationLoss(DistillationLossStrategy):
+    """
+    Staged distillation loss that switches strategies over training.
+
+    Enables curriculum-style distillation: e.g., Feature loss early,
+    Response loss late. Motivated by DistilBERT finding that F helps
+    during pre-training but our finding that R-only wins during fine-tuning.
+
+    Example config:
+        stages:
+          - strategy: feature_mse
+            until_progress: 0.5  # First 50% of training
+          - strategy: kl_divergence
+            until_progress: 1.0  # Remainder
+    """
+
+    def __init__(
+        self,
+        stages: List[Dict[str, Any]],
+        alpha: float = 0.5,
+        temperature: float = 2.0,
+        **kwargs,
+    ):
+        """
+        Initialize staged distillation loss.
+
+        Args:
+            stages: List of stage configs, each with:
+                - strategy: name of loss strategy (or instance)
+                - until_progress: float 0-1, training progress threshold
+            alpha: Default alpha for strategies that need it
+            temperature: Default temperature for strategies that need it
+            **kwargs: Additional args passed to sub-strategies
+        """
+        self.stages = []
+        self.alpha = alpha
+        self.temperature = temperature
+
+        # Build strategy instances for each stage
+        for stage_config in stages:
+            strategy_name = stage_config["strategy"]
+            until_progress = stage_config.get("until_progress", 1.0)
+
+            # Get strategy-specific overrides or use defaults
+            stage_alpha = stage_config.get("alpha", alpha)
+            stage_temp = stage_config.get("temperature", temperature)
+
+            # Create strategy instance
+            if isinstance(strategy_name, str):
+                strategy = get_loss_strategy(
+                    strategy_name,
+                    alpha=stage_alpha,
+                    temperature=stage_temp,
+                    **kwargs,
+                )
+            else:
+                strategy = strategy_name  # Already an instance
+
+            self.stages.append({
+                "strategy": strategy,
+                "until_progress": until_progress,
+            })
+
+        # Sort stages by progress threshold
+        self.stages.sort(key=lambda s: s["until_progress"])
+
+        # Aggregate requirement flags from all sub-strategies
+        self.requires_hidden_states = any(
+            s["strategy"].requires_hidden_states for s in self.stages
+        )
+        self.requires_attentions = any(
+            s["strategy"].requires_attentions for s in self.stages
+        )
+
+    @property
+    def name(self) -> str:
+        stage_names = [s["strategy"].name for s in self.stages]
+        return "staged_" + "_then_".join(stage_names)
+
+    def get_current_strategy(self, progress: float) -> DistillationLossStrategy:
+        """Get the active strategy for current training progress."""
+        for stage in self.stages:
+            if progress <= stage["until_progress"]:
+                return stage["strategy"]
+        # Default to last stage if progress exceeds all thresholds
+        return self.stages[-1]["strategy"]
+
+    def compute(
+        self,
+        student_logits: torch.Tensor,
+        teacher_logits: torch.Tensor,
+        ce_loss: torch.Tensor,
+        labels: Optional[torch.Tensor] = None,
+        student_outputs: Optional[Any] = None,
+        teacher_outputs: Optional[Any] = None,
+        **kwargs,
+    ) -> LossOutput:
+        # Get training progress from kwargs (passed by trainer)
+        progress = kwargs.get("training_progress", 0.0)
+
+        # Select active strategy based on progress
+        active_strategy = self.get_current_strategy(progress)
+
+        # Delegate to active strategy
+        output = active_strategy.compute(
+            student_logits=student_logits,
+            teacher_logits=teacher_logits,
+            ce_loss=ce_loss,
+            labels=labels,
+            student_outputs=student_outputs,
+            teacher_outputs=teacher_outputs,
+            **kwargs,
+        )
+
+        # Add stage info to components for logging
+        output.components["active_stage"] = torch.tensor(
+            self.stages.index(
+                next(s for s in self.stages if s["strategy"] == active_strategy)
+            )
+        )
+        output.components["training_progress"] = torch.tensor(progress)
+
+        return output
+
+
 # Registry for easy lookup by name
 LOSS_REGISTRY = {
     "kl_divergence": KLDistillationLoss,
@@ -578,6 +703,7 @@ LOSS_REGISTRY = {
     "soft_target": SoftTargetDistillationLoss,
     "feature_mse": FeatureLossStrategy,
     "attention_kl": AttentionLossStrategy,
+    "staged": StagedDistillationLoss,
 }
 
 

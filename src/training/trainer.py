@@ -199,6 +199,12 @@ class DistillationTrainer(Trainer):
         if self.projector is not None:
             loss_kwargs["projector"] = self.projector
 
+        # Pass training progress for staged distillation
+        if hasattr(self, "state") and self.state.max_steps > 0:
+            loss_kwargs["training_progress"] = self.state.global_step / self.state.max_steps
+        else:
+            loss_kwargs["training_progress"] = 0.0
+
         # Compute loss using strategy
         loss_output = self.loss_strategy.compute(
             student_logits=student_logits,
@@ -261,8 +267,19 @@ class DistillationTrainer(Trainer):
         trainer_kwargs = {
             "temperature": distill_config.get("temperature", 2.0),
             "alpha": distill_config.get("alpha", 0.5),
-            "loss_type": distill_config.get("loss_type", "kl_divergence"),
         }
+
+        # Handle staged distillation or simple loss type
+        if "stages" in distill_config:
+            # Staged distillation: build StagedDistillationLoss
+            from .losses import StagedDistillationLoss
+            trainer_kwargs["loss_strategy"] = StagedDistillationLoss(
+                stages=distill_config["stages"],
+                alpha=trainer_kwargs["alpha"],
+                temperature=trainer_kwargs["temperature"],
+            )
+        else:
+            trainer_kwargs["loss_type"] = distill_config.get("loss_type", "kl_divergence")
 
         # Teacher label remapping
         if "teacher_label_map" in distill_config:

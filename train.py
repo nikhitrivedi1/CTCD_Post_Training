@@ -151,6 +151,7 @@ from src.training.trainer import DistillationTrainer
 from src.training.losses import (
     get_loss_strategy,
     CombinedDistillationLoss,
+    StagedDistillationLoss,
     FeatureLossStrategy,
     AttentionLossStrategy,
 )
@@ -167,7 +168,12 @@ def create_loss_strategy_from_config(
     device: str,
 ):
     """
-    Create loss strategy from distillation config, supporting RFA combinations.
+    Create loss strategy from distillation config.
+
+    Supports three modes:
+    1. Single strategy (loss_type)
+    2. Combined strategies (loss_strategies) - for RFA matrix
+    3. Staged strategies (stages) - for F→R, F→A→R progressions
 
     Config format for single strategy:
         distillation:
@@ -181,11 +187,14 @@ def create_loss_strategy_from_config(
               weight: 1.0
             - type: feature_mse
               weight: 0.5
-            - type: attention_kl
-              weight: 0.5
-          alpha: 0.5
-          layer_mapping:
-            type: uniform
+
+    Config format for staged distillation:
+        distillation:
+          stages:
+            - strategy: feature_mse
+              until_progress: 0.5
+            - strategy: kl_divergence
+              until_progress: 1.0
 
     Returns:
         Tuple of (loss_strategy, layer_mapping, projector)
@@ -193,9 +202,16 @@ def create_loss_strategy_from_config(
     alpha = distill_config.get("alpha", 0.5)
     temperature = distill_config.get("temperature", 2.0)
 
+    # Check for staged distillation (F→R, F→A→R, etc.)
+    stages_config = distill_config.get("stages")
+    if stages_config:
+        loss_strategy = StagedDistillationLoss(
+            stages=stages_config,
+            alpha=alpha,
+            temperature=temperature,
+        )
     # Check for combined strategies (RFA matrix)
-    loss_strategies_config = distill_config.get("loss_strategies")
-    if loss_strategies_config:
+    elif loss_strategies_config := distill_config.get("loss_strategies"):
         # Multiple strategies: create CombinedDistillationLoss
         strategies = []
         weights = []
