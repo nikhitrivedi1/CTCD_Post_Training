@@ -30,7 +30,7 @@ distillation:
   alpha: 0.5
   freeze_teacher: false
   loss_type: attention_kl
-  teacher_label_map: [2, 0, 1]  # TextAttack to HuggingFace label mapping
+  teacher_label_map: [1, 2, 0]  # TextAttack to HuggingFace label mapping
   layer_mapping:
     type: uniform  # BERT-12 → DistilBERT-6: maps every 2nd layer
 

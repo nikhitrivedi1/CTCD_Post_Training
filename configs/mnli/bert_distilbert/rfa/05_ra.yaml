@@ -29,7 +29,7 @@ distillation:
   temperature: 2
   alpha: 0.5
   freeze_teacher: false
-  teacher_label_map: [2, 0, 1]  # TextAttack to HuggingFace label mapping
+  teacher_label_map: [1, 2, 0]  # TextAttack to HuggingFace label mapping
   loss_strategies:
     - type: kl_divergence
       weight: 1.0

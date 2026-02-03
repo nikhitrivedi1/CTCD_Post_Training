@@ -28,7 +28,7 @@ distillation:
   alpha: 0.5              # CE + KL
   freeze_teacher: true    # Traditional distillation (frozen)
   # TextAttack model uses [neutral, contradiction, entailment] but dataset uses [entailment, neutral, contradiction]
-  teacher_label_map: [2, 0, 1]
+  teacher_label_map: [1, 2, 0]
 
 checkpointing:
   save_steps: 2000

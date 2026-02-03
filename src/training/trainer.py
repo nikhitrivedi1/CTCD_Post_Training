@@ -181,7 +181,7 @@ class DistillationTrainer(Trainer):
             teacher_logits = teacher_outputs.logits
 
         # Remap teacher logits if label ordering differs from dataset
-        # e.g., TextAttack MNLI uses [contradiction, entailment, neutral]
+        # e.g., TextAttack MNLI uses [neutral, contradiction, entailment]
         # but HuggingFace MNLI uses [entailment, neutral, contradiction]
         if self.teacher_label_map is not None:
             teacher_logits = teacher_logits[:, self.teacher_label_map]
