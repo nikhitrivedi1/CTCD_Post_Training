@@ -1,0 +1,2 @@
+# A100 GPU base - passthrough
+inherit: ../base.yaml

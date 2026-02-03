@@ -2,7 +2,7 @@
 # Teacher learns alongside student from scratch
 # Tests if joint training provides mutual benefit
 
-inherit: ../../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: bert-base-uncased

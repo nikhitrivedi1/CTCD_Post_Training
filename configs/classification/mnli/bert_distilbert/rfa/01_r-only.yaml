@@ -2,7 +2,7 @@
 # R=1, F=0, A=0
 # Classic knowledge distillation via soft labels
 
-inherit: ../../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: textattack/bert-base-uncased-MNLI  # SFT teacher

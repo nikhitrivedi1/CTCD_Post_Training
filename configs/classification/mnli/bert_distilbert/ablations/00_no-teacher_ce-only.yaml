@@ -3,7 +3,7 @@
 # No teacher supervision - establishes baseline for distillation comparison
 # Expected: ~79-80% (DistilBERT baseline without teacher guidance)
 
-inherit: ../../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: bert-base-uncased  # Unused but required by trainer

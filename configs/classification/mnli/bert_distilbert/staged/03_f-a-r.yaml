@@ -1,7 +1,7 @@
 # Staged Distillation 02: Feature → Attention → Response
 # Full F→A→R progression: structure → reasoning → decisions
 
-inherit: ../../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: textattack/bert-base-uncased-MNLI

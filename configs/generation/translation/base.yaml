@@ -1,7 +1,7 @@
 # Translation task base configuration
 # Shared settings for all translation experiments (any model pair, dataset)
 
-inherit: ../../base.yaml
+inherit: ../base.yaml
 
 # Translation-specific evaluation settings
 evaluation:

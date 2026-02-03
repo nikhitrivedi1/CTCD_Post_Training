@@ -1,0 +1,9 @@
+# Classification task defaults
+# Lower temperature (2-4) works well for small output spaces
+# Higher alpha since CE and KL gradients align more easily
+
+inherit: ../base.yaml
+
+distillation:
+  temperature: 2.0   # Hinton used 2-4 for MNIST; paper found T=2 best for BERT
+  alpha: 0.5         # Balance KL and CE equally

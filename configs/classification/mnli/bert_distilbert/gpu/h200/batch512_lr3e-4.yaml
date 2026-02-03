@@ -3,7 +3,7 @@
 # LR: 3e-4 (conservative for large batch)
 # Use this for maximum GPU utilization experiments
 
-inherit: ../../../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: bert-base-uncased

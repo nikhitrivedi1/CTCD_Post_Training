@@ -1,0 +1,11 @@
+# BERT → DistilBERT on QQP - model pair base
+inherit: ../base.yaml
+
+model:
+  teacher: bert-base-uncased
+  student: distilbert-base-uncased
+  student_init: pretrained
+
+data:
+  task: qqp
+  max_length: 128

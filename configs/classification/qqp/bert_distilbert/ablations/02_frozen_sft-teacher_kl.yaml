@@ -3,7 +3,7 @@
 # Teacher: textattack/bert-base-uncased-QQP (~91% accuracy)
 # Note: May need label mapping verification
 
-inherit: ../../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: textattack/bert-base-uncased-QQP

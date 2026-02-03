@@ -1,0 +1,2 @@
+# Obsolete configs base - passthrough
+inherit: ../base.yaml

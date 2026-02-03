@@ -1,0 +1,2 @@
+# T4 GPU base - passthrough
+inherit: ../base.yaml

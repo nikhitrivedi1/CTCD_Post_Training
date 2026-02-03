@@ -3,7 +3,7 @@
 # This is the "standard" KD setup from most papers
 # Expected: ~81-82% (proper KD with trained teacher)
 
-inherit: ../../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: textattack/bert-base-uncased-MNLI  # Pre-trained on MNLI

@@ -4,7 +4,7 @@
 # Expected time: ~20 min on A100 40GB, ~15 min on A100 80GB
 # Note: On A100 80GB, you can push batch_size to 512 with lr=6.4e-4
 
-inherit: ../../../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: bert-base-uncased

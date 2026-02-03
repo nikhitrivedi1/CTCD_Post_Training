@@ -1,0 +1,2 @@
+# QQP task base - passthrough to classification defaults
+inherit: ../base.yaml

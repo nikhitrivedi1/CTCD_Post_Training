@@ -1,0 +1,2 @@
+# M2 (Apple Silicon) base - passthrough
+inherit: ../base.yaml

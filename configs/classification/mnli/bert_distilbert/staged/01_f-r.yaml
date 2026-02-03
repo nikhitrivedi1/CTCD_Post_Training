@@ -2,7 +2,7 @@
 # Tests hypothesis that F early + R late avoids gradient conflict
 # Motivated by: DistilBERT uses F during pre-training, R-only wins in fine-tuning
 
-inherit: ../../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: textattack/bert-base-uncased-MNLI  # SFT teacher

@@ -3,7 +3,7 @@
 # No teacher supervision - establishes baseline for distillation comparison
 # Note: CoLA uses Matthews correlation coefficient (MCC) as primary metric
 
-inherit: ../../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: bert-base-uncased  # Unused but required by trainer

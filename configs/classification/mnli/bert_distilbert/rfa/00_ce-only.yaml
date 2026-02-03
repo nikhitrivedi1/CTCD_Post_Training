@@ -2,7 +2,7 @@
 # R=0, F=0, A=0
 # Purpose: Baseline to compare RFA combinations against
 
-inherit: ../../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: textattack/bert-base-uncased-MNLI  # SFT teacher

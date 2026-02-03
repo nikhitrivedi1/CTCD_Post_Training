@@ -3,7 +3,7 @@
 # Expected: May work due to student's pretrained base + hard label supervision
 # Compare to 04 (79% with [1,2,0] mapping) and see if simpler approach works
 
-inherit: ../../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: textattack/bert-base-uncased-MNLI  # Pre-trained on MNLI

@@ -1,7 +1,7 @@
 # Generic Configuration Template
 # Use this as a starting point for your own distillation experiments
 
-inherit: base.yaml  # Inherit defaults from base config
+inherit: ../base.yaml  # Always inherit from parent directory's base.yaml
 
 # ====================================
 # MODEL CONFIGURATION

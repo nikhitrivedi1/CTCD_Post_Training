@@ -2,7 +2,7 @@
 # Student trains on SST-2 with cross-entropy loss only
 # No teacher supervision - establishes baseline for distillation comparison
 
-inherit: ../../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: bert-base-uncased  # Unused but required by trainer

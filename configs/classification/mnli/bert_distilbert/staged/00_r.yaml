@@ -1,7 +1,7 @@
 # Staged Baseline: R-only throughout (for comparison)
 # This is equivalent to RFA 01_r-only but in staged config format
 
-inherit: ../../../../base.yaml
+inherit: ../base.yaml
 
 model:
   teacher: textattack/bert-base-uncased-MNLI

@@ -1,0 +1,2 @@
+# H200 GPU base - passthrough
+inherit: ../base.yaml
