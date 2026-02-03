@@ -24,6 +24,14 @@
 - RFA factorial study: 8 combinations of Response/Feature/Attention distillation signals.
 - Runs output to outputs/{run_name}/ with config.yaml, run_metadata.json, output.log.
 
+## Python Environment
+- Always activate conda environment before running Python commands:
+  ```bash
+  source ~/.zshrc && conda activate distillation
+  ```
+- Environment: distillation (Python 3.10)
+- Dependencies in environment.yml
+
 ## Testing
 - GPU clusters: H200 (140GB), A100 (40GB).
 - Watch for OOM during evaluation - hidden states/attentions accumulate.
