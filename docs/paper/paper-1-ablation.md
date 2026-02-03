@@ -163,31 +163,50 @@ Key insight: *A teacher's willingness to learn matters more than its starting kn
 
 ---
 
-## Experiment Progress
+## Cross-Task Validation: QQP
 
-### Level 1: Component Ablations
-- [x] **00-05** Complete
+### QQP Results
 
-### Level 2: Hyperparameter Tuning
-- [ ] Learning rate sweep
-- [ ] Temperature sweep
-- [ ] Alpha sweep
+| Rank | Config | Val Accuracy | Description |
+|------|--------|--------------|-------------|
+| 1 | 03 | **90.37%** | Co-train base |
+| 2 | 04 | 90.28% | Co-train SFT |
+| 3 | 01 | 90.19% | Frozen base |
+| 4 | 00 | 89.71% | No teacher |
+| 5 | 02 | 65.50% | Frozen SFT |
 
-### Level 3: Loss Function Choices
-- [ ] Forward/Reverse KL
-- [ ] MSE on logits
-- [ ] Cosine similarity
+### Cross-Task Consistency
 
-### Level 4: Advanced Distillation
-- [ ] Temperature annealing
-- [ ] Intermediate layer distillation
-- [ ] Attention transfer
+| Finding | MNLI | QQP | Consistent? |
+|---------|------|-----|-------------|
+| Co-train wins | ✓ | ✓ | **Yes** |
+| Frozen SFT worst | ✓ | ✓ | **Yes** |
+| CE-only competitive | ✓ | ✓ | **Yes** |
+| Frozen base > Frozen SFT | ✓ | ✓ | **Yes** |
+
+The pattern holds across both tasks, strengthening the generality of our findings.
+
+---
+
+## Experiment Status
+
+- [x] MNLI ablations (00-04) - Complete
+- [x] QQP ablations (00-04) - Complete
+- [ ] Hyperparameter sensitivity (α, T sweeps)
+- [ ] Additional GLUE tasks (SST-2, CoLA)
 
 ---
 
 ## Future Work
 
-1. **Multi-task validation:** QQP, SST-2, other GLUE tasks
-2. **Architecture diversity:** Different teacher/student pairs
-3. **Loss function exploration:** Reverse KL, MSE, cosine similarity
-4. **Temperature annealing:** Dynamic temperature scheduling
+1. **More tasks:** SST-2, CoLA, RTE from GLUE
+2. **Generation tasks:** Does this transfer to translation? (See Paper 3)
+3. **Hyperparameter sensitivity:** How robust are findings to α and T?
+4. **Mitigation strategies:** Can higher T or lower α rescue frozen SFT?
+
+---
+
+## Related Papers
+
+- [Paper 2: RFA Study](paper-2-rfa.md) - Multi-signal distillation (R vs F vs A)
+- [Paper 3: Translation](paper-3-translation.md) - Cross-task transfer to generation
