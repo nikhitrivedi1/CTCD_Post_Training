@@ -1,0 +1,10 @@
+# Translation task base configuration
+# Shared settings for all translation experiments (any model pair, dataset)
+
+inherit: ../base.yaml
+
+# Translation-specific evaluation settings
+evaluation:
+  compute_translation_metrics: true  # Compute BLEU/COMET at epoch end
+  translation_metrics_samples: 200   # Number of samples for metric computation
+  max_new_tokens: 128                # Maximum tokens to generate

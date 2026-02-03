@@ -146,7 +146,7 @@ def set_reproducibility_seed(seed: int = 42):
 from src.data.datasets import load_dataset_for_task
 from src.evaluation.metrics import get_compute_metrics
 from src.models.loader import load_teacher_student
-from src.training.callbacks import SLURMSignalCallback
+from src.training.callbacks import SLURMSignalCallback, TranslationMetricsCallback
 from src.training.trainer import DistillationTrainer
 from src.training.losses import (
     get_loss_strategy,
@@ -718,6 +718,23 @@ def main():
     if env == "slurm":
         logger.info("Adding SLURM signal handler...")
         trainer.add_callback(SLURMSignalCallback(trainer))
+
+    # Add translation metrics callback for seq2seq tasks
+    if num_labels is None and config.get("evaluation", {}).get("compute_translation_metrics", False):
+        num_samples = config.get("evaluation", {}).get("translation_metrics_samples", 200)
+        source_lang = config.get("data", {}).get("source_lang", "en")
+        target_lang = config.get("data", {}).get("target_lang", "fr")
+
+        logger.info(f"Adding translation metrics callback ({num_samples} samples per epoch)...")
+        metrics_callback = TranslationMetricsCallback(
+            eval_dataset=eval_dataset,
+            tokenizer=tokenizer,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            num_samples=num_samples,
+            max_new_tokens=config.get("evaluation", {}).get("max_new_tokens", 128),
+        )
+        trainer.add_callback(metrics_callback)
 
     # Train
     logger.info("=" * 60)

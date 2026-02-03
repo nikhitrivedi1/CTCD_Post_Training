@@ -617,7 +617,7 @@ configs/
 │   └── bert_distilbert/
 │       └── ablations/
 └── translation/
-    └── llama_3b_1b/
+    └── llama3p2-3b_llama3p2-1b/
 ```
 
 ### Config Schema

@@ -122,8 +122,8 @@ Testing Response (R), Feature (F), Attention (A) combinations:
 3. → Translation experiments
 
 ### Phase 2: Translation × Depth (Configs Ready)
-5. ✓ L0: Teacher taxonomy ablations (configs/translation/llama_3b_1b/ablations/00-04)
-6. ✓ L1: RFA factorial study (configs/translation/llama_3b_1b/rfa/00-07)
+5. ✓ L0: Teacher taxonomy ablations (configs/translation/llama3p2-3b_llama3p2-1b/ablations/00-04)
+6. ✓ L1: RFA factorial study (configs/translation/llama3p2-3b_llama3p2-1b/rfa/00-07)
 7. → Run experiments, compare with classification findings
 
 ### Phase 3: Diffusion × Depth (Stretch)
