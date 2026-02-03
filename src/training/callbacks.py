@@ -328,12 +328,19 @@ class PeakMetricsCallback(TrainerCallback):
         if metrics is None:
             return
 
+        # Metrics that aren't model quality (runtime stats, not "peaks")
+        skip_metrics = {"runtime", "samples_per_second", "steps_per_second"}
+
         for key, value in metrics.items():
             # Skip non-eval metrics and loss (lower is better for loss)
             if not key.startswith("eval_") or "loss" in key:
                 continue
 
             metric_name = key.replace("eval_", "")
+
+            # Skip runtime/throughput metrics
+            if metric_name in skip_metrics:
+                continue
 
             # Filter to tracked metrics if specified
             if self.metrics_to_track and metric_name not in self.metrics_to_track:
