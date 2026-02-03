@@ -651,6 +651,7 @@ def main():
         max_steps=args.max_steps if args.max_steps > 0 else -1,
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
+        prediction_loss_only=num_labels is None,  # Seq2seq tasks: prevents OOM, metrics need generation anyway
         seed=args.seed,
         data_seed=args.seed,
     )

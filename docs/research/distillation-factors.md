@@ -195,6 +195,61 @@ For large models, full fine-tuning is impractical:
 
 **Finding (MNLI):** R-only wins. Adding F/A causes gradient conflict.
 
+### L1.1: Pre-training vs Fine-tuning Distillation
+
+DistilBERT (Sanh et al., 2019) uses a **triple loss** during pre-training:
+
+| Loss | Signal Type | Purpose |
+|------|-------------|---------|
+| L_mlm | Task (MLM) | Masked language modeling |
+| L_ce | Response (R) | KL divergence on logits |
+| L_cos | Feature (F) | Cosine distance on hidden states |
+
+**DistilBERT Ablation Findings:**
+- Removing L_cos hurts performance
+- Removing L_mlm has little impact
+- "Student learns more from teacher than from training data"
+
+**Contrast with Our Fine-tuning Results:**
+
+| Aspect | DistilBERT (Pre-training) | Our Work (Fine-tuning) |
+|--------|---------------------------|------------------------|
+| Best signal combo | R + F | R only |
+| Feature loss effect | Helpful | Harmful (gradient conflict) |
+| Task loss effect | Minor | Important (CE anchors learning) |
+
+**Why the difference?**
+
+1. **Pre-training is general**: Hidden states encode broad linguistic knowledge worth transferring
+2. **Fine-tuning is task-specific**: Hidden states may encode task-irrelevant info that conflicts with task objective
+3. **Output space**: Pre-training has large vocab (30K+), fine-tuning has small labels (3 classes) - R signal is denser in fine-tuning
+
+**Implication:** Signal depth (L1) findings may not transfer across distillation phases.
+
+### L1.2: Staged Signal Distillation (Future Work)
+
+DistilBERT's success with F during pre-training suggests **temporal staging** of signals:
+
+| Stage | Signal | Rationale |
+|-------|--------|-----------|
+| Early | F (features) | Transfer structural/representational knowledge |
+| Mid | A (attention) | Transfer reasoning patterns |
+| Late | R (response) | Transfer task-specific decisions |
+
+**Hypothesis:** The conflict we observe (R-only > R+F+A) may be because signals compete when applied simultaneously. Sequential staging could allow each signal to contribute without interference.
+
+**Potential schedules:**
+- **F → R**: Features early, response late (mirrors pre-train → fine-tune)
+- **F → A → R**: Full progression from structure to decisions
+- **Curriculum**: Weighted blend that shifts over training
+
+**Why this might work:**
+1. Early training: Student needs structural guidance (F/A)
+2. Late training: Student needs decision refinement (R)
+3. Simultaneous signals create gradient conflict; staging avoids this
+
+**Status:** Not yet tested. Priority after L2 hyperparameter tuning.
+
 ### L2: Hyperparameters (How to Transfer)
 
 **Question:** How do we optimize the winning configuration?
