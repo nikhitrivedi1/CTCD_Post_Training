@@ -688,6 +688,8 @@ def main():
         run_name=wandb_run_id,
         max_steps=args.max_steps if args.max_steps > 0 else -1,
         load_best_model_at_end=True,
+        # Select best checkpoint by task metric (accuracy/f1/mcc), not loss.
+        # Loss and metric can diverge; metric-based selection ensures we report the best achieved.
         metric_for_best_model=f"eval_{get_primary_metric(task)}" if get_primary_metric(task) else "eval_loss",
         greater_is_better=get_primary_metric(task) is not None,  # Higher is better for accuracy/f1/mcc/bleu
         prediction_loss_only=num_labels is None,  # Seq2seq tasks: prevents OOM, metrics need generation anyway
@@ -776,6 +778,12 @@ def main():
         if wandb.run:
             # Log full config to W&B for dashboard visibility
             wandb.config.update(config, allow_val_change=True)
+            # Log checkpoint selection metric for transparency
+            primary_metric = get_primary_metric(task)
+            wandb.config.update({
+                "metric_for_best_model": f"eval_{primary_metric}" if primary_metric else "eval_loss",
+                "primary_metric": primary_metric or "loss",
+            }, allow_val_change=True)
             # Sync metadata if W&B assigned a different ID (e.g., original was deleted)
             if wandb.run.id != metadata.get("wandb_run_id"):
                 old_id = metadata.get("wandb_run_id")

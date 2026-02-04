@@ -505,6 +505,34 @@ eval_strategy: "no"
 
 ---
 
+### Checkpoint Selection (Best Model)
+
+The trainer selects the "best" checkpoint based on the task's primary metric, not loss.
+
+```
+Classification tasks:
+├── MNLI, SST-2 → best eval_accuracy
+├── QQP → best eval_f1
+├── CoLA → best eval_mcc
+└── Translation → best eval_bleu (or eval_loss if no metric)
+
+Why metric-based selection?
+├── Loss and metric can diverge during training
+├── A checkpoint may have lower loss but worse accuracy
+├── Selecting by metric ensures we report the best achieved
+└── This is standard practice for ML evaluation
+
+Example divergence:
+Step 6000: accuracy=0.81, loss=0.45  ← best accuracy
+Step 8000: accuracy=0.80, loss=0.42  ← best loss
+→ Metric-based selects step 6000 (0.81 accuracy)
+→ Loss-based would select step 8000 (0.80 accuracy)
+
+The selected metric is logged to W&B config as `metric_for_best_model`.
+```
+
+---
+
 ## Logging Parameters
 
 ### `report_to`
