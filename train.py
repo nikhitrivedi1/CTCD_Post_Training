@@ -778,11 +778,9 @@ def main():
         if wandb.run:
             # Log full config to W&B for dashboard visibility
             wandb.config.update(config, allow_val_change=True)
-            # Log checkpoint selection metric for transparency
-            primary_metric = get_primary_metric(task)
+            # Log primary metric (metric_for_best_model is set automatically by HF Trainer)
             wandb.config.update({
-                "metric_for_best_model": f"eval_{primary_metric}" if primary_metric else "eval_loss",
-                "primary_metric": primary_metric or "loss",
+                "primary_metric": get_primary_metric(task) or "loss",
             }, allow_val_change=True)
             # Sync metadata if W&B assigned a different ID (e.g., original was deleted)
             if wandb.run.id != metadata.get("wandb_run_id"):
