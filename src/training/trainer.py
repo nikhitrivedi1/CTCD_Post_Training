@@ -186,6 +186,10 @@ class DistillationTrainer(Trainer):
         if self.teacher_label_map is not None:
             teacher_logits = teacher_logits[:, self.teacher_label_map]
 
+        # Detach teacher logits for distillation loss computation
+        # Teacher should not receive gradients through KL - only through its own CE loss
+        teacher_logits_for_distill = teacher_logits.detach()
+
         # Task loss (cross-entropy with labels)
         ce_loss = outputs.loss
 
@@ -205,10 +209,10 @@ class DistillationTrainer(Trainer):
         else:
             loss_kwargs["training_progress"] = 0.0
 
-        # Compute loss using strategy
+        # Compute loss using strategy (with detached teacher logits)
         loss_output = self.loss_strategy.compute(
             student_logits=student_logits,
-            teacher_logits=teacher_logits,
+            teacher_logits=teacher_logits_for_distill,
             ce_loss=ce_loss,
             labels=labels,
             student_outputs=outputs,
@@ -216,13 +220,21 @@ class DistillationTrainer(Trainer):
             **loss_kwargs
         )
 
+        # Combine losses: student loss + teacher CE (if co-training)
+        total_loss = loss_output.total_loss
+        if not self.freeze_teacher:
+            teacher_ce_loss = teacher_outputs.loss
+            total_loss = total_loss + teacher_ce_loss
+
         # Log individual components for monitoring
-        log_dict = {"loss_total": loss_output.total_loss.item()}
+        log_dict = {"loss_total": total_loss.item()}
         for name, value in loss_output.components.items():
             log_dict[name] = value.item() if torch.is_tensor(value) else value
+        if not self.freeze_teacher:
+            log_dict["teacher_ce_loss"] = teacher_ce_loss.item()
         self.log(log_dict)
 
-        return (loss_output.total_loss, outputs) if return_outputs else loss_output.total_loss
+        return (total_loss, outputs) if return_outputs else total_loss
 
     @classmethod
     def setup_from_config(
