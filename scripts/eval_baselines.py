@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Evaluate baseline model performance on GLUE tasks.
+"""Evaluate baseline model performance on supported tasks.
 
-Evaluates teacher/student models to establish baselines for distillation comparison.
-Supports: MNLI, SST2, CoLA, QQP with their primary metrics.
+Evaluates preset models to establish baselines for distillation comparison.
+Currently supports:
+  - Classification: MNLI, SST2, CoLA, QQP (accuracy/f1/mcc)
+  - Translation: Europarl EN-FR (BLEU)
 
 Usage:
-    python scripts/eval_baselines.py --task mnli
-    python scripts/eval_baselines.py --task sst2 --models teacher-sft student
-    python scripts/eval_baselines.py --all
+    python scripts/eval_baselines.py                    # All tasks, all models
+    python scripts/eval_baselines.py --task mnli        # Single task
+    python scripts/eval_baselines.py --task mnli sst2   # Multiple tasks
+    python scripts/eval_baselines.py --models bert-sft  # Specific model(s)
 """
 
 import argparse
@@ -19,82 +22,118 @@ import numpy as np
 import torch
 from datasets import load_dataset
 from tqdm import tqdm
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from transformers import (
+    AutoModelForCausalLM,
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+)
 
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.tasks import get_num_labels, get_primary_metric
+from src.evaluation.metrics import compute_classification_metrics
+from src.tasks import get_num_labels, get_primary_metric, is_translation_task
 
+# =============================================================================
+# Classification models
+# =============================================================================
+
+# Base models (task-agnostic, untrained classifiers)
+CLASSIFICATION_BASE_MODELS = {
+    "distilbert": "distilbert-base-uncased",
+    "bert": "bert-base-uncased",
+}
+
+# Task-specific SFT models (textattack fine-tuned)
+CLASSIFICATION_SFT_MODELS = {
+    "mnli": {"bert-sft": "textattack/bert-base-uncased-MNLI"},
+    "sst2": {"bert-sft": "textattack/bert-base-uncased-SST-2"},
+    "cola": {"bert-sft": "textattack/bert-base-uncased-CoLA"},
+    "qqp": {"bert-sft": "textattack/bert-base-uncased-QQP"},
+}
+
+# Label mapping for textattack MNLI (uses different label order)
+LABEL_MAPS = {
+    "textattack/bert-base-uncased-MNLI": [2, 0, 1],  # [C,E,N] -> [E,N,C]
+}
+
+# =============================================================================
+# Translation models
+# =============================================================================
+
+TRANSLATION_BASE_MODELS = {
+    "llama-1b": "meta-llama/Llama-3.2-1B-Instruct",
+    "llama-3b": "meta-llama/Llama-3.2-3B-Instruct",
+}
+
+# =============================================================================
 # Task configurations
+# =============================================================================
+
 TASK_CONFIG = {
+    # Classification tasks
     "mnli": {
+        "type": "classification",
         "dataset": ("glue", "mnli"),
         "eval_split": "validation_matched",
         "text_fields": ("premise", "hypothesis"),
-        "sft_model": "textattack/bert-base-uncased-MNLI",
-        "label_map": {  # TextAttack uses different label order
-            "teacher-sft": [2, 0, 1],  # [C,E,N] -> [E,N,C]
-        },
     },
     "sst2": {
+        "type": "classification",
         "dataset": ("glue", "sst2"),
         "eval_split": "validation",
         "text_fields": ("sentence",),
-        "sft_model": "textattack/bert-base-uncased-SST-2",
-        "label_map": {},
     },
     "cola": {
+        "type": "classification",
         "dataset": ("glue", "cola"),
         "eval_split": "validation",
         "text_fields": ("sentence",),
-        "sft_model": "textattack/bert-base-uncased-CoLA",
-        "label_map": {},
     },
     "qqp": {
+        "type": "classification",
         "dataset": ("glue", "qqp"),
         "eval_split": "validation",
         "text_fields": ("question1", "question2"),
-        "sft_model": "textattack/bert-base-uncased-QQP",
-        "label_map": {},
+    },
+    # Translation tasks
+    "europarl": {
+        "type": "translation",
+        "dataset": ("europarl_bilingual", "en-fr"),
+        "eval_split": "train",  # Europarl only has train split
+        "eval_samples": 1000,  # Subsample for evaluation
+        "source_lang": "en",
+        "target_lang": "fr",
+        "max_new_tokens": 128,
     },
 }
 
-# Model roles
-MODEL_ROLES = {
-    "student": "distilbert-base-uncased",
-    "teacher-base": "bert-base-uncased",
-    "teacher-sft": None,  # Task-specific, filled from TASK_CONFIG
-}
+
+def get_models_for_task(task: str) -> dict:
+    """Get all available models for a task."""
+    config = TASK_CONFIG[task]
+    if config["type"] == "classification":
+        models = CLASSIFICATION_BASE_MODELS.copy()
+        models.update(CLASSIFICATION_SFT_MODELS.get(task, {}))
+    else:
+        models = TRANSLATION_BASE_MODELS.copy()
+    return models
 
 
-def compute_metrics(predictions: np.ndarray, labels: np.ndarray) -> dict:
-    """Compute all classification metrics."""
-    accuracy_metric = evaluate.load("accuracy")
-    f1_metric = evaluate.load("f1")
-    mcc_metric = evaluate.load("matthews_correlation")
-
-    return {
-        "accuracy": accuracy_metric.compute(predictions=predictions, references=labels)["accuracy"],
-        "f1": f1_metric.compute(predictions=predictions, references=labels, average="weighted")["f1"],
-        "mcc": mcc_metric.compute(predictions=predictions, references=labels)["matthews_correlation"],
-    }
-
-
-def evaluate_model(
+def evaluate_classification_model(
     model_name: str,
+    model_id: str,
     task: str,
-    role: str,
     batch_size: int = 32,
     device: torch.device = None,
 ) -> dict:
     """
-    Evaluate a model on a GLUE task.
+    Evaluate a model on a classification task.
 
     Args:
-        model_name: HuggingFace model identifier
-        task: Task name (mnli, sst2, cola, qqp)
-        role: Model role for label mapping (student, teacher-base, teacher-sft)
+        model_name: Short name for display (e.g., "bert-sft")
+        model_id: HuggingFace model ID
+        task: Task name (e.g., mnli, sst2, cola, qqp)
         batch_size: Evaluation batch size
         device: Torch device
 
@@ -111,37 +150,33 @@ def evaluate_model(
     config = TASK_CONFIG[task]
     num_labels = get_num_labels(task)
 
-    print(f"\n  Loading {model_name}...")
+    print(f"\n  Loading {model_id}...")
 
     # Load model and tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = AutoModelForSequenceClassification.from_pretrained(
-        model_name,
+        model_id,
         num_labels=num_labels,
-        ignore_mismatched_sizes=True,  # For base models without classifier
+        ignore_mismatched_sizes=True,
     )
     model.to(device)
     model.eval()
 
     # Load dataset
-    dataset_args = config["dataset"]
-    dataset = load_dataset(*dataset_args)
+    dataset = load_dataset(*config["dataset"])
     eval_data = dataset[config["eval_split"]]
-
-    # Filter invalid labels
     eval_data = eval_data.filter(lambda x: x["label"] != -1)
 
     text_fields = config["text_fields"]
-    label_map = config["label_map"].get(role)
+    label_map = LABEL_MAPS.get(model_id)
 
-    all_preds = []
+    all_logits = []
     all_labels = []
 
-    # Evaluate in batches
     for i in tqdm(range(0, len(eval_data), batch_size), desc="  Evaluating", leave=False):
         batch = eval_data[i : i + batch_size]
 
-        # Tokenize based on number of text fields
+        # Tokenize
         if len(text_fields) == 1:
             inputs = tokenizer(
                 batch[text_fields[0]],
@@ -162,41 +197,168 @@ def evaluate_model(
 
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
-        # Forward pass
         with torch.no_grad():
             outputs = model(**inputs)
-            preds = torch.argmax(outputs.logits, dim=-1)
+            logits = outputs.logits
 
         # Apply label mapping if needed
         if label_map:
-            label_map_tensor = torch.tensor(label_map, device=device)
-            preds = label_map_tensor[preds]
+            inverse_map = [0] * len(label_map)
+            for idx, j in enumerate(label_map):
+                inverse_map[j] = idx
+            logits = logits[:, inverse_map]
 
-        all_preds.extend(preds.cpu().numpy())
+        all_logits.append(logits.cpu().numpy())
         all_labels.extend(batch["label"])
 
-    # Compute metrics
-    all_preds = np.array(all_preds)
+    all_logits = np.concatenate(all_logits, axis=0)
     all_labels = np.array(all_labels)
-    metrics = compute_metrics(all_preds, all_labels)
+    metrics = compute_classification_metrics((all_logits, all_labels))
     metrics["samples"] = len(all_labels)
 
     return metrics
 
 
-def evaluate_task(task: str, models: list[str], batch_size: int = 32) -> dict:
+def evaluate_translation_model(
+    model_name: str,
+    model_id: str,
+    task: str,
+    batch_size: int = 8,
+    device: torch.device = None,
+) -> dict:
     """
-    Evaluate multiple models on a single task.
+    Evaluate a model on a translation task.
 
     Args:
-        task: Task name
-        models: List of model roles to evaluate
+        model_name: Short name for display (e.g., "llama-3b")
+        model_id: HuggingFace model ID
+        task: Task name (e.g., europarl)
         batch_size: Evaluation batch size
+        device: Torch device
 
     Returns:
-        Dictionary mapping role -> metrics
+        Dictionary with BLEU score
     """
+    if device is None:
+        device = torch.device(
+            "cuda" if torch.cuda.is_available()
+            else "mps" if torch.backends.mps.is_available()
+            else "cpu"
+        )
+
     config = TASK_CONFIG[task]
+
+    print(f"\n  Loading {model_id}...")
+
+    # Load model and tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        torch_dtype=torch.float16,
+        device_map="auto",
+    )
+    model.eval()
+
+    # Load dataset
+    dataset = load_dataset(*config["dataset"], trust_remote_code=True)
+    eval_data = dataset[config["eval_split"]]
+
+    # Subsample for faster evaluation
+    eval_samples = config.get("eval_samples", len(eval_data))
+    if eval_samples < len(eval_data):
+        eval_data = eval_data.shuffle(seed=42).select(range(eval_samples))
+
+    source_lang = config["source_lang"]
+    target_lang = config["target_lang"]
+    max_new_tokens = config.get("max_new_tokens", 128)
+
+    all_predictions = []
+    all_references = []
+
+    for i in tqdm(range(0, len(eval_data), batch_size), desc="  Evaluating", leave=False):
+        batch = eval_data[i : i + batch_size]
+
+        # Format prompts for translation
+        prompts = [
+            f"Translate the following English text to French:\n\n{item['translation'][source_lang]}\n\nFrench translation:"
+            for item in batch
+        ]
+
+        inputs = tokenizer(
+            prompts,
+            truncation=True,
+            max_length=256,
+            padding=True,
+            return_tensors="pt",
+        ).to(device)
+
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+                pad_token_id=tokenizer.pad_token_id,
+            )
+
+        # Decode only the generated part
+        for j, output in enumerate(outputs):
+            input_len = inputs["input_ids"][j].shape[0]
+            generated = tokenizer.decode(output[input_len:], skip_special_tokens=True)
+            all_predictions.append(generated.strip())
+            all_references.append(batch[j]["translation"][target_lang])
+
+    # Compute BLEU
+    bleu_metric = evaluate.load("sacrebleu")
+    references = [[ref] for ref in all_references]
+    bleu_result = bleu_metric.compute(predictions=all_predictions, references=references)
+
+    return {
+        "bleu": bleu_result["score"] / 100.0,  # Normalize to 0-1 range
+        "samples": len(all_predictions),
+    }
+
+
+def evaluate_model(
+    model_name: str,
+    model_id: str,
+    task: str,
+    batch_size: int = 32,
+    device: torch.device = None,
+) -> dict:
+    """
+    Evaluate a model on a task.
+
+    Args:
+        model_name: Short name for display
+        model_id: HuggingFace model ID
+        task: Task name
+        batch_size: Evaluation batch size
+        device: Torch device
+
+    Returns:
+        Dictionary with metrics
+    """
+    if is_translation_task(task):
+        # Smaller batch for generation
+        return evaluate_translation_model(model_name, model_id, task, min(batch_size, 8), device)
+    else:
+        return evaluate_classification_model(model_name, model_id, task, batch_size, device)
+
+
+def format_metrics(metrics: dict, task: str) -> str:
+    """Format metrics for display based on task type."""
+    if is_translation_task(task):
+        return f"bleu={metrics['bleu']:.4f}"
+    else:
+        return f"acc={metrics['accuracy']:.4f}, f1={metrics['f1']:.4f}, mcc={metrics['mcc']:.4f}"
+
+
+def evaluate_task(task: str, model_names: list[str], batch_size: int = 32) -> dict:
+    """Evaluate specified models on a task."""
+    available = get_models_for_task(task)
     primary_metric = get_primary_metric(task)
 
     print(f"\n{'='*60}")
@@ -205,94 +367,99 @@ def evaluate_task(task: str, models: list[str], batch_size: int = 32) -> dict:
 
     results = {}
 
-    for role in models:
-        if role == "teacher-sft":
-            model_name = config["sft_model"]
-        else:
-            model_name = MODEL_ROLES[role]
+    for name in model_names:
+        if name not in available:
+            print(f"  {name:<15} SKIPPED (not available for {task})")
+            continue
 
-        metrics = evaluate_model(model_name, task, role, batch_size)
-        results[role] = {
-            "model": model_name,
-            "metrics": metrics,
-        }
+        model_id = available[name]
+        metrics = evaluate_model(name, model_id, task, batch_size)
+        results[name] = {"model_id": model_id, "metrics": metrics}
 
-        # Print result
         pm_value = metrics[primary_metric]
-        print(f"  {role:<15} {primary_metric}={pm_value:.4f} (acc={metrics['accuracy']:.4f}, f1={metrics['f1']:.4f}, mcc={metrics['mcc']:.4f})")
+        extra = format_metrics(metrics, task)
+        print(f"  {name:<15} {primary_metric}={pm_value:.4f} ({extra})")
 
     return results
 
 
 def print_summary(all_results: dict):
-    """Print summary table of all results."""
+    """Print summary table."""
     print(f"\n{'='*80}")
     print("SUMMARY")
     print(f"{'='*80}")
 
-    # Header
     tasks = list(all_results.keys())
-    print(f"{'Model':<20}", end="")
+    all_models = set()
+    for task_results in all_results.values():
+        all_models.update(task_results.keys())
+
+    # Header
+    print(f"{'Model':<15}", end="")
     for task in tasks:
-        pm = get_primary_metric(task)
         print(f" | {task.upper():^12}", end="")
     print()
 
-    print(f"{'':<20}", end="")
+    print(f"{'':<15}", end="")
     for task in tasks:
         pm = get_primary_metric(task)
         print(f" | {pm:^12}", end="")
     print()
-
     print("-" * 80)
 
-    # Collect all roles
-    all_roles = set()
-    for task_results in all_results.values():
-        all_roles.update(task_results.keys())
-
-    # Print each role
-    for role in sorted(all_roles):
-        print(f"{role:<20}", end="")
+    # Results
+    for model in sorted(all_models):
+        print(f"{model:<15}", end="")
         for task in tasks:
-            if role in all_results[task]:
+            if model in all_results[task]:
                 pm = get_primary_metric(task)
-                value = all_results[task][role]["metrics"][pm]
+                value = all_results[task][model]["metrics"][pm]
                 print(f" | {value*100:>10.2f}%", end="")
             else:
                 print(f" | {'--':^12}", end="")
         print()
 
 
+def get_all_model_names() -> list[str]:
+    """Get list of all available model names across all tasks."""
+    names = set(CLASSIFICATION_BASE_MODELS.keys())
+    names.add("bert-sft")
+    names.update(TRANSLATION_BASE_MODELS.keys())
+    return sorted(names)
+
+
 def main():
+    all_tasks = list(TASK_CONFIG.keys())
+    all_model_names = get_all_model_names()
+
     parser = argparse.ArgumentParser(
-        description="Evaluate baseline models on GLUE tasks",
+        description="Evaluate baseline models on supported tasks",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=f"""
+Available models: {', '.join(all_model_names)}
+Available tasks: {', '.join(all_tasks)}
+
 Examples:
-    python scripts/eval_baselines.py --task mnli
-    python scripts/eval_baselines.py --task sst2 --models teacher-sft student
-    python scripts/eval_baselines.py --all --models teacher-sft
+    python scripts/eval_baselines.py                      # All tasks, all models
+    python scripts/eval_baselines.py --task mnli          # Single task
+    python scripts/eval_baselines.py --task mnli sst2     # Multiple tasks
+    python scripts/eval_baselines.py --models bert-sft    # Just SFT models
         """,
     )
     parser.add_argument(
         "--task",
         type=str,
-        choices=["mnli", "sst2", "cola", "qqp"],
-        help="Single task to evaluate",
-    )
-    parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Evaluate all tasks",
+        nargs="*",
+        default=all_tasks,
+        choices=all_tasks,
+        help=f"Tasks to evaluate (default: all)",
     )
     parser.add_argument(
         "--models",
         type=str,
-        nargs="+",
-        default=["student", "teacher-base", "teacher-sft"],
-        choices=["student", "teacher-base", "teacher-sft"],
-        help="Models to evaluate (default: all)",
+        nargs="*",
+        default=all_model_names,
+        help=f"Models to evaluate (default: all)",
     )
     parser.add_argument(
         "--batch-size",
@@ -302,16 +469,16 @@ Examples:
     )
     args = parser.parse_args()
 
-    if not args.task and not args.all:
-        parser.error("Either --task or --all must be specified")
-
-    tasks = ["mnli", "sst2", "cola", "qqp"] if args.all else [args.task]
+    # Validate models
+    for model in args.models:
+        if model not in all_model_names:
+            parser.error(f"Unknown model: {model}. Available: {', '.join(all_model_names)}")
 
     all_results = {}
-    for task in tasks:
+    for task in args.task:
         all_results[task] = evaluate_task(task, args.models, args.batch_size)
 
-    if len(tasks) > 1:
+    if len(args.task) > 1:
         print_summary(all_results)
 
 
