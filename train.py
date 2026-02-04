@@ -733,7 +733,7 @@ def main():
         eval_steps=config.get("evaluation", {}).get("eval_steps", 500),
         report_to=report_to,
         fp16=(config["training"].get("fp16", True) and student.dtype != torch.float16) if device == "cuda" else False,
-        dataloader_num_workers=config["training"].get("dataloader_num_workers", 4),
+        dataloader_num_workers=config["training"].get("dataloader_num_workers", 4) if device == "cuda" else 0,  # MPS requires 0 workers
         dataloader_pin_memory=device == "cuda",  # Disable on MPS (not supported)
         run_name=wandb_run_id,
         max_steps=args.max_steps if args.max_steps > 0 else -1,
