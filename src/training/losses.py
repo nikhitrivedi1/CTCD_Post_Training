@@ -8,6 +8,43 @@ import torch
 import torch.nn.functional as F
 
 
+def compute_kl_divergence(
+    student: torch.Tensor,
+    teacher: torch.Tensor,
+    temperature: float,
+    input_is_probs: bool = False,
+) -> torch.Tensor:
+    """
+    Compute KL divergence with temperature scaling (Hinton 2015).
+
+    KL(teacher || student) - student learns to match teacher.
+
+    Args:
+        student: Student logits or probabilities
+        teacher: Teacher logits or probabilities
+        temperature: Temperature for softening distributions
+        input_is_probs: If True, inputs are probabilities (e.g., attention weights)
+                       and need log conversion before temperature scaling
+
+    Returns:
+        KL divergence scaled by T² to maintain gradient magnitude
+    """
+    if input_is_probs:
+        # Convert probabilities to logits first
+        eps = 1e-10
+        student = torch.log(student + eps)
+        teacher = torch.log(teacher + eps)
+
+    student_log = F.log_softmax(student / temperature, dim=-1)
+    teacher_soft = F.softmax(teacher / temperature, dim=-1)
+
+    return F.kl_div(
+        student_log,
+        teacher_soft,
+        reduction='batchmean'
+    ) * (temperature ** 2)
+
+
 @dataclass
 class LossOutput:
     """Container for loss computation results."""
@@ -95,11 +132,9 @@ class KLDistillationLoss(DistillationLossStrategy):
         **kwargs,
     ) -> LossOutput:
         # Always compute KL divergence for monitoring (even when alpha=0)
-        kl_raw = F.kl_div(
-            F.log_softmax(student_logits / self.temperature, dim=-1),
-            F.softmax(teacher_logits / self.temperature, dim=-1),
-            reduction='batchmean'
-        ) * (self.temperature ** 2)
+        kl_raw = compute_kl_divergence(
+            student_logits, teacher_logits, self.temperature, input_is_probs=False
+        )
 
         # Weighted contributions
         ce_weighted = (1 - self.alpha) * ce_loss
@@ -619,18 +654,13 @@ class AttentionLossStrategy(DistillationLossStrategy):
                 t_attn = t_attn.mean(dim=1, keepdim=True)
                 s_attn = s_attn.mean(dim=1, keepdim=True)
 
-            # Apply temperature and compute KL divergence
-            # Attention weights are already normalized (softmax), but we can
-            # re-soften them with temperature for better transfer
-            t_attn_soft = F.softmax(t_attn / self.temperature, dim=-1)
-            s_attn_log = F.log_softmax(s_attn / self.temperature, dim=-1)
+            # Flatten attention matrices for KL computation: (batch, heads, seq, seq) -> (N, seq)
+            s_flat = s_attn.view(-1, s_attn.size(-1))
+            t_flat = t_attn.view(-1, t_attn.size(-1))
 
-            # KL divergence: KL(P || Q) where we want student to match teacher
-            # Flatten for KL computation
-            kl_loss = F.kl_div(
-                s_attn_log.view(-1, s_attn_log.size(-1)),
-                t_attn_soft.view(-1, t_attn_soft.size(-1)),
-                reduction='batchmean'
+            # Compute KL divergence (attention weights are probabilities)
+            kl_loss = compute_kl_divergence(
+                s_flat, t_flat, self.temperature, input_is_probs=True
             )
             attention_losses.append(kl_loss)
 
