@@ -56,6 +56,7 @@ htmlcov/
 
 # Project specific
 outputs/
+auto-submit/
 logs/
 checkpoints/
 wandb/
