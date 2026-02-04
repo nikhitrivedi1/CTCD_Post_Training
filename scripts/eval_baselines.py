@@ -53,8 +53,12 @@ CLASSIFICATION_SFT_MODELS = {
 }
 
 # Label mapping for textattack MNLI (uses different label order)
+# Direct indexing: new_logits = logits[:, LABEL_MAPS[model]]
+# TextAttack MNLI: [C,E,N] at indices [0,1,2]
+# Dataset MNLI:    [E,N,C] at indices [0,1,2]
+# So: new[0]=old[1], new[1]=old[2], new[2]=old[0] → [1,2,0]
 LABEL_MAPS = {
-    "textattack/bert-base-uncased-MNLI": [2, 0, 1],  # [C,E,N] -> [E,N,C]
+    "textattack/bert-base-uncased-MNLI": [1, 2, 0],
 }
 
 # =============================================================================
@@ -201,12 +205,9 @@ def evaluate_classification_model(
             outputs = model(**inputs)
             logits = outputs.logits
 
-        # Apply label mapping if needed
+        # Apply label mapping if needed (direct indexing)
         if label_map:
-            inverse_map = [0] * len(label_map)
-            for idx, j in enumerate(label_map):
-                inverse_map[j] = idx
-            logits = logits[:, inverse_map]
+            logits = logits[:, label_map]
 
         all_logits.append(logits.cpu().numpy())
         all_labels.extend(batch["label"])

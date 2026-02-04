@@ -4,6 +4,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
+import torch.nn.functional as F
 from transformers import Trainer
 
 from .losses import DistillationLossStrategy, KLDistillationLoss, get_loss_strategy
@@ -223,7 +224,14 @@ class DistillationTrainer(Trainer):
         # Combine losses: student loss + teacher CE (if co-training)
         total_loss = loss_output.total_loss
         if not self.freeze_teacher:
-            teacher_ce_loss = teacher_outputs.loss
+            # When teacher_label_map is set, teacher_outputs.loss was computed with
+            # misaligned labels (HuggingFace computes loss before we remap logits).
+            # Recompute teacher CE using remapped logits for correct gradients.
+            if self.teacher_label_map is not None and labels is not None:
+                # teacher_logits already remapped at line 188
+                teacher_ce_loss = F.cross_entropy(teacher_logits, labels)
+            else:
+                teacher_ce_loss = teacher_outputs.loss
             total_loss = total_loss + teacher_ce_loss
 
         # Log individual components for monitoring
