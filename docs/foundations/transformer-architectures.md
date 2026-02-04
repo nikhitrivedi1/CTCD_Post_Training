@@ -255,6 +255,44 @@ Input X (768-dim)
                                 Output (768-dim)
 ```
 
+### How Weight Matrices Split Across Heads
+
+A common question: Are there separate Wq matrices for each head?
+
+**Answer:** Conceptually yes, practically no. There's one big matrix that gets reshaped.
+
+```
+Conceptual view (12 separate matrices):
+    Wq₁: 768 × 64
+    Wq₂: 768 × 64
+    ...
+    Wq₁₂: 768 × 64
+
+Actual implementation (one matrix, reshaped):
+    Wq: 768 × 768
+
+    After X × Wq (gives 768-dim output):
+        Reshape: (batch, seq, 768) → (batch, seq, 12, 64)
+        Transpose: (batch, 12, seq, 64)
+
+    Now each head has its 64-dim slice to work with.
+```
+
+**Why one matrix?** GPU efficiency. One large matrix multiply is faster than 12 small ones. The reshaping is just pointer arithmetic—no data movement.
+
+### Per-Head Dimensions
+
+Each attention head operates in a reduced dimension:
+
+```
+d_k = d_model / num_heads = 768 / 12 = 64
+
+Why 64?
+- Full 768-dim attention would be expensive (768 × 768 attention matrix per head)
+- 64-dim is sufficient for each head to learn one "type" of attention
+- 12 heads × 64 dims = 768 total, preserving information capacity
+```
+
 ### Parameter Count
 
 For multi-head attention:
@@ -270,6 +308,22 @@ Total:      2,359,296 parameters per attention layer
 ## The Transformer Block
 
 A transformer block combines attention with feed-forward processing.
+
+### Why Attention + FFN in Every Layer?
+
+Every transformer layer pairs attention with a feed-forward network:
+
+```
+Attention = "Talk"    →    FFN = "Think"
+```
+
+**Intuition:**
+- **Attention:** Tokens communicate. Each position gathers information from other positions.
+- **FFN:** Tokens process. Each position transforms its gathered information independently.
+
+This repeats in every layer—talk, think, talk, think—building increasingly sophisticated representations. Attention handles the "where to look" problem; FFN handles the "what to do with what I found" problem.
+
+**The pattern is universal:** Whether encoder-only, decoder-only, or encoder-decoder, every transformer layer follows this structure. The only difference is the attention mask (bidirectional vs causal).
 
 ### Block Structure
 
@@ -420,6 +474,27 @@ Properties:
     - Limited to max sequence length seen in training
     - Used by BERT, GPT-2
 ```
+
+### Segment Embeddings (BERT-Specific)
+
+BERT adds a third embedding type for sentence-pair tasks:
+
+```
+Input:  [CLS] Sentence A [SEP] Sentence B [SEP]
+Segment:  0      0        0       1         1
+
+Segment Embedding: Lookup table with 2 entries
+    Segment 0 → 768-dim vector (for first sentence)
+    Segment 1 → 768-dim vector (for second sentence)
+
+BERT Embedding = Token + Position + Segment
+```
+
+**Why?** BERT was pretrained on Next Sentence Prediction (NSP), which required distinguishing two sentences. The segment embedding tells the model "this token belongs to sentence A" vs "this token belongs to sentence B."
+
+**Parameters:** Only 2 × 768 = 1,536 parameters (negligible).
+
+**Modern note:** Most models after BERT dropped segment embeddings. NSP wasn't very useful, and single-sequence tasks don't need them. GPT, Llama, T5 don't use segment embeddings.
 
 ### Rotary Position Embeddings (RoPE)
 
@@ -724,6 +799,56 @@ Output head                 varies          varies
 ─────────────────────────────────────────────────────
 Total (BERT-base)           ~110M           100%
 ```
+
+### Detailed Parameter Math (BERT-base)
+
+**Embeddings (~24M total):**
+
+```
+Token embeddings:    vocab_size × hidden_size = 30,522 × 768 = 23.4M
+Position embeddings: max_seq_len × hidden_size = 512 × 768 = 0.4M
+Segment embeddings:  2 × hidden_size = 2 × 768 = 0.0015M
+LayerNorm:           2 × hidden_size = 2 × 768 = 0.0015M
+───────────────────────────────────────────────────────────
+Embedding total:     ~23.8M
+```
+
+**Per-Layer Attention (~2.4M):**
+
+```
+Q projection: hidden × hidden = 768 × 768 = 590K
+K projection: hidden × hidden = 768 × 768 = 590K
+V projection: hidden × hidden = 768 × 768 = 590K
+O projection: hidden × hidden = 768 × 768 = 590K
+Biases:       4 × hidden = 4 × 768 = 3K
+LayerNorm:    2 × hidden = 2 × 768 = 1.5K
+───────────────────────────────────────────────────────────
+Attention total: ~2.36M per layer
+```
+
+**Per-Layer FFN (~4.7M):**
+
+```
+W1 (expand):  hidden × 4×hidden = 768 × 3072 = 2.36M
+W2 (contract): 4×hidden × hidden = 3072 × 768 = 2.36M
+Biases:       3072 + 768 = 3.8K
+LayerNorm:    2 × 768 = 1.5K
+───────────────────────────────────────────────────────────
+FFN total: ~4.72M per layer
+```
+
+**Full Model:**
+
+```
+Embeddings:           23.8M
+12 × Attention:       12 × 2.36M = 28.3M
+12 × FFN:             12 × 4.72M = 56.6M
+Pooler (optional):    768 × 768 = 0.6M
+───────────────────────────────────────────────────────────
+BERT-base total:      ~109M parameters
+```
+
+**Key insight:** FFN layers contain ~2× the parameters of attention layers. This is why the "4×" expansion factor in FFN has significant parameter implications.
 
 ### Computational Complexity
 
