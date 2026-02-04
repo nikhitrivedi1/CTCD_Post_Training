@@ -188,17 +188,17 @@ For large models, full fine-tuning is impractical:
 | **Feature (F)** | Hidden states | MSE | Medium |
 | **Attention (A)** | Attention patterns | KL/MSE | Medium |
 
-**RFA Factorial:**
+**FAR Factorial:**
 
-| Config | R | F | A | Hypothesis |
+| Config | F | A | R | Hypothesis |
 |--------|---|---|---|------------|
 | 00 | - | - | - | Baseline |
-| 01 | ✓ | - | - | Classic KD |
-| 02 | - | ✓ | - | Intermediate knowledge |
-| 03 | - | - | ✓ | Attention transfer |
-| 04 | ✓ | ✓ | - | R + F synergy? |
-| 05 | ✓ | - | ✓ | R + A synergy? |
-| 06 | - | ✓ | ✓ | F + A synergy? |
+| 01 | ✓ | - | - | Intermediate knowledge |
+| 02 | - | ✓ | - | Attention transfer |
+| 03 | - | - | ✓ | Classic KD |
+| 04 | ✓ | ✓ | - | F + A synergy? |
+| 05 | ✓ | - | ✓ | F + R synergy? |
+| 06 | - | ✓ | ✓ | A + R synergy? |
 | 07 | ✓ | ✓ | ✓ | All signals |
 
 **Finding (MNLI):** R-only wins. Adding F/A causes gradient conflict.
@@ -304,7 +304,7 @@ DistilBERT's success with F during pre-training suggests **temporal staging** of
 
 ```
 L0: Teacher Taxonomy → Adaptive Domain-Expert wins
-L1: RFA Factorial → R-only wins, F/A hurt
+L1: FAR Factorial → R-only wins, F/A hurt
 L2: (future) → Tune temperature, alpha
 ```
 
@@ -312,7 +312,7 @@ L2: (future) → Tune temperature, alpha
 
 ```
 L0: Teacher Taxonomy → Testing if Adaptive > Stubborn transfers
-L1: RFA Factorial → Testing if R-only finding transfers
+L1: FAR Factorial → Testing if R-only finding transfers
 L2: (future) → Task-specific tuning
 ```
 

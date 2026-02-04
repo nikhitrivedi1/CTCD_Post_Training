@@ -95,22 +95,22 @@ Student:  [1] [2] [3] [4] [5]  [6]  [7]  [8]  [9] [10] [11] [12] [13] [14] [15] 
 
 ---
 
-## RFA Factorial Design
+## FAR Factorial Design
 
-Testing Response (R), Feature (F), Attention (A) combinations:
+Testing Feature (F), Attention (A), Response (R) combinations:
 
-| Config | R | F | A | Description |
+| Config | F | A | R | Description |
 |--------|---|---|---|-------------|
 | 00 | - | - | - | Baseline (CE only) |
-| R | ✓ | - | - | Response only |
-| F | - | ✓ | - | Feature only |
-| A | - | - | ✓ | Attention only |
-| RF | ✓ | ✓ | - | Response + Feature |
-| RA | ✓ | - | ✓ | Response + Attention |
-| FA | - | ✓ | ✓ | Feature + Attention |
-| RFA | ✓ | ✓ | ✓ | All three |
+| F | ✓ | - | - | Feature only |
+| A | - | ✓ | - | Attention only |
+| R | - | - | ✓ | Response only |
+| FA | ✓ | ✓ | - | Feature + Attention |
+| FR | ✓ | - | ✓ | Feature + Response |
+| AR | - | ✓ | ✓ | Attention + Response |
+| FAR | ✓ | ✓ | ✓ | All three |
 
-**Hypothesis:** R + F or R + A > R alone, but diminishing returns for RFA.
+**Hypothesis:** F + R or A + R > R alone, but diminishing returns for FAR.
 
 ---
 
@@ -118,12 +118,12 @@ Testing Response (R), Feature (F), Attention (A) combinations:
 
 ### Phase 1: Classification × Depth (Complete)
 1. ✓ Response distillation ablations (MNLI, QQP)
-2. ✓ RFA factorial study (MNLI) - R-only wins, F/A cause gradient conflict
+2. ✓ FAR factorial study (MNLI) - R-only wins, F/A cause gradient conflict
 3. → Translation experiments
 
 ### Phase 2: Translation × Depth (Configs Ready)
 5. ✓ L0: Teacher taxonomy ablations (configs/translation/llama3p2-3b_llama3p2-1b/ablations/00-04)
-6. ✓ L1: RFA factorial study (configs/translation/llama3p2-3b_llama3p2-1b/rfa/00-07)
+6. ✓ L1: FAR factorial study (configs/translation/llama3p2-3b_llama3p2-1b/far/00-07)
 7. → Run experiments, compare with classification findings
 
 ### Phase 3: Diffusion × Depth (Stretch)

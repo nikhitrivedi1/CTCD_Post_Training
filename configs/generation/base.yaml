@@ -1,9 +1,0 @@
-# Generation task defaults
-# Higher temperature (10-20) for large vocabulary spaces (32k-128k tokens)
-# Lower alpha since high T already softens distributions significantly
-
-inherit: ../base.yaml
-
-distillation:
-  temperature: 15.0  # Higher T for large vocab (Hinton: scale T with output space)
-  alpha: 0.2         # Lower weight for KL since high T already softens

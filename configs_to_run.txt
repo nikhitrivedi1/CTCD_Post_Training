@@ -1,0 +1,88 @@
+# All Experiments - 49 runs
+# Classification first (MNLI > QQP > SST-2 > CoLA), then Translation
+
+# ============================================
+# CLASSIFICATION ABLATIONS (5 × 4 tasks = 20)
+# ============================================
+
+# MNLI Ablations
+configs/classification/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
+configs/classification/mnli/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml
+configs/classification/mnli/bert_distilbert/ablations/03_cotrain_base-teacher_kl.yaml
+configs/classification/mnli/bert_distilbert/ablations/04_cotrain_sft-teacher_kl.yaml
+
+# QQP Ablations
+configs/classification/qqp/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+configs/classification/qqp/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
+configs/classification/qqp/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml
+configs/classification/qqp/bert_distilbert/ablations/03_cotrain_base-teacher_kl.yaml
+configs/classification/qqp/bert_distilbert/ablations/04_cotrain_sft-teacher_kl.yaml
+
+# SST-2 Ablations
+configs/classification/sst2/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+configs/classification/sst2/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
+configs/classification/sst2/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml
+configs/classification/sst2/bert_distilbert/ablations/03_cotrain_base-teacher_kl.yaml
+configs/classification/sst2/bert_distilbert/ablations/04_cotrain_sft-teacher_kl.yaml
+
+# CoLA Ablations
+configs/classification/cola/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+configs/classification/cola/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
+configs/classification/cola/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml
+configs/classification/cola/bert_distilbert/ablations/03_cotrain_base-teacher_kl.yaml
+configs/classification/cola/bert_distilbert/ablations/04_cotrain_sft-teacher_kl.yaml
+
+# ============================================
+# CLASSIFICATION FAR (8 × MNLI)
+# ============================================
+
+configs/classification/mnli/bert_distilbert/far/00_ce-only.yaml
+configs/classification/mnli/bert_distilbert/far/01_f-only.yaml
+configs/classification/mnli/bert_distilbert/far/02_a-only.yaml
+configs/classification/mnli/bert_distilbert/far/03_r-only.yaml
+configs/classification/mnli/bert_distilbert/far/04_fa.yaml
+configs/classification/mnli/bert_distilbert/far/05_fr.yaml
+configs/classification/mnli/bert_distilbert/far/06_ar.yaml
+configs/classification/mnli/bert_distilbert/far/07_far.yaml
+
+# ============================================
+# CLASSIFICATION STAGED (4 × MNLI)
+# ============================================
+
+configs/classification/mnli/bert_distilbert/staged/00_r.yaml
+configs/classification/mnli/bert_distilbert/staged/01_f-r.yaml
+configs/classification/mnli/bert_distilbert/staged/02_a-r.yaml
+configs/classification/mnli/bert_distilbert/staged/03_f-a-r.yaml
+
+# ============================================
+# TRANSLATION ABLATIONS (5)
+# ============================================
+
+configs/translation/llama3p2-3b_llama3p2-1b/ablations/00_no-teacher_ce-only.yaml
+configs/translation/llama3p2-3b_llama3p2-1b/ablations/01_frozen_base-teacher_kl.yaml
+configs/translation/llama3p2-3b_llama3p2-1b/ablations/02_frozen_sft-teacher_kl.yaml
+configs/translation/llama3p2-3b_llama3p2-1b/ablations/03_cotrain_base-teacher_kl.yaml
+configs/translation/llama3p2-3b_llama3p2-1b/ablations/04_cotrain_sft-teacher_kl.yaml
+
+# ============================================
+# TRANSLATION FAR (8)
+# ============================================
+
+configs/translation/llama3p2-3b_llama3p2-1b/far/00_ce-only.yaml
+configs/translation/llama3p2-3b_llama3p2-1b/far/01_f-only.yaml
+configs/translation/llama3p2-3b_llama3p2-1b/far/02_a-only.yaml
+configs/translation/llama3p2-3b_llama3p2-1b/far/03_r-only.yaml
+configs/translation/llama3p2-3b_llama3p2-1b/far/04_fa.yaml
+configs/translation/llama3p2-3b_llama3p2-1b/far/05_fr.yaml
+configs/translation/llama3p2-3b_llama3p2-1b/far/06_ar.yaml
+configs/translation/llama3p2-3b_llama3p2-1b/far/07_far.yaml
+
+# ============================================
+# TRANSLATION STAGED (4)
+# ============================================
+
+configs/translation/llama3p2-3b_llama3p2-1b/staged/00_r.yaml
+configs/translation/llama3p2-3b_llama3p2-1b/staged/01_f-r.yaml
+configs/translation/llama3p2-3b_llama3p2-1b/staged/02_a-r.yaml
+configs/translation/llama3p2-3b_llama3p2-1b/staged/03_f-a-r.yaml

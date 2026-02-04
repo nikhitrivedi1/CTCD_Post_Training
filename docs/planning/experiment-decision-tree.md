@@ -8,7 +8,7 @@ Mapping the experimental hierarchy for knowledge distillation research.
 
 ```
 L0: Teacher Setup (Ablation)
- └── L1: Distillation Signal (RFA Factorial)
+ └── L1: Distillation Signal (FAR Factorial)
       └── L2: Hyperparameters (Tuning)
 ```
 
@@ -45,22 +45,22 @@ Teacher Setup
 
 ---
 
-## L1: RFA Factorial Study
+## L1: FAR Factorial Study
 
 **Question:** Which distillation signals (Response/Feature/Attention) help most?
 
 Built on L0 winner: `cotrain_sft-teacher`
 
-| ID | R | F | A | Config | Description |
+| ID | F | A | R | Config | Description |
 |----|---|---|---|--------|-------------|
 | 00 | 0 | 0 | 0 | `00_ce-only.yaml` | CE baseline |
-| 01 | 1 | 0 | 0 | `01_r-only.yaml` | Response only (classic KL) |
-| 02 | 0 | 1 | 0 | `02_f-only.yaml` | Feature only |
-| 03 | 0 | 0 | 1 | `03_a-only.yaml` | Attention only |
-| 04 | 1 | 1 | 0 | `04_rf.yaml` | Response + Feature |
-| 05 | 1 | 0 | 1 | `05_ra.yaml` | Response + Attention |
-| 06 | 0 | 1 | 1 | `06_fa.yaml` | Feature + Attention |
-| 07 | 1 | 1 | 1 | `07_rfa.yaml` | Full RFA |
+| 01 | 1 | 0 | 0 | `01_f-only.yaml` | Feature only |
+| 02 | 0 | 1 | 0 | `02_a-only.yaml` | Attention only |
+| 03 | 0 | 0 | 1 | `03_r-only.yaml` | Response only (classic KL) |
+| 04 | 1 | 1 | 0 | `04_fa.yaml` | Feature + Attention |
+| 05 | 1 | 0 | 1 | `05_fr.yaml` | Feature + Response |
+| 06 | 0 | 1 | 1 | `06_ar.yaml` | Attention + Response |
+| 07 | 1 | 1 | 1 | `07_far.yaml` | Full FAR |
 
 ### Loss Functions
 
@@ -91,12 +91,12 @@ Hyperparameters
 ## Naming Convention
 
 ```
-{task}_{l0-setup}_{l1-rfa}_{timestamp}
+{task}_{l0-setup}_{l1-far}_{timestamp}
 ```
 
 **Examples:**
-- `mnli_cotrain-sft_rfa-00` - MNLI, co-trained SFT teacher, CE baseline
-- `mnli_cotrain-sft_rfa-07` - MNLI, co-trained SFT teacher, full RFA
+- `mnli_cotrain-sft_far-00` - MNLI, co-trained SFT teacher, CE baseline
+- `mnli_cotrain-sft_far-07` - MNLI, co-trained SFT teacher, full FAR
 
 **Config paths:**
 ```
@@ -108,7 +108,7 @@ configs/
         │   ├── 01_frozen_base-teacher_kl.yaml
         │   └── ...
         │
-        └── rfa/                # L1 experiments
+        └── far/                # L1 experiments
             ├── 00_ce-only.yaml
             ├── 01_r-only.yaml
             └── ...
@@ -135,7 +135,7 @@ Knowledge Distillation Experiments
 │
 │  Winner: cotrain_sft-teacher ─────────────────────────┐
 │                                                       │
-├─ L1: RFA Factorial (R/F/A combinations)               │
+├─ L1: FAR Factorial (F/A/R combinations)               │
 │  │                                                    │
 │  │  Base: cotrain_sft-teacher ◄───────────────────────┘
 │  │

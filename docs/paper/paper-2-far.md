@@ -1,12 +1,12 @@
 # Simplicity Wins: Why Response-Only Distillation Outperforms Multi-Signal Approaches
 
-Draft paper on the RFA factorial study findings.
+Draft paper on the FAR factorial study findings.
 
 ---
 
 ## Abstract
 
-Knowledge distillation research has explored transferring multiple types of knowledge: response (soft labels), features (hidden states), and attention patterns. We present a factorial study testing all 8 combinations of Response (R), Feature (F), and Attention (A) signals. Our finding: **R-only outperforms all multi-signal combinations**, including the full RFA. Adding Feature or Attention signals to Response *hurts* performance due to gradient conflict. The ranking R >> F > A suggests practitioners should use classic KL distillation rather than complex multi-signal approaches.
+Knowledge distillation research has explored transferring multiple types of knowledge: response (soft labels), features (hidden states), and attention patterns. We present a factorial study testing all 8 combinations of Response (R), Feature (F), and Attention (A) signals. Our finding: **R-only outperforms all multi-signal combinations**, including the full FAR. Adding Feature or Attention signals to Response *hurts* performance due to gradient conflict. The ranking R >> F > A suggests practitioners should use classic KL distillation rather than complex multi-signal approaches.
 
 ---
 
@@ -73,16 +73,16 @@ Based on prior ablation work (Paper 1), we use the optimal teacher setup:
 
 ### Factorial Design
 
-| Config | R | F | A | Description |
+| Config | F | A | R | Description |
 |--------|---|---|---|-------------|
 | 00 | 0 | 0 | 0 | Baseline (CE only) |
-| 01 | 1 | 0 | 0 | Response only |
-| 02 | 0 | 1 | 0 | Feature only |
-| 03 | 0 | 0 | 1 | Attention only |
-| 04 | 1 | 1 | 0 | Response + Feature |
-| 05 | 1 | 0 | 1 | Response + Attention |
-| 06 | 0 | 1 | 1 | Feature + Attention |
-| 07 | 1 | 1 | 1 | All three (RFA) |
+| 01 | 1 | 0 | 0 | Feature only |
+| 02 | 0 | 1 | 0 | Attention only |
+| 03 | 0 | 0 | 1 | Response only |
+| 04 | 1 | 1 | 0 | Feature + Attention |
+| 05 | 1 | 0 | 1 | Feature + Response |
+| 06 | 0 | 1 | 1 | Attention + Response |
+| 07 | 1 | 1 | 1 | All three (FAR) |
 
 ### Loss Functions
 
@@ -103,15 +103,15 @@ Equal weighting: λ_R = λ_F = λ_A = 1 when enabled.
 
 ### Main Results
 
-| Rank | Config | R | F | A | Accuracy |
+| Rank | Config | F | A | R | Accuracy |
 |------|--------|---|---|---|----------|
-| **1** | 01 | 1 | 0 | 0 | **81.13%** |
-| 2 | 05 | 1 | 0 | 1 | 80.59% |
-| 3 | 04 | 1 | 1 | 0 | 80.49% |
+| **1** | 03 | 0 | 0 | 1 | **81.13%** |
+| 2 | 06 | 0 | 1 | 1 | 80.59% |
+| 3 | 05 | 1 | 0 | 1 | 80.49% |
 | 4 | 07 | 1 | 1 | 1 | 80.23% |
-| 5 | 02 | 0 | 1 | 0 | 79.42% |
-| 6 | 06 | 0 | 1 | 1 | 79.43% |
-| 7 | 03 | 0 | 0 | 1 | 78.69% |
+| 5 | 01 | 1 | 0 | 0 | 79.42% |
+| 6 | 04 | 1 | 1 | 0 | 79.43% |
+| 7 | 02 | 0 | 1 | 0 | 78.69% |
 | 8 | 00 | 0 | 0 | 0 | 78.55% |
 
 ### Individual Signal Contribution
@@ -129,9 +129,9 @@ Equal weighting: λ_R = λ_F = λ_A = 1 when enabled.
 | Combination | Accuracy | Change from R-only |
 |-------------|----------|-------------------|
 | R | 81.13% | — |
-| R + F | 80.49% | **-0.64%** |
-| R + A | 80.59% | **-0.54%** |
-| R + F + A | 80.23% | **-0.90%** |
+| F + R | 80.49% | **-0.64%** |
+| A + R | 80.59% | **-0.54%** |
+| F + A + R | 80.23% | **-0.90%** |
 
 **Adding any signal to R hurts performance.**
 
@@ -215,7 +215,7 @@ Our study used equal weighting (1:1:1). Multi-signal might work with:
 ## Related Papers in This Series
 
 - [Paper 1: Ablation Study](paper-1-ablation.md) - Establishes that co-trained SFT teacher (Adaptive Domain-Expert) is optimal; this study builds on that finding
-- [Paper 3: Translation](paper-3-translation.md) - Tests if R >> F > A holds for generation tasks
+- [Paper 3: Translation](paper-3-translation.md) - Tests if F < A < R holds for generation tasks
 
 ---
 

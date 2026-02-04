@@ -136,9 +136,9 @@ Both MNLI and QQP show the same pattern:
 
 ---
 
-## RFA Factorial Study
+## FAR Factorial Study
 
-Testing Response (R), Feature (F), Attention (A) combinations on MNLI with Adaptive Domain-Expert.
+Testing Feature (F), Attention (A), Response (R) combinations on MNLI with Adaptive Domain-Expert.
 
 ### Setup
 
@@ -151,16 +151,16 @@ Testing Response (R), Feature (F), Attention (A) combinations on MNLI with Adapt
 
 ### Results
 
-| Config | R | F | A | Accuracy | Rank |
+| Config | F | A | R | Accuracy | Rank |
 |--------|---|---|---|----------|------|
-| rfa-01 | 1 | 0 | 0 | **81.13%** | **1** |
-| rfa-05 | 1 | 0 | 1 | 80.59% | 2 |
-| rfa-04 | 1 | 1 | 0 | 80.49% | 3 |
-| rfa-07 | 1 | 1 | 1 | 80.23% | 4 |
-| rfa-02 | 0 | 1 | 0 | 79.42% | 5 |
-| rfa-06 | 0 | 1 | 1 | 79.43% | 6 |
-| rfa-03 | 0 | 0 | 1 | 78.69% | 7 |
-| rfa-00 | 0 | 0 | 0 | 78.55% | 8 |
+| far-03 | 0 | 0 | 1 | **81.13%** | **1** |
+| far-06 | 0 | 1 | 1 | 80.59% | 2 |
+| far-05 | 1 | 0 | 1 | 80.49% | 3 |
+| far-07 | 1 | 1 | 1 | 80.23% | 4 |
+| far-01 | 1 | 0 | 0 | 79.42% | 5 |
+| far-04 | 1 | 1 | 0 | 79.43% | 6 |
+| far-02 | 0 | 1 | 0 | 78.69% | 7 |
+| far-00 | 0 | 0 | 0 | 78.55% | 8 |
 
 ### Key Finding: R-Only Wins
 
@@ -171,12 +171,12 @@ Individual signal contribution (vs baseline):
 - F: +0.87%
 - A: +0.14%
 
-**Ranking: R >> F > A**
+**Ranking: F < A < R**
 
 Adding F or A to R **hurts** performance due to gradient conflict:
-- R → RF: -0.64%
-- R → RA: -0.54%
-- R → RFA: -0.90%
+- R → FR: -0.64%
+- R → AR: -0.54%
+- R → FAR: -0.90%
 
 ### Conclusion
 

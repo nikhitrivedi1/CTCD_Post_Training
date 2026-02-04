@@ -93,7 +93,7 @@ Publication materials.
 |----------|-------------|
 | [README.md](paper/README.md) | Paper series overview and narrative arc |
 | [paper-1-ablation.md](paper/paper-1-ablation.md) | When Teachers Fail: Frozen vs Co-training |
-| [paper-2-rfa.md](paper/paper-2-rfa.md) | Simplicity Wins: R-only beats multi-signal |
+| [paper-2-far.md](paper/paper-2-far.md) | Simplicity Wins: R-only beats multi-signal |
 | [paper-3-translation.md](paper/paper-3-translation.md) | Cross-task validation on generation |
 
 ### Maintenance
@@ -120,7 +120,7 @@ Our key finding: frozen SFT teachers can **hurt** student performance because co
 | 4 | 00 | 80.94% | No teacher (CE only) |
 | 5 | 02 | 79.26% | Frozen SFT teacher |
 
-### RFA Factorial Design
+### FAR Factorial Design
 Testing Response (R), Feature (F), Attention (A) combinations. See [experiment-decision-tree.md](planning/experiment-decision-tree.md).
 
 ---

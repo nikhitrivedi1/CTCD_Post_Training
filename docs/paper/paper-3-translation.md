@@ -1,6 +1,6 @@
 # Do Classification Findings Transfer? Distillation for Autoregressive Translation
 
-Draft paper validating ablation and RFA findings on generation tasks.
+Draft paper validating ablation and FAR findings on generation tasks.
 
 ---
 
@@ -33,7 +33,7 @@ Based on classification findings:
 |------------|----------------------|----------------------|
 | **H1** | Frozen SFT < CE-only | Should hold (overconfident translations) |
 | **H2** | Co-train > Frozen | Should hold (adaptation matters) |
-| **H3** | R-only > RFA | May differ (per-token vs per-sample) |
+| **H3** | R-only > FAR | May differ (per-token vs per-sample) |
 
 ---
 
@@ -95,7 +95,7 @@ Linear projection: 2048 → 3072 for feature alignment.
 | 03 | Base | ✗ | 0.5 | Co-train base |
 | 04 | SFT | ✗ | 0.5 | Co-train SFT |
 
-### RFA Configurations
+### FAR Configurations
 
 Same 8 combinations as classification study.
 
@@ -111,11 +111,11 @@ Same 8 combinations as classification study.
 |------|--------|------|-------------|
 | ? | ? | ? | ? |
 
-### RFA Results
+### FAR Results
 
 *[Experiments pending]*
 
-| Rank | Config | R | F | A | BLEU |
+| Rank | Config | F | A | R | BLEU |
 |------|--------|---|---|---|------|
 | ? | ? | ? | ? | ? | ? |
 
@@ -131,7 +131,7 @@ Same 8 combinations as classification study.
 |---------|---------------|-------------|------------|
 | Frozen SFT hurts | ✓ | ? | ? |
 | Co-train wins | ✓ | ? | ? |
-| R-only > RFA | ✓ | ? | ? |
+| R-only > FAR | ✓ | ? | ? |
 
 ### Generation-Specific Observations
 
@@ -166,10 +166,10 @@ Same 8 combinations as classification study.
 ### Configurations Ready
 
 - [x] configs/translation/llama3p2-3b_llama3p2-1b/ablations/00-04
-- [x] configs/translation/llama3p2-3b_llama3p2-1b/rfa/00-07
+- [x] configs/translation/llama3p2-3b_llama3p2-1b/far/00-07
 
 ### To Run
 
 - [ ] Ablation experiments (5 configs)
-- [ ] RFA experiments (8 configs)
+- [ ] FAR experiments (8 configs)
 - [ ] Analysis and comparison with classification

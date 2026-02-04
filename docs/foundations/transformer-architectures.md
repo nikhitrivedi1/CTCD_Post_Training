@@ -868,4 +868,4 @@ T5 → GPT
 
 - [Tasks, Models, Datasets](tasks-models-datasets.md) - ML paradigms and task types
 - [Paper 1: Ablation Study](../paper/paper-1-ablation.md) - Distillation findings
-- [Paper 2: RFA Study](../paper/paper-2-rfa.md) - Multi-signal distillation
+- [Paper 2: FAR Study](../paper/paper-2-far.md) - Multi-signal distillation
