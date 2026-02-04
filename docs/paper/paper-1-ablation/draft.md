@@ -1,12 +1,12 @@
-# Revisiting Knowledge Distillation: When Teachers Fail and Why Co-Training Wins
+# When Teachers Fail: The Overconfident-Wrong Teacher Paradox in Knowledge Distillation
 
-Draft paper structure for the knowledge distillation research findings.
+**Status:** Data complete for MNLI, QQP, SST-2, CoLA
 
 ---
 
 ## Abstract
 
-Knowledge distillation (KD) transfers knowledge from large teacher models to smaller students. Standard practice freezes the teacher and trains the student to match soft labels. We present a systematic ablation study revealing that **a Stubborn Domain-Expert teacher (84.5% accuracy) produces worse students than an Adaptive Teacher starting at 33%**. The key is adaptability: co-training enables self-correction. Following the principle of "Strong Opinions, Loosely Held," adaptive teachers outperform stubborn experts. Teacher accuracy measures correctness frequency, not distillation quality—overconfident wrong predictions harm learning more than uncertain guidance.
+Knowledge distillation transfers knowledge from large teacher models to smaller students. Standard practice freezes a fine-tuned teacher and trains the student to match soft labels. We present a systematic ablation study across four GLUE tasks revealing that **frozen fine-tuned teachers can catastrophically harm student performance**—dropping F1 by 34% on QQP. The culprit: overconfident wrong predictions create gradient conflict with ground truth. Co-training provides a solution: teachers that adapt alongside students self-correct their errors. Our key insight: *a teacher's willingness to update matters more than its starting accuracy*.
 
 ---
 
@@ -18,193 +18,207 @@ Knowledge distillation (KD) transfers knowledge from large teacher models to sma
 3. When should teachers be frozen vs co-trained?
 
 ### Contributions
-1. Systematic 5-config ablation study isolating distillation components
-2. Discovery of the "overconfident-wrong teacher paradox"
+1. Systematic 5-config ablation study across 4 GLUE tasks
+2. Discovery of **catastrophic failure** with frozen fine-tuned teachers (QQP: -34% F1)
 3. Evidence that co-training provides robustness to teacher miscalibration
-4. Practical guidelines for distillation setup selection
+4. Identification of task-dependent effects (CoLA reversal)
 
 ---
 
-## 2. Background
-
-**Knowledge Distillation (Hinton et al., 2015)**
-- Loss: `L = α × L_KL + (1-α) × L_CE`
-- Soft labels via temperature-scaled softmax
-- Traditional: freeze teacher, train student only
-
-**Gap in Literature:**
-- Common belief: better teacher → better student
-- No systematic test of this assumption
-
----
-
-## 3. Experimental Setup
+## 2. Experimental Setup
 
 ### Models
 
-| Role | Model | Parameters | Base MNLI Accuracy |
-|------|-------|------------|-------------------|
-| Teacher (base) | bert-base-uncased | 110M | 36.07% (random) |
-| Teacher (SFT) | textattack/bert-base-uncased-MNLI | 110M | 84.57% |
-| Student | distilbert-base-uncased | 66M | 32.11% (random) |
+| Role | Model | Parameters |
+|------|-------|------------|
+| Teacher | bert-base-uncased | 110M |
+| Student | distilbert-base-uncased | 66M |
 
-### Ablation Matrix
+### Ablation Configs
 
 | Config | Teacher | Frozen | α | Description |
 |--------|---------|--------|---|-------------|
-| 00 | None | - | 0.0 | No distillation baseline |
-| 01 | Base | ✓ | 0.5 | Frozen untrained |
+| 00 | None | - | 0.0 | CE-only baseline |
+| 01 | Base | ✓ | 0.5 | Frozen pretrained |
 | 02 | SFT | ✓ | 0.5 | Frozen fine-tuned |
-| 03 | Base | ✗ | 0.5 | Co-train untrained |
+| 03 | Base | ✗ | 0.5 | Co-train pretrained |
 | 04 | SFT | ✗ | 0.5 | Co-train fine-tuned |
+
+### Tasks & Metrics
+
+| Task | Examples | Classes | Metric | Why This Metric |
+|------|----------|---------|--------|-----------------|
+| MNLI | 393k | 3 | Accuracy | Balanced classes |
+| QQP | 364k | 2 | F1 | Imbalanced (63% negative) |
+| SST-2 | 67k | 2 | Accuracy | Balanced sentiment |
+| CoLA | 8.5k | 2 | MCC | Highly imbalanced, correlation-based |
 
 ---
 
-## 4. Results
+## 3. Results
 
-### Main Results
+### MNLI (Accuracy)
 
-| Rank | Config | Val Accuracy | Description |
-|------|--------|--------------|-------------|
-| 1 | 04 | **82.62%** | Co-train SFT |
-| 2 | 03 | 82.06% | Co-train base |
-| 3 | 01 | 81.25% | Frozen base |
-| 4 | 00 | 80.94% | No teacher |
-| 5 | 02 | 79.26% | Frozen SFT |
+| Rank | Config | Accuracy | Δ vs CE-only |
+|------|--------|----------|--------------|
+| 1 | 04_cotrain_sft | **82.69%** | +1.06% |
+| 2 | 03_cotrain_base | 82.62% | +0.99% |
+| 3 | 00_ce-only | 81.63% | baseline |
+| 4 | 01_frozen_base | 81.58% | -0.05% |
+| 5 | 02_frozen_sft | 79.82% | **-1.81%** |
 
-### The Paradox
+**Finding:** Frozen SFT underperforms CE-only by 1.81%. Co-training recovers +2.87% over frozen SFT.
 
-**A Stubborn Domain-Expert produces worse students than an Adaptive Teacher with no prior knowledge:**
+### QQP (F1) ⚠️ CATASTROPHIC FAILURE
 
-| Comparison | Result | Insight |
-|------------|--------|---------|
-| Stubborn Domain-Expert vs Adaptive Teacher | 79.26% < 82.06% | Adaptability beats expertise |
-| Stubborn Domain-Expert vs No Teacher | 79.26% < 80.94% | Stubbornness hurts |
-| Adaptive vs Stubborn Domain-Expert | 82.62% > 79.26% | Same knowledge, different mindset |
+| Rank | Config | F1 | Δ vs CE-only |
+|------|--------|-----|--------------|
+| 1 | 03_cotrain_base | **90.61%** | +0.21% |
+| 2 | 04_cotrain_sft | 90.46% | +0.06% |
+| 3 | 01_frozen_base | 90.44% | +0.04% |
+| 4 | 00_ce-only | 90.40% | baseline |
+| 5 | 02_frozen_sft | **55.89%** | **-34.51%** |
 
-The critical variable is not initial accuracy—it's whether the teacher can update.
+**Finding:** Frozen SFT is catastrophic—barely above random (50%). Student cannot learn when teacher provides confident wrong guidance on this binary task.
+
+### SST-2 (Accuracy) — Saturated
+
+| Rank | Config | Accuracy | Δ vs CE-only |
+|------|--------|----------|--------------|
+| 1 | 01_frozen_base | 91.51% | +0.57% |
+| 1 | 03_cotrain_base | 91.51% | +0.57% |
+| 3 | 04_cotrain_sft | 91.28% | +0.34% |
+| 4 | 00_ce-only | 90.94% | baseline |
+| 4 | 02_frozen_sft | 90.94% | 0% |
+
+**Finding:** All methods within 0.6%. Task is saturated—DistilBERT already near ceiling.
+
+### CoLA (MCC) — Reversal
+
+| Rank | Config | MCC | Δ vs CE-only |
+|------|--------|-----|--------------|
+| 1 | 00_ce-only | **54.56%** | baseline |
+| 2 | 01_frozen_base | 53.39% | -1.17% |
+| 3 | 03_cotrain_base | 51.73% | -2.83% |
+| 4 | 02_frozen_sft | 51.45% | -3.11% |
+| 5 | 04_cotrain_sft | 49.67% | **-4.89%** |
+
+**Finding:** CE-only wins! Distillation hurts on this small, difficult task. Co-training makes it worse.
+
+---
+
+## 4. Cross-Task Summary
+
+| Task | Best Config | Worst Config | Frozen SFT Effect |
+|------|-------------|--------------|-------------------|
+| MNLI | cotrain_sft | frozen_sft | -1.81% (hurts) |
+| QQP | cotrain_base | frozen_sft | **-34.51%** (catastrophic) |
+| SST-2 | frozen_base / cotrain_base | - | 0% (neutral) |
+| CoLA | ce-only | cotrain_sft | -3.11% (hurts) |
+
+### Pattern Consistency
+
+| Finding | MNLI | QQP | SST-2 | CoLA |
+|---------|------|-----|-------|------|
+| Frozen SFT hurts | ✓ | ✓✓✓ | - | ✓ |
+| Co-train helps | ✓ | ✓ | - | ✗ |
+| CE-only competitive | ✓ | ✓ | ✓ | **Best** |
 
 ---
 
 ## 5. Analysis
 
-### Why Frozen SFT Underperforms
+### The Overconfident-Wrong Teacher Problem
 
-**The Overconfident-Wrong Teacher Problem:**
+When a frozen fine-tuned teacher makes a confident wrong prediction:
 
-| Teacher State | CE Gradient | KL Gradient | Result |
-|---------------|-------------|-------------|--------|
-| Correct + confident | → correct | → correct | Aligned |
-| Wrong + confident | → correct | → **wrong** | Conflict |
+| Gradient Source | Direction | Effect |
+|-----------------|-----------|--------|
+| CE Loss | → ground truth | Correct signal |
+| KL Loss | → teacher's prediction | **Wrong signal** |
 
-- CE pushes toward ground truth
-- KL pushes toward teacher's prediction
-- Confident wrong predictions create gradient conflict
+With α=0.5, half the gradient pushes toward wrong answer.
 
-**Untrained teacher (high entropy):** Noise doesn't fight CE
+**Why QQP is catastrophic:**
+- Binary classification = maximally wrong predictions (0% vs 100%)
+- In 3-class MNLI, wrong predictions still assign some probability to correct class
+- QQP's confident binary errors create irreconcilable gradient conflict
 
-**Trained teacher (low entropy):** Confident errors fight CE
+### Why Co-Training Helps
 
-### Why Co-Training Wins: Strong Opinions, Loosely Held
-
-The principle of "Strong Opinions, Loosely Held" explains our results. We identify four teacher tiers:
-
-| Tier | Config | Accuracy | Adaptive | Outcome |
-|------|--------|----------|----------|---------|
-| **Adaptive Domain-Expert** | 04 (co-train SFT) | 84.5% | Yes | **82.62%** |
-| **Adaptive Teacher** | 03 (co-train base) | 33% | Yes | 82.06% |
-| **No Teacher** | 00 (CE only) | - | - | 80.94% |
-| **Stubborn Domain-Expert** | 02 (frozen SFT) | 84.5% | No | 79.26% |
-
-**Stubborn Domain-Expert (02):** Worst outcome. Combines confidence with inflexibility—cannot update when wrong.
-
-**Adaptive Teacher (03):** Starts uncertain but learns alongside the student. Initial 33% accuracy doesn't matter—adaptability does.
-
-**Adaptive Domain-Expert (04):** Best outcome. Strong prior knowledge + willingness to update.
-
-Co-training self-correction mechanism:
+Self-correction mechanism:
 1. Teacher makes confident wrong prediction
-2. CE loss signals error to both teacher and student
-3. Teacher updates, soft labels improve
+2. CE loss signals error to both models
+3. Teacher updates, reducing confidence in wrong answer
 4. Student receives progressively better guidance
+
+### Why CoLA is Different
+
+1. **Small dataset** (8.5k) — not enough data for distillation benefit
+2. **Hard task** — linguistic acceptability is subtle
+3. **MCC metric** — penalizes calibration errors harshly
+4. **Teacher uncertainty** — BERT isn't dramatically better than DistilBERT on grammar
 
 ---
 
-## 6. Discussion
+## 6. Practical Guidelines
 
-### When to Use Frozen Distillation
-- Teacher is well-calibrated
-- Teacher distribution matches target data
+### When to Use Frozen Teachers
+- Teacher is well-calibrated on target distribution
+- Task is similar to teacher's training data
 - Compute budget is limited
 
 ### When to Use Co-Training
 - Teacher may have distribution mismatch
 - Teacher calibration is uncertain
-- Robustness is prioritized over efficiency
+- Binary classification tasks (higher risk)
 
-### Mitigations for Frozen Teachers
-- Higher temperature (T=4, 8) to soften overconfidence
-- Lower α (0.3) to trust CE more
-- Post-hoc calibration before distillation
+### When to Skip Distillation
+- Small datasets (< 10k examples)
+- Task where teacher isn't significantly better
+- Student already near ceiling
 
 ---
 
 ## 7. Conclusion
 
-1. **Adaptability > Accuracy:** A Stubborn Domain-Expert (84.5%) underperforms an Adaptive Teacher (33%)
-2. **Strong Opinions, Loosely Held:** Adaptive teachers outperform stubborn experts
-3. **Overconfidence Harms:** Confident wrong predictions fight ground truth gradients
-4. **Same Knowledge, Different Outcome:** The same SFT teacher improves +3.4% when made adaptive
-5. **Baselines Matter:** Without a No Teacher baseline, distillation's contribution is unmeasured
+1. **Frozen fine-tuned teachers can catastrophically fail** — QQP shows -34% F1
+2. **Co-training provides safety** — adaptive teachers self-correct errors
+3. **Binary tasks are higher risk** — maximally wrong confident predictions
+4. **Not all tasks benefit** — CoLA shows distillation can hurt
+5. **Baselines matter** — CE-only is often competitive
 
-Key insight: *A teacher's willingness to learn matters more than its starting knowledge.*
-
----
-
-## Cross-Task Validation: QQP
-
-### QQP Results
-
-| Rank | Config | Val Accuracy | Description |
-|------|--------|--------------|-------------|
-| 1 | 03 | **90.37%** | Co-train base |
-| 2 | 04 | 90.28% | Co-train SFT |
-| 3 | 01 | 90.19% | Frozen base |
-| 4 | 00 | 89.71% | No teacher |
-| 5 | 02 | 65.50% | Frozen SFT |
-
-### Cross-Task Consistency
-
-| Finding | MNLI | QQP | Consistent? |
-|---------|------|-----|-------------|
-| Co-train wins | ✓ | ✓ | **Yes** |
-| Frozen SFT worst | ✓ | ✓ | **Yes** |
-| CE-only competitive | ✓ | ✓ | **Yes** |
-| Frozen base > Frozen SFT | ✓ | ✓ | **Yes** |
-
-The pattern holds across both tasks, strengthening the generality of our findings.
+Key insight: *A teacher's willingness to update matters more than its starting accuracy.*
 
 ---
 
-## Experiment Status
+## Appendix: Training Dynamics
 
-- [x] MNLI ablations (00-04) - Complete
-- [x] QQP ablations (00-04) - Complete
-- [ ] Hyperparameter sensitivity (α, T sweeps)
-- [ ] Additional GLUE tasks (SST-2, CoLA)
+### MNLI Loss Trends
+
+| Config | Eval Loss Trend | Notes |
+|--------|-----------------|-------|
+| 00_ce-only | 0.57 → 0.55 ↘ | Stable |
+| 01_frozen_base | 0.72 → 0.65 ↘ | Higher due to KL |
+| 02_frozen_sft | 0.72 → 0.65 ↘ | Stable but low accuracy |
+| 03_cotrain_base | 0.54 → 0.52 ↘ | Best trajectory |
+| 04_cotrain_sft | 0.55 → 0.58 ↗ | Loss spike at end |
+
+### QQP: Frozen SFT Failure Mode
+
+| Metric | 02_frozen_sft | Others |
+|--------|---------------|--------|
+| Starting F1 | 51.96% | 86-88% |
+| Final F1 | 55.89% | 90%+ |
+| Starting Loss | 0.637 | 0.29-0.45 |
+| Training Loss | Stuck at 0.55 | Decreases |
+
+The student cannot escape the local minimum created by confident wrong teacher guidance.
 
 ---
 
-## Future Work
+## Data Sources
 
-1. **More tasks:** SST-2, CoLA, RTE from GLUE
-2. **Generation tasks:** Does this transfer to translation? (See Paper 3)
-3. **Hyperparameter sensitivity:** How robust are findings to α and T?
-4. **Mitigation strategies:** Can higher T or lower α rescue frozen SFT?
-
----
-
-## Related Papers
-
-- [Paper 2: FAR Study](paper-2-far.md) - Multi-signal distillation (F vs A vs R)
-- [Paper 3: Translation](paper-3-translation.md) - Cross-task transfer to generation
+- W&B Project: `karthik-ravi-1537-personal/Knowledge Distillation`
+- Raw data: [classification_ablations_2024-02-04.json](../../analysis/data/classification_ablations_2024-02-04.json)
+- Analysis: [classification_ablations.md](../../analysis/summaries/classification_ablations.md)
