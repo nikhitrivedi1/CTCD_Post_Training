@@ -8,16 +8,27 @@ Documentation and reference materials for the Knowledge Distillation project.
 
 ```
 docs/
-├── codebase-todo.md  # Code review items needing attention
 ├── foundations/      # Foundational concepts (tasks, models, datasets)
-├── archive/          # Original documentation (preserved)
 ├── guides/           # How-to & operational guides
 ├── gpu/              # GPU/hardware documentation
 ├── training/         # Training theory & dynamics
-├── research/         # Research findings & methodology
+├── research/         # Research questions & findings
+│   ├── framing/      # Hypotheses & study design
+│   ├── references/   # Literature & paper critiques
+│   └── findings/     # Raw experimental findings
+├── analysis/         # W&B data analysis
+│   ├── data/         # Downloaded metrics (CSV/JSON)
+│   ├── scripts/      # Fetch & analysis scripts
+│   ├── notebooks/    # Jupyter notebooks
+│   └── summaries/    # Markdown summaries
+├── paper/            # Publication materials
+│   ├── paper-0-framework/
+│   ├── paper-1-ablation/
+│   ├── paper-2-far/
+│   └── paper-3-translation/
 ├── planning/         # Direction & roadmaps
 ├── architecture/     # Technical reference
-└── paper/            # Publication materials
+└── archive/          # Original documentation (preserved)
 ```
 
 ---
@@ -30,7 +41,7 @@ Core concepts for understanding ML tasks, modalities, and knowledge distillation
 | Document | Description |
 |----------|-------------|
 | [tasks-models-datasets.md](foundations/tasks-models-datasets.md) | ML paradigms, task types, datasets, model selection |
-| [transformer-architectures.md](foundations/transformer-architectures.md) | Transformer internals: MLP, attention, encoder/decoder architectures |
+| [transformer-architectures.md](foundations/transformer-architectures.md) | Transformer internals: MLP, attention, encoder/decoder |
 
 ### Guides
 Operational how-to documentation.
@@ -63,10 +74,29 @@ Findings and methodology.
 
 | Document | Description |
 |----------|-------------|
-| [research-framing.md](research/research-framing.md) | Research questions and key findings |
-| [experimental-findings.md](research/experimental-findings.md) | Experiment results and analysis |
-| [ablation-study.md](research/ablation-study.md) | 5-config ablation study design |
-| [paper-evaluation.md](research/paper-evaluation.md) | Original paper analysis and critique |
+| [framing/research-framing.md](research/framing/research-framing.md) | Research questions and key findings |
+| [framing/ablation-study.md](research/framing/ablation-study.md) | 5-config ablation study design |
+| [findings/experimental-findings.md](research/findings/experimental-findings.md) | Experiment results and analysis |
+| [references/paper-evaluation.md](research/references/paper-evaluation.md) | Original paper analysis and critique |
+
+### Analysis
+W&B data analysis workflow.
+
+| Document | Description |
+|----------|-------------|
+| [README.md](analysis/README.md) | Analysis workflow overview |
+| [scripts/fetch_wandb.py](analysis/scripts/fetch_wandb.py) | Script to download W&B data |
+
+### Paper
+Publication materials.
+
+| Document | Description |
+|----------|-------------|
+| [README.md](paper/README.md) | Paper series overview and narrative arc |
+| [paper-0-framework/draft.md](paper/paper-0-framework/draft.md) | Unified Framework for KD Research |
+| [paper-1-ablation/draft.md](paper/paper-1-ablation/draft.md) | When Teachers Fail: Frozen vs Co-training |
+| [paper-2-far/draft.md](paper/paper-2-far/draft.md) | Simplicity Wins: R-only beats multi-signal |
+| [paper-3-translation/draft.md](paper/paper-3-translation/draft.md) | Cross-task validation on generation |
 
 ### Planning
 Direction and roadmaps.
@@ -84,31 +114,13 @@ Technical implementation reference.
 | Document | Description |
 |----------|-------------|
 | [architecture.md](architecture/architecture.md) | Framework modules and extension points |
-| [diffusion-distillation.md](architecture/diffusion-distillation.md) | Diffusion model distillation guide |
-
-### Paper
-Publication materials.
-
-| Document | Description |
-|----------|-------------|
-| [README.md](paper/README.md) | Paper series overview and narrative arc |
-| [paper-1-ablation.md](paper/paper-1-ablation.md) | When Teachers Fail: Frozen vs Co-training |
-| [paper-2-far.md](paper/paper-2-far.md) | Simplicity Wins: R-only beats multi-signal |
-| [paper-3-translation.md](paper/paper-3-translation.md) | Cross-task validation on generation |
-
-### Maintenance
-Code quality and maintenance tracking.
-
-| Document | Description |
-|----------|-------------|
-| [codebase-todo.md](codebase-todo.md) | Code review findings and items needing attention |
 
 ---
 
 ## Key Concepts
 
 ### The Overconfident-Wrong Teacher Paradox
-Our key finding: frozen SFT teachers can **hurt** student performance because confident wrong predictions fight ground truth gradients. See [research-framing.md](research/research-framing.md).
+Our key finding: frozen SFT teachers can **hurt** student performance because confident wrong predictions fight ground truth gradients. See [research-framing.md](research/framing/research-framing.md).
 
 ### Ablation Results (MNLI)
 
