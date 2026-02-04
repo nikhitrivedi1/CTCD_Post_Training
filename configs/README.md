@@ -20,11 +20,13 @@ configs/
 │   └── cola/                              # CoLA linguistic acceptability (5 ablations)
 └── translation/
     ├── base.yaml                          # Translation defaults (T=15, α=0.2, BLEU eval)
-    └── llama3p2-3b_llama3p2-1b/
-        ├── base.yaml                      # Model pair: Llama 3.2 3B→1B
-        ├── ablations/                     # Teacher/training ablations (5 configs)
-        ├── far/                           # FAR factorial study (8 configs)
-        └── staged/                        # Staged distillation (4 configs)
+    └── europarl/
+        ├── base.yaml                      # Europarl task passthrough
+        └── llama3p2-3b_llama3p2-1b/
+            ├── base.yaml                  # Model pair: Llama 3.2 3B→1B
+            ├── ablations/                 # Teacher/training ablations (5 configs)
+            ├── far/                       # FAR factorial study (8 configs)
+            └── staged/                    # Staged distillation (4 configs)
 ```
 
 ## Config Counts
@@ -106,6 +108,55 @@ Examples:
 - `translation_staged_02-a-r_20240115-1430Z`
 
 Timestamp: `YYYYMMDD-HHMMZ` (UTC)
+
+## Design Rationale
+
+**Path structure:** `configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml`
+
+Two structures were considered:
+
+1. `{task}/{model_pair}/{experiment}/` (current)
+2. `{task}/{experiment}/{model_pair}/`
+
+We chose (1) because it matches our research workflow:
+
+1. **Fix model pair** → Run all experiments on BERT→DistilBERT + MNLI
+2. **Validate findings** → Same model pair on other tasks (QQP, SST-2, CoLA)
+3. **Scale model pair** → Try larger models (LLaMA 3B→1B)
+
+The alternative (2) would be better if comparing model pairs within experiments, but our research fixes the model pair first and varies experiments.
+
+## Research Workflow
+
+### Phase 1: Ablation Study (Teacher Setup)
+Establish baseline with BERT→DistilBERT on MNLI:
+- `00_no-teacher_ce-only` - Student alone (lower bound)
+- `01_frozen_base-teacher_kl` - Frozen pretrained teacher
+- `02_frozen_sft-teacher_kl` - Frozen task-trained teacher
+- `03_cotrain_base-teacher_kl` - Co-training from pretrained
+- `04_cotrain_sft-teacher_kl` - Co-training from task-trained
+
+### Phase 2: FAR Factorial Study
+8 combinations of Feature/Attention/Response signals on best teacher setup.
+
+### Phase 3: Staged Distillation
+Progressive signal introduction:
+- `00_r` - Response only
+- `01_f-r` - Feature → Response
+- `02_a-r` - Attention → Response
+- `03_f-a-r` - Feature → Attention → Response
+
+### Phase 4: Cross-Task Validation
+Replicate ablations on QQP, SST-2, CoLA to verify findings generalize.
+
+### Phase 5: Model Pair Scaling
+Apply best practices to LLaMA 3B→1B on Europarl translation.
+
+## W&B Organization
+
+Runs are automatically grouped and tagged based on config path:
+- **Group:** `{task}_{experiment}` (e.g., `mnli_ablations`)
+- **Tags:** `[task, experiment, model_pair]` (e.g., `[mnli, ablations, bert_distilbert]`)
 
 ## Creating New Configs
 
