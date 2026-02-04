@@ -129,7 +129,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # (override=False means Colab/HPC env vars take precedence)
 from src.utils.environment import detect_environment, get_device
 
-from transformers import TrainingArguments, set_seed, DataCollatorForSeq2Seq
+from transformers import Trainer, TrainingArguments, set_seed, DataCollatorForSeq2Seq
 
 
 def set_reproducibility_seed(seed: int = 42):
@@ -740,8 +740,10 @@ def main():
         load_best_model_at_end=True,
         # Select best checkpoint by task metric (accuracy/f1/mcc), not loss.
         # Loss and metric can diverge; metric-based selection ensures we report the best achieved.
-        metric_for_best_model=f"eval_{get_primary_metric(task)}" if get_primary_metric(task) else "eval_loss",
-        greater_is_better=get_primary_metric(task) is not None,  # Higher is better for accuracy/f1/mcc/bleu
+        # For translation: use loss since BLEU is computed separately by callback (generation-based),
+        # not in eval metrics (which only has loss due to prediction_loss_only=True to avoid OOM).
+        metric_for_best_model="eval_loss" if num_labels is None else (f"eval_{get_primary_metric(task)}" if get_primary_metric(task) else "eval_loss"),
+        greater_is_better=False if num_labels is None else (get_primary_metric(task) is not None),  # Loss: lower is better; accuracy/f1/mcc: higher is better
         prediction_loss_only=num_labels is None,  # Seq2seq tasks: prevents OOM, metrics need generation anyway
         seed=args.seed,
         data_seed=args.seed,
@@ -749,15 +751,6 @@ def main():
 
     # Get compute metrics function
     compute_metrics = get_compute_metrics(task, tokenizer=tokenizer)
-
-    # Create loss strategy (supports single and combined RFA strategies)
-    logger.info("Setting up distillation loss strategy...")
-    loss_strategy, layer_mapping, projector = create_loss_strategy_from_config(
-        config["distillation"],
-        teacher,
-        student,
-        device,
-    )
 
     # Create data collator for seq2seq tasks (handles padding and label masking)
     data_collator = None
@@ -770,24 +763,46 @@ def main():
             pad_to_multiple_of=8 if device == "cuda" else None,  # Optimize for GPU
         )
 
-    # Initialize trainer with configurable loss strategy
-    trainer = DistillationTrainer(
-        teacher_model=teacher,
-        temperature=config["distillation"]["temperature"],
-        alpha=config["distillation"]["alpha"],
-        freeze_teacher=config["distillation"].get("freeze_teacher", True),
-        loss_strategy=loss_strategy,  # Use pre-built strategy (supports RFA combinations)
-        teacher_label_map=config["distillation"].get("teacher_label_map"),
-        layer_mapping=layer_mapping,
-        projector=projector,
-        model=student,
-        args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
-        tokenizer=tokenizer,
-        compute_metrics=compute_metrics,
-        data_collator=data_collator,  # Seq2seq: handles dynamic padding + label masking
-    )
+    # Choose trainer based on whether we have a teacher
+    if teacher is None:
+        # CE-only baseline: use standard HuggingFace Trainer
+        logger.info("No teacher - using standard Trainer (CE-only mode)")
+        trainer = Trainer(
+            model=student,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            tokenizer=tokenizer,
+            compute_metrics=compute_metrics,
+            data_collator=data_collator,
+        )
+    else:
+        # Distillation: create loss strategy and use DistillationTrainer
+        logger.info("Setting up distillation loss strategy...")
+        loss_strategy, layer_mapping, projector = create_loss_strategy_from_config(
+            config["distillation"],
+            teacher,
+            student,
+            device,
+        )
+
+        trainer = DistillationTrainer(
+            teacher_model=teacher,
+            temperature=config["distillation"]["temperature"],
+            alpha=config["distillation"]["alpha"],
+            freeze_teacher=config["distillation"].get("freeze_teacher", True),
+            loss_strategy=loss_strategy,
+            teacher_label_map=config["distillation"].get("teacher_label_map"),
+            layer_mapping=layer_mapping,
+            projector=projector,
+            model=student,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            tokenizer=tokenizer,
+            compute_metrics=compute_metrics,
+            data_collator=data_collator,
+        )
 
     # Add SLURM signal handler
     if env == "slurm":

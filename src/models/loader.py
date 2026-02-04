@@ -24,6 +24,8 @@ def load_teacher_student(config: dict, device: str, tokenizer: PreTrainedTokeniz
     - BERT/DistilBERT for classification (GLUE tasks)
     - Llama 3B/1B for translation (with optional LoRA)
 
+    If teacher is null/None in config, only loads student (for CE-only baselines).
+
     Args:
         config: Configuration dictionary
         device: Device to load models on ('cuda', 'mps', 'cpu')
@@ -31,13 +33,20 @@ def load_teacher_student(config: dict, device: str, tokenizer: PreTrainedTokeniz
         num_labels: Number of labels for classification (required for GLUE)
 
     Returns:
-        Tuple of (teacher_model, student_model)
+        Tuple of (teacher_model, student_model). teacher_model is None if not specified.
     """
-    teacher_name = config["model"]["teacher"]
+    teacher_name = config["model"].get("teacher")
     student_name = config["model"]["student"]
     task = config.get("data", {}).get("task", "").lower()
+    alpha = config.get("distillation", {}).get("alpha", 0.5)
 
-    # Determine model type
+    # Check if teacher is needed (skip if teacher is null OR alpha is 0)
+    if teacher_name is None or alpha == 0.0:
+        reason = "teacher is null" if teacher_name is None else "alpha=0.0"
+        logger.info(f"No teacher needed ({reason}) - loading student only (CE-only mode)")
+        return _load_student_only(config, device, tokenizer, num_labels)
+
+    # Determine model type based on teacher name or task
     if "llama" in teacher_name.lower() or is_translation_task(task):
         return _load_translation_models(config, device, tokenizer)
     else:
@@ -172,3 +181,86 @@ def _load_translation_models(config: dict, device: str, tokenizer: PreTrainedTok
         logger.info(f"Student: {student_name} ({sum(p.numel() for p in student.parameters()) / 1e6:.1f}M params)")
 
     return teacher, student
+
+
+def _load_student_only(config: dict, device: str, tokenizer: PreTrainedTokenizer, num_labels: int = None):
+    """
+    Load only the student model (no teacher) for CE-only baselines.
+
+    Args:
+        config: Configuration dictionary
+        device: Device to load models on
+        tokenizer: Tokenizer
+        num_labels: Number of labels for classification (None for translation)
+
+    Returns:
+        Tuple of (None, student)
+    """
+    student_name = config["model"]["student"]
+    student_init = config["model"].get("student_init", "pretrained")
+    task = config.get("data", {}).get("task", "").lower()
+    use_lora = config.get("training", {}).get("use_lora", False)
+
+    # Determine if this is a translation task
+    if is_translation_task(task):
+        # Load causal LM for translation
+        logger.info(f"Loading student (causal LM): {student_name}...")
+        if student_init == "fresh":
+            student_config = AutoConfig.from_pretrained(student_name)
+            student = AutoModelForCausalLM.from_config(student_config)
+            student = student.to(torch.float16 if device == "cuda" else torch.float32)
+            if device == "cuda":
+                student = student.to(device)
+        else:
+            student = AutoModelForCausalLM.from_pretrained(
+                student_name,
+                torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+                device_map=device if device == "cuda" else None
+            )
+
+        # Resize embeddings if needed
+        if len(tokenizer) > student.config.vocab_size:
+            logger.info(f"Resizing student embeddings: {student.config.vocab_size} -> {len(tokenizer)}")
+            student.resize_token_embeddings(len(tokenizer))
+
+        # Apply LoRA if specified
+        if use_lora:
+            logger.info("Applying LoRA to student model...")
+            lora_config = LoraConfig(
+                r=config["training"]["lora"]["r"],
+                lora_alpha=config["training"]["lora"]["alpha"],
+                target_modules=config["training"]["lora"]["target_modules"],
+                lora_dropout=config["training"]["lora"]["dropout"],
+                bias="none",
+                task_type="CAUSAL_LM"
+            )
+            student = get_peft_model(student, lora_config)
+            student.print_trainable_parameters()
+
+        if use_lora:
+            trainable = sum(p.numel() for p in student.parameters() if p.requires_grad)
+            total = sum(p.numel() for p in student.parameters())
+            logger.info(f"Student: {student_name} ({trainable / 1e6:.1f}M trainable / {total / 1e6:.1f}M total params)")
+        else:
+            logger.info(f"Student: {student_name} ({sum(p.numel() for p in student.parameters()) / 1e6:.1f}M params)")
+    else:
+        # Load classification model
+        logger.info(f"Loading student (classification): {student_name}...")
+        if student_init == "fresh":
+            student_config = AutoConfig.from_pretrained(student_name)
+            student_config.num_labels = num_labels
+            if "distilbert" in student_name.lower():
+                from transformers import DistilBertForSequenceClassification
+                student = DistilBertForSequenceClassification(student_config)
+            else:
+                student = AutoModelForSequenceClassification.from_config(student_config)
+            student = student.to(device)
+        else:
+            student = AutoModelForSequenceClassification.from_pretrained(
+                student_name,
+                num_labels=num_labels
+            ).to(device)
+
+        logger.info(f"Student: {student_name} ({sum(p.numel() for p in student.parameters()) / 1e6:.1f}M params)")
+
+    return None, student
