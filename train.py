@@ -300,7 +300,7 @@ def generate_config_id(config_path: str) -> str:
 
     Examples:
         configs/classification/mnli/bert_distilbert/staged/02_a-r.yaml → mnli_staged_02-a-r
-        configs/generation/translation/llama3p2-3b_llama3p2-1b/rfa/07_rfa.yaml → translation_rfa_07-rfa
+        configs/translation/europarl/llama3p2-3b_llama3p2-1b/far/07_far.yaml → europarl_far_07_far
 
     Full config path is stored in run_metadata for searchability.
     """
@@ -308,10 +308,10 @@ def generate_config_id(config_path: str) -> str:
     config_name = path.stem  # e.g., "02_a-r"
     parts = path.parts
 
-    # Expected: configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml
+    # configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml
     if len(parts) >= 6 and parts[0] == "configs":
-        task = parts[2]        # mnli, translation, sst2
-        experiment = parts[4]  # rfa, staged, ablations
+        task = parts[2]        # mnli, sst2, cola, qqp, europarl
+        experiment = parts[4]  # ablations, far, staged
         return f"{task}_{experiment}_{config_name}"
     elif len(parts) >= 3 and parts[0] == "configs":
         # Fallback: just task + config
@@ -319,6 +319,49 @@ def generate_config_id(config_path: str) -> str:
         return f"{task}_{config_name}"
 
     return config_name
+
+
+def generate_wandb_group(config_path: str) -> str:
+    """Generate W&B group name from config path.
+
+    Format: {task}_{experiment}
+
+    Examples:
+        configs/classification/mnli/bert_distilbert/staged/02_a-r.yaml → mnli_staged
+        configs/translation/europarl/llama3p2-3b_llama3p2-1b/far/07_far.yaml → europarl_far
+    """
+    path = Path(config_path)
+    parts = path.parts
+
+    # configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml
+    if len(parts) >= 6 and parts[0] == "configs":
+        task = parts[2]        # mnli, sst2, cola, qqp, europarl
+        experiment = parts[4]  # ablations, far, staged
+        return f"{task}_{experiment}"
+
+    return None
+
+
+def generate_wandb_tags(config_path: str) -> list:
+    """Generate W&B tags from config path.
+
+    Returns tags for: task, experiment, model_pair
+
+    Examples:
+        configs/classification/mnli/bert_distilbert/staged/02_a-r.yaml
+        → ["mnli", "staged", "bert_distilbert"]
+    """
+    path = Path(config_path)
+    parts = path.parts
+
+    # configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml
+    if len(parts) >= 6 and parts[0] == "configs":
+        task = parts[2]        # mnli, sst2, cola, qqp, europarl
+        model_pair = parts[3]  # bert_distilbert, llama3p2-3b_llama3p2-1b
+        experiment = parts[4]  # ablations, far, staged
+        return [task, experiment, model_pair]
+
+    return []
 
 
 def truncate_for_wandb(run_id: str, max_length: int = 64) -> str:
@@ -657,6 +700,13 @@ def main():
     os.environ.setdefault("WANDB_PROJECT", wandb_project)
     os.environ["WANDB_RUN_ID"] = wandb_run_id
     os.environ["WANDB_RESUME"] = "allow"
+    if args.config:
+        wandb_group = generate_wandb_group(args.config)
+        if wandb_group:
+            os.environ["WANDB_RUN_GROUP"] = wandb_group
+        wandb_tags = generate_wandb_tags(args.config)
+        if wandb_tags:
+            os.environ["WANDB_TAGS"] = ",".join(wandb_tags)
 
     report_to = config["logging"]["report_to"]
     if os.environ.get("WANDB_MODE") == "disabled":

@@ -1,0 +1,2 @@
+# Europarl task base - passthrough to translation defaults
+inherit: ../base.yaml
