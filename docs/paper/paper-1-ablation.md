@@ -206,5 +206,5 @@ The pattern holds across both tasks, strengthening the generality of our finding
 
 ## Related Papers
 
-- [Paper 2: RFA Study](paper-2-rfa.md) - Multi-signal distillation (R vs F vs A)
+- [Paper 2: FAR Study](paper-2-far.md) - Multi-signal distillation (F vs A vs R)
 - [Paper 3: Translation](paper-3-translation.md) - Cross-task transfer to generation

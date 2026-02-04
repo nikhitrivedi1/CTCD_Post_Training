@@ -48,7 +48,7 @@ A systematic 2³ factorial study showing:
 
 Papers introducing Feature and Attention distillation show gains over baselines, but:
 - Baselines often lack proper R-only comparison
-- Combinations (RF, RA, FA, RFA) rarely tested systematically
+- Combinations (FR, AR, FA, FAR) rarely tested systematically
 - No factorial study isolating each signal's contribution
 
 ---
