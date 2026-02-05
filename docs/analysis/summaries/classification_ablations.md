@@ -127,9 +127,65 @@
 
 ---
 
+## FAR Matrix (MNLI only)
+
+The FAR study tests all combinations of Feature (F), Attention (A), and Response (R) distillation signals.
+
+| Config | Components | Accuracy | Δ vs CE-only |
+|--------|------------|----------|--------------|
+| 06_ar | A + R | **81.73%** | +1.41% |
+| 03_r-only | R only | 81.70% | +1.38% |
+| 05_fr | F + R | 81.45% | +1.13% |
+| 07_far | F + A + R | 81.43% | +1.11% |
+| 01_f-only | F only | 80.82% | +0.50% |
+| 04_fa | F + A | 80.58% | +0.26% |
+| 00_ce-only | None | 80.32% | baseline |
+| 02_a-only | A only | 80.19% | -0.13% |
+
+### FAR Key Findings
+
+1. **R (Response/KL) is most valuable** - R-only achieves 81.70%, nearly as good as any combination
+2. **A (Attention) alone hurts** - A-only is the only config worse than CE-only (-0.13%)
+3. **Adding F or A to R provides diminishing returns** - AR (81.73%) barely beats R (81.70%)
+4. **Complexity doesn't help** - FAR (81.43%) < R-only (81.70%)
+
+### Component Contribution Analysis
+
+| Component Added | Base | Result | Delta |
+|-----------------|------|--------|-------|
+| +R to CE-only | 80.32% | 81.70% | **+1.38%** |
+| +F to CE-only | 80.32% | 80.82% | +0.50% |
+| +A to CE-only | 80.32% | 80.19% | -0.13% |
+| +A to R | 81.70% | 81.73% | +0.03% |
+| +F to R | 81.70% | 81.45% | -0.25% |
+| +A to F | 80.82% | 80.58% | -0.24% |
+
+---
+
+## Staged Distillation (MNLI only)
+
+Tests progressive training: start with one signal, transition to another.
+
+| Config | Stages | Accuracy | Δ vs R-only |
+|--------|--------|----------|-------------|
+| 00_r | R only | **81.68%** | baseline |
+| 01_f-r | F → R | 81.52% | -0.16% |
+| 02_a-r | A → R | 80.77% | -0.91% |
+| 03_f-a-r | F → A → R | 80.18% | **-1.50%** |
+
+### Staged Key Findings
+
+1. **More stages = worse results** - Simple R-only beats all staged approaches
+2. **A stage is harmful** - Anything with A stage performs worse
+3. **Staging adds complexity without benefit** - No evidence that curriculum helps
+
+---
+
 ## Implications for Paper 1
 
 1. **Title validated:** "When Teachers Fail" - frozen SFT teachers DO fail
 2. **Main finding confirmed:** Frozen SFT < CE-only on MNLI and catastrophically on QQP
 3. **Co-training story:** Generally beneficial, provides robustness
 4. **Nuance needed:** CoLA shows opposite pattern - may need discussion of task difficulty
+5. **FAR insight:** Response (KL) is the only signal that matters; F and A add noise
+6. **Staging fails:** Curriculum-style distillation doesn't help on MNLI
