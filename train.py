@@ -585,6 +585,31 @@ def load_run_metadata(output_dir: Path) -> dict | None:
     return None
 
 
+def delete_wandb_run(run_id: str, project: str = None) -> bool:
+    """Delete a W&B run by ID.
+
+    Args:
+        run_id: The W&B run ID to delete
+        project: W&B project name (defaults to WANDB_PROJECT env var)
+
+    Returns:
+        True if deleted, False if not found or error
+    """
+    try:
+        import wandb
+        api = wandb.Api()
+        project = project or os.environ.get("WANDB_PROJECT", "Knowledge Distillation")
+        entity = os.environ.get("WANDB_ENTITY") or api.default_entity
+        run_path = f"{entity}/{project}/{run_id}"
+        run = api.run(run_path)
+        run.delete()
+        logger.info(f"Deleted W&B run: {run_path}")
+        return True
+    except Exception as e:
+        logger.info(f"W&B run not deleted ({run_id}): {e}")
+        return False
+
+
 def save_run_metadata(output_dir: Path, metadata: dict):
     """Save run metadata to output directory."""
     metadata_path = output_dir / "run_metadata.json"
@@ -643,6 +668,10 @@ def main():
             if args.force:
                 # Force overwrite: delete existing and start fresh
                 logger.info(f"--force specified. Deleting existing run: {output_dir}")
+                # Delete W&B run if it exists (before deleting metadata)
+                old_metadata = load_run_metadata(output_dir)
+                if old_metadata and old_metadata.get("wandb_run_id"):
+                    delete_wandb_run(old_metadata["wandb_run_id"])
                 shutil.rmtree(output_dir)
                 if args.config is None:
                     sys.exit(
