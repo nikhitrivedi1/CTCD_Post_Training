@@ -13,7 +13,7 @@ model:
 distillation:
   # temperature and alpha inherited from base.yaml
   freeze_teacher: false   # Adaptive Domain-Expert
-  loss_type: feature_mse
+  loss_type: feature_cosine
   layer_mapping:
     type: uniform         # Maps 28 teacher layers → 16 student layers
   projection:

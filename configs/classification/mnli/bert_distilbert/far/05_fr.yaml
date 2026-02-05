@@ -33,7 +33,7 @@ distillation:
   loss_strategies:
     - type: response_kl
       weight: 1.0
-    - type: feature_mse
+    - type: feature_cosine
       weight: 1.0
   layer_mapping:
     type: uniform

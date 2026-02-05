@@ -61,6 +61,8 @@ class LinearProjection(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Project input to output dimension."""
+        # Cast input to match projector dtype (handles fp16 training)
+        x = x.to(self.proj.weight.dtype)
         return self.proj(x)
 
 
@@ -113,6 +115,8 @@ class MLPProjection(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Project input through MLP."""
+        # Cast input to match projector dtype (handles fp16 training)
+        x = x.to(self.proj[0].weight.dtype)
         return self.proj(x)
 
 

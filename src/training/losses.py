@@ -466,6 +466,10 @@ class FeatureLossStrategy(DistillationLossStrategy):
             if projector is not None:
                 s_hidden = projector(s_hidden)
 
+            # Ensure same dtype (projector may output fp32 while t_hidden is fp16)
+            if s_hidden.dtype != t_hidden.dtype:
+                t_hidden = t_hidden.to(s_hidden.dtype)
+
             # Normalize if requested
             if self.normalize:
                 t_hidden = (t_hidden - t_hidden.mean()) / (t_hidden.std() + 1e-8)
@@ -559,6 +563,10 @@ class CosineFeatureLoss(DistillationLossStrategy):
 
             if projector is not None:
                 s_hidden = projector(s_hidden)
+
+            # Ensure same dtype (projector may output fp32 while t_hidden is fp16)
+            if s_hidden.dtype != t_hidden.dtype:
+                t_hidden = t_hidden.to(s_hidden.dtype)
 
             # Cosine similarity: 1 - cos(s, t) as loss (0 = identical direction)
             cos_sim = F.cosine_similarity(s_hidden, t_hidden, dim=-1)

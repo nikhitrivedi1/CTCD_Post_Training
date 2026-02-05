@@ -32,7 +32,7 @@ distillation:
   freeze_teacher: false
   teacher_label_map: [1, 2, 0]  # TextAttack to HuggingFace label mapping
   loss_strategies:
-    - type: feature_mse
+    - type: feature_cosine
       weight: 1.0
     - type: attention_kl
       weight: 1.0
