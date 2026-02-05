@@ -1145,6 +1145,9 @@ def main():
 
     logger.info("=" * 60)
     logger.info("Training complete!")
+    slurm_job_id = os.environ.get("SLURM_JOB_ID")
+    if slurm_job_id:
+        logger.info(f"SLURM Job ID: {slurm_job_id}")
     logger.info("=" * 60)
 
 
