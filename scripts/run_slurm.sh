@@ -236,18 +236,24 @@ except:
                 echo ""
                 echo "========================================="
                 echo "Training complete!"
+                echo "SLURM Job: $SLURM_JOB_ID"
+                echo "Node: $SLURM_NODELIST"
                 echo "========================================="
             fi
         else
             echo ""
             echo "========================================="
             echo "Training complete! (no state file)"
+            echo "SLURM Job: $SLURM_JOB_ID"
+            echo "Node: $SLURM_NODELIST"
             echo "========================================="
         fi
     else
         echo ""
         echo "========================================="
         echo "Training complete! (no job entry found)"
+        echo "SLURM Job: $SLURM_JOB_ID"
+        echo "Node: $SLURM_NODELIST"
         echo "========================================="
     fi
 else
@@ -255,11 +261,15 @@ else
         echo ""
         echo "========================================="
         echo "Training complete!"
+        echo "SLURM Job: $SLURM_JOB_ID"
+        echo "Node: $SLURM_NODELIST"
         echo "========================================="
     else
         echo ""
         echo "========================================="
         echo "Job failed with exit code: $EXIT_CODE"
+        echo "SLURM Job: $SLURM_JOB_ID"
+        echo "Node: $SLURM_NODELIST"
         echo "========================================="
     fi
 fi

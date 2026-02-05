@@ -184,3 +184,70 @@ Even with the best teacher setup (Adaptive Domain-Expert):
 - **Use R-only (KL divergence)** - simpler and best performing
 - Feature and Attention signals cause gradient conflict when combined
 - Multi-signal distillation needs sophisticated weighting, not equal 1:1:1
+
+---
+
+## Translation Experiments (Europarl EN→FR)
+
+### Model Setup
+
+| Role | Model | Parameters |
+|------|-------|------------|
+| Teacher | meta-llama/Llama-3.2-3B | 3B |
+| Student | meta-llama/Llama-3.2-1B-Instruct | 1.2B |
+| Fine-tuning | LoRA (r=16, α=16) | ~0.6% trainable |
+
+### Ablation Results
+
+| Config | BLEU | eval/loss | Status |
+|--------|------|-----------|--------|
+| 00 (CE-only) | 8.03 | 1.33 | ✓ Baseline |
+| 01 (frozen_base) | 0.74 | 1.93 | ⚠️ Poor |
+| 02 (frozen_sft) | **14.65** | 1.61 | ✓ Best |
+| 03 (cotrain_base) | 0.003 | **NaN** | ✗ Collapsed |
+| 04 (cotrain_sft) | 0.001 | **NaN** | ✗ Collapsed |
+
+### Co-training Instability in Larger Models
+
+**Critical finding:** Co-training collapses for Llama translation while it works for BERT classification.
+
+#### Failure Analysis (Job 4151668 - cotrain_base)
+
+| Epoch | teacher_ce_loss | kl_raw | Status |
+|-------|-----------------|--------|--------|
+| 0.0 | ~2.5 | 200-600 | Normal |
+| 1.13 | **536** | **inf** | Exploded |
+| 1.13+ | NaN | NaN | Collapsed |
+
+**Sequence of failure:**
+1. Teacher LoRA weights destabilize during co-training
+2. Teacher CE loss explodes (2.5 → 536)
+3. Teacher outputs become garbage
+4. KL divergence → infinity (student can't match garbage)
+5. All losses → NaN, training collapses
+
+#### Why Classification Works, Translation Fails
+
+| Factor | BERT Classification | Llama Translation |
+|--------|--------------------|--------------------|
+| Model size | 110M params | 3B params |
+| Output space | 2-3 classes | 128K vocab × seq_len |
+| Architecture | Encoder | Decoder (autoregressive) |
+| Fine-tuning | Full | LoRA |
+| KL magnitude | ~1-5 | **200-600** |
+| Co-train | ✓ Stable | ✗ Unstable |
+
+**Root cause:** The KL divergence in translation is 100x larger than classification due to the massive output space. Combined with LoRA's limited capacity and autoregressive error compounding, co-training gradients destabilize the teacher.
+
+### Recommendations for Translation
+
+1. **Use frozen teacher** — stable signal, no explosion risk
+2. **Frozen SFT > Frozen Base** — unlike classification, SFT teacher helps
+3. **Skip co-training** — instability outweighs potential benefits
+4. **Consider lower α** — reduce KL influence if attempting co-training
+
+### Open Questions
+
+- Would separate learning rates (teacher << student) stabilize co-training?
+- Does gradient clipping on teacher LoRA help?
+- Is this specific to LoRA, or would full fine-tuning also collapse?

@@ -166,6 +166,116 @@ ece = mean(|confidence - accuracy|) per confidence bin
 
 ---
 
+## 5a. When Does Stubborn Domain-Expert Hurt?
+
+The "Stubborn Domain-Expert" (frozen SFT teacher) doesn't always fail. Understanding **when** it hurts is critical.
+
+### Naming Convention
+
+| Name | Config | Description |
+|------|--------|-------------|
+| **Adaptive Domain-Expert** | Co-train SFT (04) | Teacher updates during training |
+| **Stubborn Domain-Expert** | Frozen SFT (02) | Teacher fixed, can't correct errors |
+| **Adaptive Generalist** | Co-train Base (03) | Untrained teacher learns with student |
+| **Stubborn Generalist** | Frozen Base (01) | Untrained teacher, random soft labels |
+
+### Performance Delta: Stubborn vs Adaptive Domain-Expert
+
+| Task | Adaptive (04) | Stubborn (02) | Delta | Verdict |
+|------|---------------|---------------|-------|---------|
+| MNLI | 82.7% | 79.3% | **-3.4%** | Hurts |
+| QQP | 90.5% | 55.9% | **-34.6%** | Catastrophic |
+| SST-2 | 91.3% | 90.9% | **-0.4%** | Neutral |
+| CoLA | 49.7% | 51.5% | **+1.8%** | Helps (!) |
+
+### The Critical Question: How Wrong Can Teacher Be?
+
+**Key insight:** It's not just *how often* the teacher is wrong, but *how confident* when wrong.
+
+#### QQP Teacher Analysis (500 validation samples)
+
+| Metric | Value | Impact |
+|--------|-------|--------|
+| Accuracy | 91.6% | 8.4% wrong |
+| Avg confidence when WRONG | **82.1%** | High gradient conflict |
+| Cases >90% confident but wrong | 20 | Irrecoverable |
+| Cases >80% confident but wrong | 26 | Severe conflict |
+
+**The 8% Problem:** Only 8.4% of predictions are wrong, but they're wrong with 82% confidence. This creates persistent gradient conflict the student can never escape.
+
+### Threshold Analysis: When Stubborn Fails
+
+| Factor | Safe Zone | Danger Zone | Catastrophic |
+|--------|-----------|-------------|--------------|
+| Error rate | <5% | 5-10% | >10% |
+| Confidence when wrong | <70% | 70-85% | >85% |
+| Class count | 3+ | 2 | 2 + imbalanced |
+| Class balance | >45% minority | 30-45% | <30% minority |
+
+### Risk Score Formula
+
+```python
+def stubborn_risk_score(error_rate, wrong_confidence, num_classes, minority_pct):
+    """
+    Score 0-100. Higher = more dangerous to use frozen SFT.
+    >50 = use co-training instead
+    >75 = co-training mandatory
+    """
+    # Error rate factor (0-25)
+    error_score = min(error_rate * 250, 25)  # 10% error = 25 points
+
+    # Confidence-when-wrong factor (0-25)
+    conf_score = max(0, (wrong_confidence - 0.5) * 50)  # 80% conf = 15 points
+
+    # Binary penalty (0-25)
+    binary_score = 25 if num_classes == 2 else 0
+
+    # Imbalance factor (0-25)
+    imbalance_score = max(0, (0.5 - minority_pct) * 50)  # 30% minority = 10 points
+
+    return error_score + conf_score + binary_score + imbalance_score
+```
+
+### Applying to Our Tasks
+
+| Task | Error | Conf | Classes | Minority | Score | Verdict |
+|------|-------|------|---------|----------|-------|---------|
+| MNLI | 16% | ~75% | 3 | 33% | **35** | Stubborn OK |
+| QQP | 8% | 82% | 2 | 37% | **63** | Use Adaptive |
+| SST-2 | 7% | ~70% | 2 | 44% | **42** | Borderline |
+| CoLA | 40% | ~60% | 2 | 30% | **55** | Skip KD |
+
+**Insight:** QQP scores high (63) despite low error rate (8%) because of:
+- High confidence when wrong (82%)
+- Binary classification (no partial credit)
+- Class imbalance (37% duplicates)
+
+### Decision Rule
+
+```
+IF stubborn_risk_score > 50:
+    Use Adaptive Domain-Expert (co-train SFT)
+ELSE IF stubborn_risk_score > 75:
+    Co-training MANDATORY
+ELSE:
+    Stubborn Domain-Expert acceptable
+```
+
+### Why Adaptive Wins on High-Risk Tasks
+
+The Adaptive Domain-Expert (co-train SFT) self-corrects:
+
+| Epoch | Teacher Confidence on Wrong Examples |
+|-------|--------------------------------------|
+| 0 | 82% (overconfident) |
+| 1 | 65% (learning from errors) |
+| 2 | 45% (appropriately uncertain) |
+| 3 | 30% (defers to ground truth) |
+
+When the teacher sees it's wrong via CE loss, it reduces confidence on those examples. The KL term weakens, allowing the student to follow ground truth.
+
+---
+
 ## 6. KD Scope Framework
 
 ### When KD Helps
