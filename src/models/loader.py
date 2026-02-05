@@ -105,6 +105,27 @@ def _load_classification_models(config: dict, device: str, tokenizer: PreTrained
     return teacher, student
 
 
+def _needs_attention_outputs(config: dict) -> bool:
+    """Check if config requires attention outputs for distillation."""
+    distill = config.get("distillation", {})
+
+    # Check loss_type
+    if "attention" in distill.get("loss_type", ""):
+        return True
+
+    # Check components (composite loss)
+    for comp in distill.get("components", []):
+        if "attention" in comp.get("type", ""):
+            return True
+
+    # Check stages (staged distillation)
+    for stage in distill.get("stages", []):
+        if "attention" in stage.get("strategy", ""):
+            return True
+
+    return False
+
+
 def _load_translation_models(config: dict, device: str, tokenizer: PreTrainedTokenizer):
     """
     Load Llama 3B/1B models for translation with LoRA support.
@@ -122,12 +143,18 @@ def _load_translation_models(config: dict, device: str, tokenizer: PreTrainedTok
     student_init = config["model"].get("student_init", "pretrained")
     use_lora = config.get("training", {}).get("use_lora", False)
 
+    # SDPA doesn't support output_attentions - use eager attention for attention distillation
+    use_eager_attention = _needs_attention_outputs(config)
+    if use_eager_attention:
+        logger.info("Using eager attention (required for attention distillation)")
+
     # Load teacher (pretrained, fp16)
     logger.info(f"Loading teacher: {teacher_name}...")
     teacher = AutoModelForCausalLM.from_pretrained(
         teacher_name,
         torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-        device_map=device if device == "cuda" else None
+        device_map=device if device == "cuda" else None,
+        attn_implementation="eager" if use_eager_attention else None,
     )
 
     # Resize embeddings if custom tokens added
@@ -142,6 +169,8 @@ def _load_translation_models(config: dict, device: str, tokenizer: PreTrainedTok
     if student_init == "fresh":
         # Fresh initialization
         student_config = AutoConfig.from_pretrained(student_name)
+        if use_eager_attention:
+            student_config._attn_implementation = "eager"
         student = AutoModelForCausalLM.from_config(student_config)
         student = student.to(torch.float16 if device == "cuda" else torch.float32)
         if device == "cuda":
@@ -150,7 +179,8 @@ def _load_translation_models(config: dict, device: str, tokenizer: PreTrainedTok
         student = AutoModelForCausalLM.from_pretrained(
             student_name,
             torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-            device_map=device if device == "cuda" else None
+            device_map=device if device == "cuda" else None,
+            attn_implementation="eager" if use_eager_attention else None,
         )
 
     # Resize student embeddings

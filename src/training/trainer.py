@@ -344,9 +344,9 @@ class DistillationTrainer(Trainer):
                     hidden_dim=projection_config.get("hidden_dim"),
                     activation=projection_config.get("activation", "relu"),
                 )
-                # Move projector to same device as student model
+                # Move projector to same device and dtype as student model
                 if hasattr(student_model, "device"):
-                    projector = projector.to(student_model.device)
+                    projector = projector.to(device=student_model.device, dtype=student_model.dtype)
 
         return trainer_kwargs, layer_mapping, projector
 

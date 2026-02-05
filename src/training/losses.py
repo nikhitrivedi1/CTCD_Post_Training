@@ -29,6 +29,12 @@ def compute_kl_divergence(
     Returns:
         KL divergence scaled by T² to maintain gradient magnitude
     """
+    # Compute in fp32 to avoid underflow with high temperature (e.g., T=15)
+    # fp16 softmax(logits/T) can underflow when T is large
+    original_dtype = student.dtype
+    student = student.float()
+    teacher = teacher.float()
+
     if input_is_probs:
         # Convert probabilities to logits first
         eps = 1e-10
@@ -38,11 +44,13 @@ def compute_kl_divergence(
     student_log = F.log_softmax(student / temperature, dim=-1)
     teacher_soft = F.softmax(teacher / temperature, dim=-1)
 
-    return F.kl_div(
+    kl = F.kl_div(
         student_log,
         teacher_soft,
         reduction='batchmean'
     ) * (temperature ** 2)
+
+    return kl.to(original_dtype)
 
 
 @dataclass

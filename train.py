@@ -10,6 +10,7 @@ import sys
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Dict
 
 import yaml
 
@@ -293,6 +294,97 @@ def create_loss_strategy_from_config(
     return loss_strategy, layer_mapping, projector
 
 
+def evaluate_model_standalone(
+    model: torch.nn.Module,
+    eval_dataset,
+    tokenizer,
+    compute_metrics,
+    data_collator=None,
+    batch_size: int = 32,
+    device: str = None,
+    loss_only: bool = False,
+) -> Dict[str, float]:
+    """
+    Evaluate a model standalone (without the full Trainer overhead).
+
+    Uses a minimal Trainer just for evaluation. This is used to get
+    pre-training and post-training metrics for both teacher and student.
+
+    Args:
+        model: Model to evaluate
+        eval_dataset: Evaluation dataset
+        tokenizer: Tokenizer for the model
+        compute_metrics: Metrics computation function
+        data_collator: Optional data collator
+        batch_size: Batch size for evaluation
+        device: Device string for MPS compatibility
+        loss_only: If True, only compute loss (faster for seq2seq tasks)
+
+    Returns:
+        Dictionary of metric name -> value
+    """
+    from transformers import Trainer, TrainingArguments
+
+    # Minimal training args just for evaluation
+    eval_args = TrainingArguments(
+        output_dir="/tmp/eval_temp",
+        per_device_eval_batch_size=batch_size,
+        report_to="none",  # Don't log to W&B during standalone eval
+        disable_tqdm=True,
+        dataloader_pin_memory=device == "cuda",  # Disable on MPS
+        prediction_loss_only=loss_only,  # Maps to HF's prediction_loss_only
+    )
+
+    eval_trainer = Trainer(
+        model=model,
+        args=eval_args,
+        eval_dataset=eval_dataset,
+        tokenizer=tokenizer,
+        compute_metrics=compute_metrics,
+        data_collator=data_collator,
+    )
+
+    # Run evaluation
+    metrics = eval_trainer.evaluate()
+
+    # Clean up prefix and return
+    return {k.replace("eval_", ""): v for k, v in metrics.items()}
+
+
+def log_pre_post_metrics(
+    metrics: Dict[str, float],
+    model_name: str,
+    phase: str,
+    to_wandb: bool = True,
+) -> None:
+    """
+    Log pre/post training metrics with proper prefixes.
+
+    Args:
+        metrics: Dictionary of metrics
+        model_name: "teacher" or "student"
+        phase: "pre" or "post"
+        to_wandb: Whether to log to W&B
+    """
+    prefix = f"{model_name}/{phase}"
+
+    # Log to console
+    logger.info(f"  {model_name.capitalize()} ({phase}-run):")
+    for name, value in metrics.items():
+        if isinstance(value, float):
+            logger.info(f"    {name}: {value:.4f}")
+
+    # Log to W&B
+    if to_wandb:
+        try:
+            import wandb
+            if wandb.run:
+                wandb_metrics = {f"{prefix}/{k}": v for k, v in metrics.items()}
+                wandb.log(wandb_metrics, commit=False)
+        except Exception as e:
+            logger.debug(f"W&B logging failed: {e}")
+
+
 def generate_config_id(config_path: str) -> str:
     """Generate a config identifier from path.
 
@@ -308,12 +400,19 @@ def generate_config_id(config_path: str) -> str:
     config_name = path.stem  # e.g., "02_a-r"
     parts = path.parts
 
+    # Find 'configs' in path (handles absolute paths)
+    try:
+        configs_idx = parts.index("configs")
+        parts = parts[configs_idx:]
+    except ValueError:
+        return config_name
+
     # configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml
-    if len(parts) >= 6 and parts[0] == "configs":
+    if len(parts) >= 6:
         task = parts[2]        # mnli, sst2, cola, qqp, europarl
         experiment = parts[4]  # ablations, far, staged
         return f"{task}_{experiment}_{config_name}"
-    elif len(parts) >= 3 and parts[0] == "configs":
+    elif len(parts) >= 3:
         # Fallback: just task + config
         task = parts[2] if len(parts) > 2 else parts[1]
         return f"{task}_{config_name}"
@@ -326,6 +425,8 @@ def generate_wandb_group(config_path: str) -> str:
 
     Format: {task}_{experiment}
 
+    Path structure: configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml
+
     Examples:
         configs/classification/mnli/bert_distilbert/staged/02_a-r.yaml → mnli_staged
         configs/translation/europarl/llama3p2-3b_llama3p2-1b/far/07_far.yaml → europarl_far
@@ -333,8 +434,15 @@ def generate_wandb_group(config_path: str) -> str:
     path = Path(config_path)
     parts = path.parts
 
+    # Find 'configs' in path (handles absolute paths)
+    try:
+        configs_idx = parts.index("configs")
+        parts = parts[configs_idx:]  # Slice from 'configs' onward
+    except ValueError:
+        return None
+
     # configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml
-    if len(parts) >= 6 and parts[0] == "configs":
+    if len(parts) >= 6:
         task = parts[2]        # mnli, sst2, cola, qqp, europarl
         experiment = parts[4]  # ablations, far, staged
         return f"{task}_{experiment}"
@@ -347,6 +455,8 @@ def generate_wandb_tags(config_path: str) -> list:
 
     Returns tags for: task, experiment, model_pair
 
+    Path structure: configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml
+
     Examples:
         configs/classification/mnli/bert_distilbert/staged/02_a-r.yaml
         → ["mnli", "staged", "bert_distilbert"]
@@ -354,8 +464,15 @@ def generate_wandb_tags(config_path: str) -> list:
     path = Path(config_path)
     parts = path.parts
 
+    # Find 'configs' in path (handles absolute paths)
+    try:
+        configs_idx = parts.index("configs")
+        parts = parts[configs_idx:]  # Slice from 'configs' onward
+    except ValueError:
+        return []
+
     # configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml
-    if len(parts) >= 6 and parts[0] == "configs":
+    if len(parts) >= 6:
         task = parts[2]        # mnli, sst2, cola, qqp, europarl
         model_pair = parts[3]  # bert_distilbert, llama3p2-3b_llama3p2-1b
         experiment = parts[4]  # ablations, far, staged
@@ -700,11 +817,14 @@ def main():
     os.environ.setdefault("WANDB_PROJECT", wandb_project)
     os.environ["WANDB_RUN_ID"] = wandb_run_id
     os.environ["WANDB_RESUME"] = "allow"
-    if args.config:
-        wandb_group = generate_wandb_group(args.config)
+    # Use args.config for new runs, metadata["config"] for resume
+    config_path = args.config or metadata.get("config")
+    if config_path:
+        wandb_group = generate_wandb_group(config_path)
+        wandb_tags = generate_wandb_tags(config_path)
+        logger.info(f"W&B group: {wandb_group}, tags: {wandb_tags}")
         if wandb_group:
             os.environ["WANDB_RUN_GROUP"] = wandb_group
-        wandb_tags = generate_wandb_tags(args.config)
         if wandb_tags:
             os.environ["WANDB_TAGS"] = ",".join(wandb_tags)
 
@@ -830,7 +950,69 @@ def main():
         )
         trainer.add_callback(metrics_callback)
 
-    # Train
+    # =========================================================================
+    # Pre-training evaluation (baseline metrics)
+    # =========================================================================
+    # Store pre-training metrics for transfer efficiency calculation
+    student_pre = None
+    teacher_pre = None
+
+    # Default: True for classification, False for translation (too slow, eval loss != BLEU)
+    default_log_pre_post = num_labels is not None
+    log_pre_post = config.get("evaluation", {}).get("log_pre_post_metrics", default_log_pre_post)
+    if log_pre_post and num_labels is None:
+        logger.warning("log_pre_post_metrics enabled for translation - this may take hours on large eval sets")
+    if log_pre_post:
+        logger.info("=" * 60)
+        logger.info("Pre-training evaluation (baselines)...")
+        logger.info("=" * 60)
+
+        eval_batch_size = config["training"].get("eval_batch_size", config["training"]["batch_size"])
+
+        # Student pre-training metrics
+        logger.info("Evaluating student (pre-training)...")
+        student_pre = evaluate_model_standalone(
+            model=student,
+            eval_dataset=eval_dataset,
+            tokenizer=tokenizer,
+            compute_metrics=compute_metrics,
+            data_collator=data_collator,
+            batch_size=eval_batch_size,
+            device=device,
+            loss_only=num_labels is None,  # Fast loss-only for translation
+        )
+        log_pre_post_metrics(student_pre, "student", "pre")
+
+        # Teacher pre-training metrics (if exists)
+        if teacher is not None:
+            logger.info("Evaluating teacher (pre-training)...")
+            teacher_pre = evaluate_model_standalone(
+                model=teacher,
+                eval_dataset=eval_dataset,
+                tokenizer=tokenizer,
+                compute_metrics=compute_metrics,
+                data_collator=data_collator,
+                batch_size=eval_batch_size,
+                device=device,
+                loss_only=num_labels is None,
+            )
+            log_pre_post_metrics(teacher_pre, "teacher", "pre")
+
+            # Log teacher advantage (room for improvement)
+            primary_metric = get_primary_metric(task) or "loss"
+            if primary_metric in teacher_pre and primary_metric in student_pre:
+                teacher_advantage = teacher_pre[primary_metric] - student_pre[primary_metric]
+                logger.info(f"  Teacher advantage ({primary_metric}): {teacher_advantage:+.4f}")
+                try:
+                    import wandb
+                    if wandb.run:
+                        wandb.log({"transfer/teacher_advantage": teacher_advantage}, commit=False)
+                except Exception:
+                    pass
+
+    # =========================================================================
+    # Training
+    # =========================================================================
     logger.info("=" * 60)
     logger.info("Starting training...")
     logger.info("=" * 60)
@@ -869,10 +1051,65 @@ def main():
     logger.info("Saving final model...")
     trainer.save_model()
 
-    # Evaluate
-    logger.info("Final evaluation:")
+    # =========================================================================
+    # Post-training evaluation
+    # =========================================================================
+    logger.info("=" * 60)
+    logger.info("Post-training evaluation...")
+    logger.info("=" * 60)
+
+    # Student post-training metrics (standard eval)
+    logger.info("Evaluating student (post-training)...")
     metrics = trainer.evaluate()
     logger.info(metrics)
+
+    # Log as student/post for consistency (skip for translation by default)
+    if config.get("evaluation", {}).get("log_pre_post_metrics", num_labels is not None):
+        student_post = {k.replace("eval_", ""): v for k, v in metrics.items()}
+        log_pre_post_metrics(student_post, "student", "post")
+
+        # Teacher post-training metrics (if exists and co-training)
+        teacher_post = None
+        if teacher is not None:
+            logger.info("Evaluating teacher (post-training)...")
+            eval_batch_size = config["training"].get("eval_batch_size", config["training"]["batch_size"])
+            teacher_post = evaluate_model_standalone(
+                model=teacher,
+                eval_dataset=eval_dataset,
+                tokenizer=tokenizer,
+                compute_metrics=compute_metrics,
+                data_collator=data_collator,
+                batch_size=eval_batch_size,
+                device=device,
+                loss_only=num_labels is None,
+            )
+            log_pre_post_metrics(teacher_post, "teacher", "post")
+
+        # Log knowledge transfer metrics if we have pre metrics
+        primary_metric = get_primary_metric(task) or "loss"
+        transfer_metrics = {}
+
+        if student_pre is not None and primary_metric in student_post and primary_metric in student_pre:
+            student_gain = student_post[primary_metric] - student_pre[primary_metric]
+            transfer_metrics["transfer/student_gain"] = student_gain
+            logger.info(f"  Student gain ({primary_metric}): {student_gain:+.4f}")
+
+            # Knowledge transfer efficiency requires teacher_pre
+            if teacher_pre is not None and primary_metric in teacher_pre:
+                teacher_advantage = teacher_pre[primary_metric] - student_pre[primary_metric]
+                if abs(teacher_advantage) > 1e-6:
+                    transfer_efficiency = student_gain / teacher_advantage
+                    transfer_metrics["transfer/efficiency"] = transfer_efficiency
+                    logger.info(f"  Knowledge transfer efficiency: {transfer_efficiency:.2%}")
+
+        # Log all transfer metrics to W&B
+        if transfer_metrics:
+            try:
+                import wandb
+                if wandb.run:
+                    wandb.log(transfer_metrics, commit=False)
+            except Exception as e:
+                logger.debug(f"Transfer metrics logging failed: {e}")
 
     # Remove from incomplete registry
     remove_incomplete_job()
