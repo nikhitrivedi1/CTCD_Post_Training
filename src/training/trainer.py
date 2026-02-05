@@ -140,6 +140,39 @@ class DistillationTrainer(Trainer):
 
         return self.optimizer
 
+    def _detach_teacher_intermediates(self, teacher_outputs):
+        """
+        Detach hidden states and attentions from teacher outputs.
+
+        In co-training, teacher should only learn from CE loss, not from
+        distillation losses (F, A). This prevents the teacher from being
+        pulled toward matching the (worse) student's representations.
+
+        Args:
+            teacher_outputs: Model outputs containing hidden_states/attentions
+
+        Returns:
+            Modified outputs with detached intermediate representations
+        """
+        # Create a shallow copy to avoid modifying the original
+        # (we still need original .loss for teacher CE computation)
+        from dataclasses import fields, is_dataclass
+
+        if is_dataclass(teacher_outputs):
+            # HuggingFace model outputs are dataclasses
+            updates = {}
+            if hasattr(teacher_outputs, "hidden_states") and teacher_outputs.hidden_states is not None:
+                updates["hidden_states"] = tuple(h.detach() for h in teacher_outputs.hidden_states)
+            if hasattr(teacher_outputs, "attentions") and teacher_outputs.attentions is not None:
+                updates["attentions"] = tuple(a.detach() for a in teacher_outputs.attentions)
+
+            if updates:
+                # Use replace() to create a new instance with updated fields
+                from dataclasses import replace
+                return replace(teacher_outputs, **updates)
+
+        return teacher_outputs
+
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         """
         Compute distillation loss using the configured strategy.
@@ -187,9 +220,18 @@ class DistillationTrainer(Trainer):
         if self.teacher_label_map is not None:
             teacher_logits = teacher_logits[:, self.teacher_label_map]
 
-        # Detach teacher logits for distillation loss computation
-        # Teacher should not receive gradients through KL - only through its own CE loss
+        # Detach teacher outputs for distillation loss computation
+        # Teacher should not receive gradients through distillation losses (KL, F, A)
+        # - only through its own CE loss (computed separately below)
         teacher_logits_for_distill = teacher_logits.detach()
+
+        # Also detach hidden states and attentions for Feature/Attention losses
+        # This prevents the bug where teacher gets pulled toward student representations
+        teacher_outputs_for_distill = teacher_outputs
+        if not self.freeze_teacher:
+            # In co-training, we need to detach intermediate outputs
+            # (when frozen, they're already detached via torch.no_grad context)
+            teacher_outputs_for_distill = self._detach_teacher_intermediates(teacher_outputs)
 
         # Task loss (cross-entropy with labels)
         ce_loss = outputs.loss
@@ -210,14 +252,14 @@ class DistillationTrainer(Trainer):
         else:
             loss_kwargs["training_progress"] = 0.0
 
-        # Compute loss using strategy (with detached teacher logits)
+        # Compute loss using strategy (with detached teacher outputs)
         loss_output = self.loss_strategy.compute(
             student_logits=student_logits,
             teacher_logits=teacher_logits_for_distill,
             ce_loss=ce_loss,
             labels=labels,
             student_outputs=outputs,
-            teacher_outputs=teacher_outputs,
+            teacher_outputs=teacher_outputs_for_distill,
             **loss_kwargs
         )
 
