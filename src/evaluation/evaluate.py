@@ -5,7 +5,7 @@ Models are function-local and GC'd on return — no manual memory management nee
 """
 
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 
@@ -108,6 +108,23 @@ def log_pre_post_metrics(
             logger.debug(f"W&B logging failed: {e}")
 
 
+def _remap_compute_metrics(compute_metrics, label_map: List[int]):
+    """Wrap compute_metrics to remap logits before metric computation.
+
+    Args:
+        compute_metrics: Original compute_metrics function
+        label_map: Index mapping — logits are reordered as logits[:, label_map]
+
+    Returns:
+        Wrapped compute_metrics function
+    """
+    def wrapped(eval_pred):
+        logits, labels = eval_pred
+        remapped = logits[:, label_map]
+        return compute_metrics((remapped, labels))
+    return wrapped
+
+
 def evaluate_models(
     student: torch.nn.Module,
     teacher: Optional[torch.nn.Module],
@@ -119,6 +136,7 @@ def evaluate_models(
     device: str,
     phase: str,
     loss_only: bool = False,
+    teacher_label_map: Optional[List[int]] = None,
 ) -> Tuple[Dict[str, float], Optional[Dict[str, float]]]:
     """
     Evaluate student and teacher, logging metrics with the given phase prefix.
@@ -134,6 +152,7 @@ def evaluate_models(
         device: Device string
         phase: "pre" or "post" (used for logging prefix)
         loss_only: If True, only compute loss (faster for seq2seq)
+        teacher_label_map: Optional label index remapping for teacher logits
 
     Returns:
         Tuple of (student_metrics, teacher_metrics)
@@ -155,7 +174,13 @@ def evaluate_models(
     teacher_metrics = None
     if teacher is not None:
         logger.info(f"Evaluating teacher ({phase}-training)...")
-        teacher_metrics = evaluate_model(model=teacher, **eval_kwargs)
+        teacher_eval_kwargs = eval_kwargs.copy()
+        if teacher_label_map is not None:
+            logger.info(f"  Remapping teacher logits for eval: {teacher_label_map}")
+            teacher_eval_kwargs["compute_metrics"] = _remap_compute_metrics(
+                compute_metrics, teacher_label_map
+            )
+        teacher_metrics = evaluate_model(model=teacher, **teacher_eval_kwargs)
         log_pre_post_metrics(teacher_metrics, "teacher", phase)
 
     return student_metrics, teacher_metrics
@@ -276,6 +301,7 @@ def run_evaluation(
 
     eval_batch_size = config["training"].get("eval_batch_size", config["training"]["batch_size"])
     loss_only = num_labels is None
+    teacher_label_map = config.get("distillation", {}).get("teacher_label_map")
 
     student_metrics, teacher_metrics = evaluate_models(
         student=student,
@@ -288,6 +314,7 @@ def run_evaluation(
         device=device,
         phase=phase,
         loss_only=loss_only,
+        teacher_label_map=teacher_label_map,
     )
 
     # Log transfer metrics if previous metrics provided
