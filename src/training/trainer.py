@@ -111,6 +111,11 @@ class DistillationTrainer(Trainer):
         self.output_hidden_states = getattr(self.loss_strategy, 'requires_hidden_states', False)
         self.output_attentions = getattr(self.loss_strategy, 'requires_attentions', False)
 
+        # Accumulate per-step metrics for averaged logging at logging_steps intervals.
+        # Without this, self.log() fires every step, creating noisy W&B charts.
+        self._metric_accumulator = {}
+        self._metric_count = 0
+
         logger.info("DistillationTrainer initialized:")
         logger.info(f"  Loss strategy: {self.loss_strategy.name}")
         logger.info(f"  Temperature: {temperature}")
@@ -276,13 +281,24 @@ class DistillationTrainer(Trainer):
                 teacher_ce_loss = teacher_outputs.loss
             total_loss = total_loss + teacher_ce_loss
 
-        # Log individual components for monitoring
-        log_dict = {"loss_total": total_loss.item()}
+        # Accumulate loss components and log averages at logging_steps intervals.
+        step_dict = {"total_loss": total_loss.item()}
         for name, value in loss_output.components.items():
-            log_dict[name] = value.item() if torch.is_tensor(value) else value
+            step_dict[name] = value.item() if torch.is_tensor(value) else value
         if not self.freeze_teacher:
-            log_dict["teacher_ce_loss"] = teacher_ce_loss.item()
-        self.log(log_dict)
+            step_dict["teacher_ce_loss"] = teacher_ce_loss.item()
+
+        for key, value in step_dict.items():
+            self._metric_accumulator[key] = self._metric_accumulator.get(key, 0.0) + value
+        self._metric_count += 1
+
+        # Flush averaged metrics at logging intervals
+        if (hasattr(self, 'args') and self.args.logging_steps > 0
+                and self._metric_count >= self.args.logging_steps):
+            avg_dict = {k: v / self._metric_count for k, v in self._metric_accumulator.items()}
+            self.log(avg_dict)
+            self._metric_accumulator = {}
+            self._metric_count = 0
 
         return (total_loss, outputs) if return_outputs else total_loss
 

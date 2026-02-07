@@ -1,5 +1,5 @@
-"""Model loading modules for teacher-student pairs."""
+"""Model loading."""
 
-from .loader import load_teacher_student
+from .loader import load_models, load_models_from_checkpoint
 
-__all__ = ["load_teacher_student"]
+__all__ = ["load_models", "load_models_from_checkpoint"]

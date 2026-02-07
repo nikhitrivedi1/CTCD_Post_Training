@@ -49,7 +49,7 @@ def check_framework_imports() -> Tuple[bool, str]:
     try:
         from src.utils import detect_environment, load_config
         from src.data import load_dataset_for_task
-        from src.models import load_teacher_student
+        from src.models import load_models
         from src.training import DistillationTrainer
 
         return True, "✓ Framework modules"

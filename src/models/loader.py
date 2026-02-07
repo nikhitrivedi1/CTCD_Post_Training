@@ -16,93 +16,108 @@ from src.tasks import is_translation_task
 logger = logging.getLogger(__name__)
 
 
-def load_teacher_student(config: dict, device: str, tokenizer: PreTrainedTokenizer, num_labels: int = None):
-    """
-    Load teacher and student models based on config.
+# =============================================================================
+# Primitives: load a single model
+# =============================================================================
 
-    Handles both:
-    - BERT/DistilBERT for classification (GLUE tasks)
-    - Llama 3B/1B for translation (with optional LoRA)
-
-    If teacher is null/None in config, only loads student (for CE-only baselines).
+def _load_classifier(name: str, init: str, num_labels: int, device: str):
+    """Load a single sequence classification model.
 
     Args:
-        config: Configuration dictionary
-        device: Device to load models on ('cuda', 'mps', 'cpu')
-        tokenizer: Tokenizer (may have been resized with custom tokens)
-        num_labels: Number of labels for classification (required for GLUE)
-
-    Returns:
-        Tuple of (teacher_model, student_model). teacher_model is None if not specified.
-    """
-    teacher_name = config["model"].get("teacher")
-    student_name = config["model"]["student"]
-    task = config.get("data", {}).get("task", "").lower()
-    alpha = config.get("distillation", {}).get("alpha", 0.5)
-
-    # Check if teacher is needed (skip if teacher is null OR alpha is 0)
-    if teacher_name is None or alpha == 0.0:
-        reason = "teacher is null" if teacher_name is None else "alpha=0.0"
-        logger.info(f"No teacher needed ({reason}) - loading student only (CE-only mode)")
-        return _load_student_only(config, device, tokenizer, num_labels)
-
-    # Determine model type based on teacher name or task
-    if "llama" in teacher_name.lower() or is_translation_task(task):
-        return _load_translation_models(config, device, tokenizer)
-    else:
-        return _load_classification_models(config, device, tokenizer, num_labels)
-
-
-def _load_classification_models(config: dict, device: str, tokenizer: PreTrainedTokenizer, num_labels: int):
-    """
-    Load BERT/DistilBERT models for classification tasks.
-
-    Args:
-        config: Configuration dictionary
-        device: Device to load models on
-        tokenizer: Tokenizer
+        name: HuggingFace model ID (e.g., "bert-base-uncased")
+        init: "pretrained" or "fresh"
         num_labels: Number of classification labels
+        device: Device string
 
     Returns:
-        Tuple of (teacher, student)
+        Model on device
     """
-    teacher_name = config["model"]["teacher"]
-    student_name = config["model"]["student"]
-    student_init = config["model"].get("student_init", "pretrained")
-
-    # Load teacher (pretrained)
-    teacher = AutoModelForSequenceClassification.from_pretrained(
-        teacher_name,
-        num_labels=num_labels
-    ).to(device)
-    teacher.eval()  # Always in eval mode
-
-    # Load student
-    if student_init == "fresh":
-        # Fresh initialization: load config, create new model with random weights
-        logger.info(f"Initializing fresh {student_name} model...")
-        student_config = AutoConfig.from_pretrained(student_name)
-        student_config.num_labels = num_labels
-
-        # Import the appropriate model class
-        if "distilbert" in student_name.lower():
+    if init == "fresh":
+        logger.info(f"Initializing fresh {name} model...")
+        model_config = AutoConfig.from_pretrained(name)
+        model_config.num_labels = num_labels
+        # DistilBert doesn't register with AutoModel for from_config
+        if "distilbert" in name.lower():
             from transformers import DistilBertForSequenceClassification
-            student = DistilBertForSequenceClassification(student_config)
+            model = DistilBertForSequenceClassification(model_config)
         else:
-            student = AutoModelForSequenceClassification.from_config(student_config)
+            model = AutoModelForSequenceClassification.from_config(model_config)
+        return model.to(device)
 
-        student = student.to(device)
+    return AutoModelForSequenceClassification.from_pretrained(
+        name, num_labels=num_labels
+    ).to(device)
+
+
+def _load_causal_lm(name: str, init: str, device: str, tokenizer: PreTrainedTokenizer,
+                     eager_attention: bool = False):
+    """Load a single causal language model with embedding resize.
+
+    Args:
+        name: HuggingFace model ID (e.g., "meta-llama/Llama-3.2-1B-Instruct")
+        init: "pretrained" or "fresh"
+        device: Device string
+        tokenizer: Tokenizer (for embedding resize check)
+        eager_attention: Use eager attention (required for attention distillation)
+
+    Returns:
+        Model on device
+    """
+    dtype = torch.float16 if device == "cuda" else torch.float32
+
+    if init == "fresh":
+        model_config = AutoConfig.from_pretrained(name)
+        if eager_attention:
+            model_config._attn_implementation = "eager"
+        model = AutoModelForCausalLM.from_config(model_config).to(dtype)
+        if device == "cuda":
+            model = model.to(device)
     else:
-        # Load pretrained student
-        student = AutoModelForSequenceClassification.from_pretrained(
-            student_name,
-            num_labels=num_labels
-        ).to(device)
+        model = AutoModelForCausalLM.from_pretrained(
+            name,
+            torch_dtype=dtype,
+            device_map=device if device == "cuda" else None,
+            attn_implementation="eager" if eager_attention else None,
+        )
 
-    logger.info(f"Teacher: {teacher_name} ({sum(p.numel() for p in teacher.parameters()) / 1e6:.1f}M params)")
-    logger.info(f"Student: {student_name} ({sum(p.numel() for p in student.parameters()) / 1e6:.1f}M params)")
+    # Resize embeddings if tokenizer has custom tokens
+    if len(tokenizer) > model.config.vocab_size:
+        logger.info(f"Resizing embeddings: {model.config.vocab_size} -> {len(tokenizer)}")
+        model.resize_token_embeddings(len(tokenizer))
 
-    return teacher, student
+    return model
+
+
+def _apply_lora(model, lora_cfg: dict):
+    """Wrap model with LoRA adapters.
+
+    Args:
+        model: Base model to wrap
+        lora_cfg: LoRA config dict with keys: r, alpha, target_modules, dropout
+
+    Returns:
+        PEFT-wrapped model
+    """
+    logger.info("Applying LoRA...")
+    lora_config = LoraConfig(
+        r=lora_cfg["r"],
+        lora_alpha=lora_cfg["alpha"],
+        target_modules=lora_cfg["target_modules"],
+        lora_dropout=lora_cfg["dropout"],
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+    return get_peft_model(model, lora_config)
+
+
+def _log_params(role: str, name: str, model):
+    """Log model parameter count."""
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total = sum(p.numel() for p in model.parameters())
+    if trainable == total:
+        logger.info(f"{role}: {name} ({total / 1e6:.1f}M params)")
+    else:
+        logger.info(f"{role}: {name} ({trainable / 1e6:.1f}M trainable / {total / 1e6:.1f}M total)")
 
 
 def _needs_attention_outputs(config: dict) -> bool:
@@ -126,171 +141,120 @@ def _needs_attention_outputs(config: dict) -> bool:
     return False
 
 
-def _load_translation_models(config: dict, device: str, tokenizer: PreTrainedTokenizer):
+# =============================================================================
+# Compositions: load teacher + student pairs
+# =============================================================================
+
+def load_models(config: dict, device: str, tokenizer: PreTrainedTokenizer, num_labels: int = None):
     """
-    Load Llama 3B/1B models for translation with LoRA support.
+    Load teacher and student models based on config.
+
+    Routes to classifier or causal LM loader based on task type.
+    Returns (None, student) if no teacher is needed (CE-only baselines).
 
     Args:
         config: Configuration dictionary
-        device: Device to load models on
-        tokenizer: Tokenizer (may have custom tokens)
+        device: Device to load models on ('cuda', 'mps', 'cpu')
+        tokenizer: Tokenizer (may have been resized with custom tokens)
+        num_labels: Number of labels for classification tasks
 
     Returns:
-        Tuple of (teacher, student)
+        Tuple of (teacher, student). Teacher is None if not specified.
     """
-    teacher_name = config["model"]["teacher"]
+    teacher_name = config["model"].get("teacher")
     student_name = config["model"]["student"]
     student_init = config["model"].get("student_init", "pretrained")
-    use_lora = config.get("training", {}).get("use_lora", False)
+    task = config.get("data", {}).get("task", "").lower()
+    alpha = config.get("distillation", {}).get("alpha", 0.5)
 
-    # SDPA doesn't support output_attentions - use eager attention for attention distillation
-    use_eager_attention = _needs_attention_outputs(config)
-    if use_eager_attention:
+    translation = is_translation_task(task)
+    eager = _needs_attention_outputs(config)
+    if eager:
         logger.info("Using eager attention (required for attention distillation)")
 
-    # Load teacher (pretrained, fp16)
-    logger.info(f"Loading teacher: {teacher_name}...")
-    teacher = AutoModelForCausalLM.from_pretrained(
-        teacher_name,
-        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-        device_map=device if device == "cuda" else None,
-        attn_implementation="eager" if use_eager_attention else None,
-    )
-
-    # Resize embeddings if custom tokens added
-    if len(tokenizer) > teacher.config.vocab_size:
-        logger.info(f"Resizing teacher embeddings: {teacher.config.vocab_size} -> {len(tokenizer)}")
-        teacher.resize_token_embeddings(len(tokenizer))
-
-    teacher.eval()
+    # No teacher needed for CE-only baselines
+    if teacher_name is None or alpha == 0.0:
+        reason = "teacher is null" if teacher_name is None else "alpha=0.0"
+        logger.info(f"No teacher needed ({reason}) - CE-only mode")
+        teacher = None
+    elif translation:
+        teacher = _load_causal_lm(teacher_name, "pretrained", device, tokenizer, eager)
+    else:
+        teacher = _load_classifier(teacher_name, "pretrained", num_labels, device)
 
     # Load student
-    logger.info(f"Loading student: {student_name}...")
-    if student_init == "fresh":
-        # Fresh initialization
-        student_config = AutoConfig.from_pretrained(student_name)
-        if use_eager_attention:
-            student_config._attn_implementation = "eager"
-        student = AutoModelForCausalLM.from_config(student_config)
-        student = student.to(torch.float16 if device == "cuda" else torch.float32)
-        if device == "cuda":
-            student = student.to(device)
+    if translation:
+        student = _load_causal_lm(student_name, student_init, device, tokenizer, eager)
+        if config.get("training", {}).get("use_lora", False):
+            student = _apply_lora(student, config["training"]["lora"])
     else:
-        student = AutoModelForCausalLM.from_pretrained(
-            student_name,
-            torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-            device_map=device if device == "cuda" else None,
-            attn_implementation="eager" if use_eager_attention else None,
-        )
+        student = _load_classifier(student_name, student_init, num_labels, device)
 
-    # Resize student embeddings
-    if len(tokenizer) > student.config.vocab_size:
-        logger.info(f"Resizing student embeddings: {student.config.vocab_size} -> {len(tokenizer)}")
-        student.resize_token_embeddings(len(tokenizer))
-
-    # Apply LoRA to student if specified
-    if use_lora:
-        logger.info("Applying LoRA to student model...")
-        lora_config = LoraConfig(
-            r=config["training"]["lora"]["r"],
-            lora_alpha=config["training"]["lora"]["alpha"],
-            target_modules=config["training"]["lora"]["target_modules"],
-            lora_dropout=config["training"]["lora"]["dropout"],
-            bias="none",
-            task_type="CAUSAL_LM"
-        )
-        student = get_peft_model(student, lora_config)
-        student.print_trainable_parameters()
-
-    logger.info(f"Teacher: {teacher_name} ({sum(p.numel() for p in teacher.parameters()) / 1e6:.1f}M params)")
-    if use_lora:
-        trainable = sum(p.numel() for p in student.parameters() if p.requires_grad)
-        total = sum(p.numel() for p in student.parameters())
-        logger.info(f"Student: {student_name} ({trainable / 1e6:.1f}M trainable / {total / 1e6:.1f}M total params)")
-    else:
-        logger.info(f"Student: {student_name} ({sum(p.numel() for p in student.parameters()) / 1e6:.1f}M params)")
+    # Log
+    if teacher is not None:
+        _log_params("Teacher", teacher_name, teacher)
+    _log_params("Student", student_name, student)
 
     return teacher, student
 
 
-def _load_student_only(config: dict, device: str, tokenizer: PreTrainedTokenizer, num_labels: int = None):
-    """
-    Load only the student model (no teacher) for CE-only baselines.
+def load_models_from_checkpoint(
+    checkpoint_dir: str,
+    config: dict,
+    device: str,
+    tokenizer: PreTrainedTokenizer,
+    num_labels: int = None,
+):
+    """Load teacher and student from saved checkpoints.
+
+    Student is loaded from checkpoint_dir, teacher from checkpoint_dir/teacher
+    (if it exists, i.e., co-trained). Frozen teachers are reloaded from the
+    original model ID since their weights don't change.
 
     Args:
-        config: Configuration dictionary
+        checkpoint_dir: Path to the training output directory
+        config: Configuration dictionary (for model type routing)
         device: Device to load models on
         tokenizer: Tokenizer
-        num_labels: Number of labels for classification (None for translation)
+        num_labels: Number of labels for classification tasks
 
     Returns:
-        Tuple of (None, student)
+        Tuple of (teacher, student). Teacher is None if not applicable.
     """
-    student_name = config["model"]["student"]
-    student_init = config["model"].get("student_init", "pretrained")
+    from pathlib import Path
+
     task = config.get("data", {}).get("task", "").lower()
-    use_lora = config.get("training", {}).get("use_lora", False)
+    translation = is_translation_task(task)
+    teacher_name = config["model"].get("teacher")
+    alpha = config.get("distillation", {}).get("alpha", 0.5)
+    checkpoint_dir = Path(checkpoint_dir)
 
-    # Determine if this is a translation task
-    if is_translation_task(task):
-        # Load causal LM for translation
-        logger.info(f"Loading student (causal LM): {student_name}...")
-        if student_init == "fresh":
-            student_config = AutoConfig.from_pretrained(student_name)
-            student = AutoModelForCausalLM.from_config(student_config)
-            student = student.to(torch.float16 if device == "cuda" else torch.float32)
-            if device == "cuda":
-                student = student.to(device)
-        else:
-            student = AutoModelForCausalLM.from_pretrained(
-                student_name,
-                torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-                device_map=device if device == "cuda" else None
-            )
-
-        # Resize embeddings if needed
-        if len(tokenizer) > student.config.vocab_size:
-            logger.info(f"Resizing student embeddings: {student.config.vocab_size} -> {len(tokenizer)}")
-            student.resize_token_embeddings(len(tokenizer))
-
-        # Apply LoRA if specified
-        if use_lora:
-            logger.info("Applying LoRA to student model...")
-            lora_config = LoraConfig(
-                r=config["training"]["lora"]["r"],
-                lora_alpha=config["training"]["lora"]["alpha"],
-                target_modules=config["training"]["lora"]["target_modules"],
-                lora_dropout=config["training"]["lora"]["dropout"],
-                bias="none",
-                task_type="CAUSAL_LM"
-            )
-            student = get_peft_model(student, lora_config)
-            student.print_trainable_parameters()
-
-        if use_lora:
-            trainable = sum(p.numel() for p in student.parameters() if p.requires_grad)
-            total = sum(p.numel() for p in student.parameters())
-            logger.info(f"Student: {student_name} ({trainable / 1e6:.1f}M trainable / {total / 1e6:.1f}M total params)")
-        else:
-            logger.info(f"Student: {student_name} ({sum(p.numel() for p in student.parameters()) / 1e6:.1f}M params)")
+    # Load student from checkpoint
+    student_path = str(checkpoint_dir)
+    if translation:
+        student = _load_causal_lm(student_path, "pretrained", device, tokenizer)
     else:
-        # Load classification model
-        logger.info(f"Loading student (classification): {student_name}...")
-        if student_init == "fresh":
-            student_config = AutoConfig.from_pretrained(student_name)
-            student_config.num_labels = num_labels
-            if "distilbert" in student_name.lower():
-                from transformers import DistilBertForSequenceClassification
-                student = DistilBertForSequenceClassification(student_config)
-            else:
-                student = AutoModelForSequenceClassification.from_config(student_config)
-            student = student.to(device)
+        student = _load_classifier(student_path, "pretrained", num_labels, device)
+    _log_params("Student (checkpoint)", student_path, student)
+
+    # Load teacher
+    teacher = None
+    if teacher_name is not None and alpha > 0.0:
+        teacher_path = checkpoint_dir / "teacher"
+        if teacher_path.exists():
+            # Co-trained teacher saved alongside student
+            teacher_src = str(teacher_path)
         else:
-            student = AutoModelForSequenceClassification.from_pretrained(
-                student_name,
-                num_labels=num_labels
-            ).to(device)
+            # Frozen teacher: reload from original model ID
+            teacher_src = teacher_name
 
-        logger.info(f"Student: {student_name} ({sum(p.numel() for p in student.parameters()) / 1e6:.1f}M params)")
+        if translation:
+            teacher = _load_causal_lm(teacher_src, "pretrained", device, tokenizer)
+        else:
+            teacher = _load_classifier(teacher_src, "pretrained", num_labels, device)
+        _log_params("Teacher (checkpoint)", teacher_src, teacher)
 
-    return None, student
+    return teacher, student
+
+
+

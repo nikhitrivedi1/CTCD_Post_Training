@@ -10,7 +10,6 @@ import sys
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict
 
 import yaml
 
@@ -89,17 +88,15 @@ def set_reproducibility_seed(seed: int = 42):
     torch.backends.cudnn.benchmark = False
 
 from src.data.datasets import load_dataset_for_task
-from src.evaluation.metrics import get_compute_metrics
+from src.evaluation import get_compute_metrics, run_evaluation
 from src.tasks import get_num_labels, get_primary_metric
-from src.models.loader import load_teacher_student
+from src.models import load_models
 from src.training.callbacks import SLURMSignalCallback, TranslationMetricsCallback, PeakMetricsCallback
 from src.training.trainer import DistillationTrainer
 from src.training.losses import (
     get_loss_strategy,
     CombinedDistillationLoss,
     StagedDistillationLoss,
-    FeatureLossStrategy,
-    AttentionLossStrategy,
 )
 from src.training.layer_mapping import get_layer_mapping
 from src.training.projections import create_projection_if_needed
@@ -236,97 +233,6 @@ def create_loss_strategy_from_config(
             logger.debug(f"  Projection: {student_dim} -> {teacher_dim} ({proj_type})")
 
     return loss_strategy, layer_mapping, projector
-
-
-def evaluate_model_standalone(
-    model: torch.nn.Module,
-    eval_dataset,
-    tokenizer,
-    compute_metrics,
-    data_collator=None,
-    batch_size: int = 32,
-    device: str = None,
-    loss_only: bool = False,
-) -> Dict[str, float]:
-    """
-    Evaluate a model standalone (without the full Trainer overhead).
-
-    Uses a minimal Trainer just for evaluation. This is used to get
-    pre-training and post-training metrics for both teacher and student.
-
-    Args:
-        model: Model to evaluate
-        eval_dataset: Evaluation dataset
-        tokenizer: Tokenizer for the model
-        compute_metrics: Metrics computation function
-        data_collator: Optional data collator
-        batch_size: Batch size for evaluation
-        device: Device string for MPS compatibility
-        loss_only: If True, only compute loss (faster for seq2seq tasks)
-
-    Returns:
-        Dictionary of metric name -> value
-    """
-    from transformers import Trainer, TrainingArguments
-
-    # Minimal training args just for evaluation
-    eval_args = TrainingArguments(
-        output_dir="/tmp/eval_temp",
-        per_device_eval_batch_size=batch_size,
-        report_to="none",  # Don't log to W&B during standalone eval
-        disable_tqdm=True,
-        dataloader_pin_memory=device == "cuda",  # Disable on MPS
-        prediction_loss_only=loss_only,  # Maps to HF's prediction_loss_only
-    )
-
-    eval_trainer = Trainer(
-        model=model,
-        args=eval_args,
-        eval_dataset=eval_dataset,
-        tokenizer=tokenizer,
-        compute_metrics=compute_metrics,
-        data_collator=data_collator,
-    )
-
-    # Run evaluation
-    metrics = eval_trainer.evaluate()
-
-    # Clean up prefix and return
-    return {k.replace("eval_", ""): v for k, v in metrics.items()}
-
-
-def log_pre_post_metrics(
-    metrics: Dict[str, float],
-    model_name: str,
-    phase: str,
-    to_wandb: bool = True,
-) -> None:
-    """
-    Log pre/post training metrics with proper prefixes.
-
-    Args:
-        metrics: Dictionary of metrics
-        model_name: "teacher" or "student"
-        phase: "pre" or "post"
-        to_wandb: Whether to log to W&B
-    """
-    prefix = f"{model_name}/{phase}"
-
-    # Log to console
-    logger.info(f"  {model_name.capitalize()} ({phase}-run):")
-    for name, value in metrics.items():
-        if isinstance(value, float):
-            logger.info(f"    {name}: {value:.4f}")
-
-    # Log to W&B
-    if to_wandb:
-        try:
-            import wandb
-            if wandb.run:
-                wandb_metrics = {f"{prefix}/{k}": v for k, v in metrics.items()}
-                wandb.log(wandb_metrics, commit=False)
-        except Exception as e:
-            logger.debug(f"W&B logging failed: {e}")
 
 
 def generate_config_id(config_path: str) -> str:
@@ -578,6 +484,190 @@ def load_config_snapshot(output_dir: Path) -> dict | None:
     return None
 
 
+def _train(
+    config, device, tokenizer, num_labels, task,
+    train_dataset, eval_dataset, compute_metrics, data_collator,
+    output_dir, run_name, args, state, resume_checkpoint,
+    env, report_to, metadata,
+):
+    """Run the training phase with models scoped locally.
+
+    All model references (teacher, student, trainer, loss_strategy, projector)
+    are local to this function and GC'd on return.
+
+    Args:
+        config: Full configuration dictionary
+        device: Device string ('cuda', 'mps', 'cpu')
+        tokenizer: Tokenizer
+        num_labels: Number of labels for classification (None for translation)
+        task: Task name
+        train_dataset: Training dataset
+        eval_dataset: Evaluation dataset
+        compute_metrics: Metrics computation function
+        data_collator: Data collator (or None for classification)
+        output_dir: Output directory (Path)
+        run_name: Run name for W&B
+        args: Parsed CLI arguments
+        state: TrainingState for checkpoint tracking
+        resume_checkpoint: Path to resume checkpoint (or None)
+        env: Environment string ('local', 'slurm', etc.)
+        report_to: Logging target ('wandb', 'none', etc.)
+        metadata: Run metadata dict
+    """
+    # Load teacher and student models
+    logger.info("Loading models...")
+    teacher, student = load_models(config, device, tokenizer, num_labels)
+
+    # Training arguments
+    training_args = TrainingArguments(
+        output_dir=str(output_dir),
+        num_train_epochs=config["training"]["num_epochs"],
+        per_device_train_batch_size=config["training"]["batch_size"],
+        per_device_eval_batch_size=config["training"].get("eval_batch_size", config["training"]["batch_size"]),
+        gradient_accumulation_steps=config["training"].get("gradient_accumulation_steps", 1),
+        learning_rate=config["training"]["learning_rate"],
+        warmup_steps=config["training"]["warmup_steps"],
+        weight_decay=config["training"]["weight_decay"],
+        max_grad_norm=config["training"]["max_grad_norm"],
+        logging_steps=config["logging"]["logging_steps"],
+        save_steps=config["checkpointing"]["save_steps"],
+        save_total_limit=config["checkpointing"]["save_total_limit"],
+        eval_strategy=config.get("evaluation", {}).get("eval_strategy", "steps"),
+        eval_steps=config.get("evaluation", {}).get("eval_steps", 500),
+        report_to=report_to,
+        fp16=(config["training"].get("fp16", True) and student.dtype != torch.float16) if device == "cuda" else False,
+        dataloader_num_workers=config["training"].get("dataloader_num_workers", 4) if device == "cuda" else 0,  # MPS requires 0 workers
+        dataloader_pin_memory=device == "cuda",  # Disable on MPS (not supported)
+        run_name=run_name,
+        max_steps=args.max_steps if args.max_steps > 0 else -1,
+        load_best_model_at_end=True,
+        # Select best checkpoint by task metric (accuracy/f1/mcc), not loss.
+        # Loss and metric can diverge; metric-based selection ensures we report the best achieved.
+        # For translation: use loss since BLEU is computed separately by callback (generation-based),
+        # not in eval metrics (which only has loss due to prediction_loss_only=True to avoid OOM).
+        metric_for_best_model="eval_loss" if num_labels is None else (f"eval_{get_primary_metric(task)}" if get_primary_metric(task) else "eval_loss"),
+        greater_is_better=False if num_labels is None else (get_primary_metric(task) is not None),  # Loss: lower is better; accuracy/f1/mcc: higher is better
+        prediction_loss_only=num_labels is None,  # Seq2seq tasks: prevents OOM, metrics need generation anyway
+        seed=args.seed,
+        data_seed=args.seed,
+    )
+
+    # Choose trainer based on whether we have a teacher
+    if teacher is None:
+        # CE-only baseline: use standard HuggingFace Trainer
+        logger.info("No teacher - using standard Trainer (CE-only mode)")
+        trainer = Trainer(
+            model=student,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            tokenizer=tokenizer,
+            compute_metrics=compute_metrics,
+            data_collator=data_collator,
+        )
+    else:
+        # Distillation: create loss strategy and use DistillationTrainer
+        logger.info("Setting up distillation loss strategy...")
+        loss_strategy, layer_mapping, projector = create_loss_strategy_from_config(
+            config["distillation"],
+            teacher,
+            student,
+            device,
+        )
+
+        trainer = DistillationTrainer(
+            teacher_model=teacher,
+            temperature=config["distillation"]["temperature"],
+            alpha=config["distillation"]["alpha"],
+            freeze_teacher=config["distillation"].get("freeze_teacher", True),
+            loss_strategy=loss_strategy,
+            teacher_label_map=config["distillation"].get("teacher_label_map"),
+            layer_mapping=layer_mapping,
+            projector=projector,
+            model=student,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            tokenizer=tokenizer,
+            compute_metrics=compute_metrics,
+            data_collator=data_collator,
+        )
+
+    # Add SLURM signal handler
+    if env == "slurm":
+        logger.info("Adding SLURM signal handler...")
+        trainer.add_callback(SLURMSignalCallback(trainer))
+
+    # Add peak metrics tracking
+    logger.info("Adding peak metrics callback...")
+    trainer.add_callback(PeakMetricsCallback())
+
+    # Add translation metrics callback for seq2seq tasks
+    if num_labels is None and config.get("evaluation", {}).get("compute_translation_metrics", False):
+        num_samples = config.get("evaluation", {}).get("translation_metrics_samples", 200)
+        source_lang = config.get("data", {}).get("source_lang", "en")
+        target_lang = config.get("data", {}).get("target_lang", "fr")
+
+        logger.info(f"Adding translation metrics callback ({num_samples} samples per epoch)...")
+        metrics_callback = TranslationMetricsCallback(
+            eval_dataset=eval_dataset,
+            tokenizer=tokenizer,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            num_samples=num_samples,
+            max_new_tokens=config.get("evaluation", {}).get("max_new_tokens", 128),
+        )
+        trainer.add_callback(metrics_callback)
+
+    # =========================================================================
+    # Training
+    # =========================================================================
+    logger.info("=" * 60)
+    logger.info("Starting training...")
+    logger.info("=" * 60)
+
+    trainer.train(resume_from_checkpoint=resume_checkpoint)
+
+    # Update W&B with full config and sync metadata
+    try:
+        import wandb
+        if wandb.run:
+            # Log full config to W&B for dashboard visibility
+            wandb.config.update(config, allow_val_change=True)
+            # Log primary metric (metric_for_best_model is set automatically by HF Trainer)
+            wandb.config.update({
+                "primary_metric": get_primary_metric(task) or "loss",
+            }, allow_val_change=True)
+            # Sync metadata if W&B assigned a different ID (e.g., original was deleted)
+            if wandb.run.id != metadata.get("wandb_run_id"):
+                old_id = metadata.get("wandb_run_id")
+                metadata["wandb_run_id"] = wandb.run.id
+                metadata.setdefault("wandb_run_id_history", []).append(old_id)
+                save_run_metadata(output_dir, metadata)
+                logger.info(f"W&B ID changed: {old_id} → {wandb.run.id}")
+    except ImportError:
+        pass  # W&B not installed
+    except Exception as e:
+        logger.debug(f"W&B config update failed: {e}")
+
+    # Update state
+    state.save(
+        epoch=trainer.state.epoch,
+        step=trainer.state.global_step
+    )
+
+    # Save final model
+    logger.info("Saving final model...")
+    trainer.save_model()
+
+    # Save co-trained teacher (weights changed during training)
+    if teacher is not None and not config["distillation"].get("freeze_teacher", True):
+        teacher_dir = output_dir / "teacher"
+        logger.info(f"Saving co-trained teacher to {teacher_dir}...")
+        teacher.save_pretrained(teacher_dir)
+        tokenizer.save_pretrained(teacher_dir)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Knowledge Distillation Training")
     parser.add_argument("--config", type=str, default=None,
@@ -737,10 +827,6 @@ def main():
     task = config.get("data", {}).get("task", "").lower()
     num_labels = get_num_labels(task)
 
-    # Load teacher and student models
-    logger.info("Loading models...")
-    teacher, student = load_teacher_student(config, device, tokenizer, num_labels)
-
     # Find checkpoint to resume from
     resume_checkpoint = state.get_resume_checkpoint(args.output_dir)
     if resume_checkpoint:
@@ -816,288 +902,69 @@ def main():
     else:
         logger.info(f"W&B run ID: {wandb_run_id}")
 
-    # Training arguments
-    training_args = TrainingArguments(
-        output_dir=args.output_dir,
-        num_train_epochs=config["training"]["num_epochs"],
-        per_device_train_batch_size=config["training"]["batch_size"],
-        per_device_eval_batch_size=config["training"].get("eval_batch_size", config["training"]["batch_size"]),
-        gradient_accumulation_steps=config["training"].get("gradient_accumulation_steps", 1),
-        learning_rate=config["training"]["learning_rate"],
-        warmup_steps=config["training"]["warmup_steps"],
-        weight_decay=config["training"]["weight_decay"],
-        max_grad_norm=config["training"]["max_grad_norm"],
-        logging_steps=config["logging"]["logging_steps"],
-        save_steps=config["checkpointing"]["save_steps"],
-        save_total_limit=config["checkpointing"]["save_total_limit"],
-        eval_strategy=config.get("evaluation", {}).get("eval_strategy", "steps"),
-        eval_steps=config.get("evaluation", {}).get("eval_steps", 500),
-        report_to=report_to,
-        fp16=(config["training"].get("fp16", True) and student.dtype != torch.float16) if device == "cuda" else False,
-        dataloader_num_workers=config["training"].get("dataloader_num_workers", 4) if device == "cuda" else 0,  # MPS requires 0 workers
-        dataloader_pin_memory=device == "cuda",  # Disable on MPS (not supported)
-        run_name=run_name,
-        max_steps=args.max_steps if args.max_steps > 0 else -1,
-        load_best_model_at_end=True,
-        # Select best checkpoint by task metric (accuracy/f1/mcc), not loss.
-        # Loss and metric can diverge; metric-based selection ensures we report the best achieved.
-        # For translation: use loss since BLEU is computed separately by callback (generation-based),
-        # not in eval metrics (which only has loss due to prediction_loss_only=True to avoid OOM).
-        metric_for_best_model="eval_loss" if num_labels is None else (f"eval_{get_primary_metric(task)}" if get_primary_metric(task) else "eval_loss"),
-        greater_is_better=False if num_labels is None else (get_primary_metric(task) is not None),  # Loss: lower is better; accuracy/f1/mcc: higher is better
-        prediction_loss_only=num_labels is None,  # Seq2seq tasks: prevents OOM, metrics need generation anyway
-        seed=args.seed,
-        data_seed=args.seed,
-    )
+    # Initialize W&B early so pre-eval metrics are logged
+    # (HF Trainer will reuse the existing run)
+    if report_to == "wandb":
+        try:
+            import wandb
+            wandb.init(
+                project=os.environ.get("WANDB_PROJECT"),
+                id=wandb_run_id,
+                name=run_name,
+                resume="allow" if is_resume else None,
+            )
+        except Exception as e:
+            logger.debug(f"W&B early init failed: {e}")
 
-    # Get compute metrics function
+    # Get compute metrics function and data collator (shared by eval and training)
     compute_metrics = get_compute_metrics(task, tokenizer=tokenizer)
-
-    # Create data collator for seq2seq tasks (handles padding and label masking)
     data_collator = None
     if num_labels is None:  # Translation/seq2seq task
         logger.info("Using DataCollatorForSeq2Seq for dynamic padding and label masking")
         data_collator = DataCollatorForSeq2Seq(
             tokenizer=tokenizer,
-            model=student,
             padding=True,
             pad_to_multiple_of=8 if device == "cuda" else None,  # Optimize for GPU
         )
 
-    # Choose trainer based on whether we have a teacher
-    if teacher is None:
-        # CE-only baseline: use standard HuggingFace Trainer
-        logger.info("No teacher - using standard Trainer (CE-only mode)")
-        trainer = Trainer(
-            model=student,
-            args=training_args,
-            train_dataset=train_dataset,
-            eval_dataset=eval_dataset,
-            tokenizer=tokenizer,
-            compute_metrics=compute_metrics,
-            data_collator=data_collator,
-        )
-    else:
-        # Distillation: create loss strategy and use DistillationTrainer
-        logger.info("Setting up distillation loss strategy...")
-        loss_strategy, layer_mapping, projector = create_loss_strategy_from_config(
-            config["distillation"],
-            teacher,
-            student,
-            device,
-        )
-
-        trainer = DistillationTrainer(
-            teacher_model=teacher,
-            temperature=config["distillation"]["temperature"],
-            alpha=config["distillation"]["alpha"],
-            freeze_teacher=config["distillation"].get("freeze_teacher", True),
-            loss_strategy=loss_strategy,
-            teacher_label_map=config["distillation"].get("teacher_label_map"),
-            layer_mapping=layer_mapping,
-            projector=projector,
-            model=student,
-            args=training_args,
-            train_dataset=train_dataset,
-            eval_dataset=eval_dataset,
-            tokenizer=tokenizer,
-            compute_metrics=compute_metrics,
-            data_collator=data_collator,
-        )
-
-    # Add SLURM signal handler
-    if env == "slurm":
-        logger.info("Adding SLURM signal handler...")
-        trainer.add_callback(SLURMSignalCallback(trainer))
-
-    # Add peak metrics tracking
-    logger.info("Adding peak metrics callback...")
-    trainer.add_callback(PeakMetricsCallback())
-
-    # Add translation metrics callback for seq2seq tasks
-    if num_labels is None and config.get("evaluation", {}).get("compute_translation_metrics", False):
-        num_samples = config.get("evaluation", {}).get("translation_metrics_samples", 200)
-        source_lang = config.get("data", {}).get("source_lang", "en")
-        target_lang = config.get("data", {}).get("target_lang", "fr")
-
-        logger.info(f"Adding translation metrics callback ({num_samples} samples per epoch)...")
-        metrics_callback = TranslationMetricsCallback(
-            eval_dataset=eval_dataset,
-            tokenizer=tokenizer,
-            source_lang=source_lang,
-            target_lang=target_lang,
-            num_samples=num_samples,
-            max_new_tokens=config.get("evaluation", {}).get("max_new_tokens", 128),
-        )
-        trainer.add_callback(metrics_callback)
-
     # =========================================================================
-    # Pre-training evaluation (baseline metrics)
+    # Pre-training evaluation (models scoped inside run_evaluation)
     # =========================================================================
-    # Store pre-training metrics for transfer efficiency calculation
-    student_pre = None
-    teacher_pre = None
-
-    # Default: True for classification, False for translation (too slow, eval loss != BLEU)
+    student_pre = teacher_pre = None
     default_log_pre_post = num_labels is not None
     log_pre_post = config.get("evaluation", {}).get("log_pre_post_metrics", default_log_pre_post)
     if log_pre_post and num_labels is None:
         logger.warning("log_pre_post_metrics enabled for translation - this may take hours on large eval sets")
     if log_pre_post:
-        logger.info("=" * 60)
-        logger.info("Pre-training evaluation (baselines)...")
-        logger.info("=" * 60)
-
-        eval_batch_size = config["training"].get("eval_batch_size", config["training"]["batch_size"])
-
-        # Student pre-training metrics
-        logger.info("Evaluating student (pre-training)...")
-        student_pre = evaluate_model_standalone(
-            model=student,
-            eval_dataset=eval_dataset,
-            tokenizer=tokenizer,
-            compute_metrics=compute_metrics,
-            data_collator=data_collator,
-            batch_size=eval_batch_size,
-            device=device,
-            loss_only=num_labels is None,  # Fast loss-only for translation
+        set_reproducibility_seed(args.seed)
+        student_pre, teacher_pre = run_evaluation(
+            config, device, tokenizer, num_labels,
+            eval_dataset, compute_metrics, data_collator,
+            task, phase="pre",
         )
-        log_pre_post_metrics(student_pre, "student", "pre")
-
-        # Teacher pre-training metrics (if exists)
-        if teacher is not None:
-            logger.info("Evaluating teacher (pre-training)...")
-            teacher_pre = evaluate_model_standalone(
-                model=teacher,
-                eval_dataset=eval_dataset,
-                tokenizer=tokenizer,
-                compute_metrics=compute_metrics,
-                data_collator=data_collator,
-                batch_size=eval_batch_size,
-                device=device,
-                loss_only=num_labels is None,
-            )
-            log_pre_post_metrics(teacher_pre, "teacher", "pre")
-
-            # Log teacher advantage (room for improvement)
-            primary_metric = get_primary_metric(task) or "loss"
-            if primary_metric in teacher_pre and primary_metric in student_pre:
-                teacher_advantage = teacher_pre[primary_metric] - student_pre[primary_metric]
-                logger.info(f"  Teacher advantage ({primary_metric}): {teacher_advantage:+.4f}")
-                try:
-                    import wandb
-                    if wandb.run:
-                        wandb.log({"transfer/teacher_advantage": teacher_advantage}, commit=False)
-                except Exception:
-                    pass
 
     # =========================================================================
-    # Training
+    # Training (models scoped inside _train)
     # =========================================================================
-    logger.info("=" * 60)
-    logger.info("Starting training...")
-    logger.info("=" * 60)
-
-    trainer.train(resume_from_checkpoint=resume_checkpoint)
-
-    # Update W&B with full config and sync metadata
-    try:
-        import wandb
-        if wandb.run:
-            # Log full config to W&B for dashboard visibility
-            wandb.config.update(config, allow_val_change=True)
-            # Log primary metric (metric_for_best_model is set automatically by HF Trainer)
-            wandb.config.update({
-                "primary_metric": get_primary_metric(task) or "loss",
-            }, allow_val_change=True)
-            # Sync metadata if W&B assigned a different ID (e.g., original was deleted)
-            if wandb.run.id != metadata.get("wandb_run_id"):
-                old_id = metadata.get("wandb_run_id")
-                metadata["wandb_run_id"] = wandb.run.id
-                metadata.setdefault("wandb_run_id_history", []).append(old_id)
-                save_run_metadata(output_dir, metadata)
-                logger.info(f"W&B ID changed: {old_id} → {wandb.run.id}")
-    except ImportError:
-        pass  # W&B not installed
-    except Exception as e:
-        logger.debug(f"W&B config update failed: {e}")
-
-    # Update state
-    state.save(
-        epoch=trainer.state.epoch,
-        step=trainer.state.global_step
+    set_reproducibility_seed(args.seed)
+    _train(
+        config, device, tokenizer, num_labels, task,
+        train_dataset, eval_dataset, compute_metrics, data_collator,
+        output_dir, run_name, args, state, resume_checkpoint,
+        env, report_to, metadata,
     )
 
-    # Save final model
-    logger.info("Saving final model...")
-    trainer.save_model()
-
-    # Save co-trained teacher (weights changed during training)
-    if teacher is not None and not config["distillation"].get("freeze_teacher", True):
-        teacher_dir = output_dir / "teacher"
-        logger.info(f"Saving co-trained teacher to {teacher_dir}...")
-        teacher.save_pretrained(teacher_dir)
-        tokenizer.save_pretrained(teacher_dir)
-
     # =========================================================================
-    # Post-training evaluation
+    # Post-training evaluation (models scoped inside run_evaluation)
     # =========================================================================
-    logger.info("=" * 60)
-    logger.info("Post-training evaluation...")
-    logger.info("=" * 60)
-
-    # Student post-training metrics (standard eval)
-    logger.info("Evaluating student (post-training)...")
-    metrics = trainer.evaluate()
-    logger.info(metrics)
-
-    # Log as student/post for consistency (skip for translation by default)
-    if config.get("evaluation", {}).get("log_pre_post_metrics", num_labels is not None):
-        student_post = {k.replace("eval_", ""): v for k, v in metrics.items()}
-        log_pre_post_metrics(student_post, "student", "post")
-
-        # Teacher post-training metrics (if exists and co-training)
-        teacher_post = None
-        if teacher is not None:
-            logger.info("Evaluating teacher (post-training)...")
-            eval_batch_size = config["training"].get("eval_batch_size", config["training"]["batch_size"])
-            teacher_post = evaluate_model_standalone(
-                model=teacher,
-                eval_dataset=eval_dataset,
-                tokenizer=tokenizer,
-                compute_metrics=compute_metrics,
-                data_collator=data_collator,
-                batch_size=eval_batch_size,
-                device=device,
-                loss_only=num_labels is None,
-            )
-            log_pre_post_metrics(teacher_post, "teacher", "post")
-
-        # Log knowledge transfer metrics if we have pre metrics
-        primary_metric = get_primary_metric(task) or "loss"
-        transfer_metrics = {}
-
-        if student_pre is not None and primary_metric in student_post and primary_metric in student_pre:
-            student_gain = student_post[primary_metric] - student_pre[primary_metric]
-            transfer_metrics["transfer/student_gain"] = student_gain
-            logger.info(f"  Student gain ({primary_metric}): {student_gain:+.4f}")
-
-            # Knowledge transfer efficiency requires teacher_pre
-            if teacher_pre is not None and primary_metric in teacher_pre:
-                teacher_advantage = teacher_pre[primary_metric] - student_pre[primary_metric]
-                if abs(teacher_advantage) > 1e-6:
-                    transfer_efficiency = student_gain / teacher_advantage
-                    transfer_metrics["transfer/efficiency"] = transfer_efficiency
-                    logger.info(f"  Knowledge transfer efficiency: {transfer_efficiency:.2%}")
-
-        # Log all transfer metrics to W&B
-        if transfer_metrics:
-            try:
-                import wandb
-                if wandb.run:
-                    wandb.log(transfer_metrics, commit=False)
-            except Exception as e:
-                logger.debug(f"Transfer metrics logging failed: {e}")
+    student_post, teacher_post = run_evaluation(
+        config, device, tokenizer, num_labels,
+        eval_dataset, compute_metrics, data_collator,
+        task, phase="post",
+        checkpoint_dir=output_dir,
+        evaluate_teacher=log_pre_post,
+        prev_metrics=(student_pre, teacher_pre) if log_pre_post else None,
+    )
 
     # Remove from incomplete registry
     remove_incomplete_job()
