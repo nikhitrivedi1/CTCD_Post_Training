@@ -911,6 +911,8 @@ def main():
                 project=os.environ.get("WANDB_PROJECT"),
                 id=wandb_run_id,
                 name=run_name,
+                group=os.environ.get("WANDB_RUN_GROUP"),
+                tags=os.environ.get("WANDB_TAGS", "").split(",") if os.environ.get("WANDB_TAGS") else None,
                 resume="allow" if is_resume else None,
             )
         except Exception as e:
@@ -957,6 +959,7 @@ def main():
     # =========================================================================
     # Post-training evaluation (models scoped inside run_evaluation)
     # =========================================================================
+    set_reproducibility_seed(args.seed)
     student_post, teacher_post = run_evaluation(
         config, device, tokenizer, num_labels,
         eval_dataset, compute_metrics, data_collator,
