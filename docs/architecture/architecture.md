@@ -8,7 +8,7 @@ Complete reference for the knowledge distillation framework.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              train.py (Entry Point)                         │
+│                              distill.py (Entry Point)                         │
 │  - Parses CLI arguments                                                     │
 │  - Loads config with inheritance                                            │
 │  - Orchestrates training pipeline                                           │
@@ -218,16 +218,16 @@ distillation:
 
 ```bash
 # New run
-python train.py --config configs/mnli/.../ablations/00.yaml
+python distill.py --config configs/mnli/.../ablations/00.yaml
 
 # Named run
-python train.py --run_name my_experiment --config configs/...
+python distill.py --run_name my_experiment --config configs/...
 
 # Resume existing
-python train.py --run_name existing_run
+python distill.py --run_name existing_run
 
 # Limit steps
-python train.py --config configs/... --max_steps 100
+python distill.py --config configs/... --max_steps 100
 ```
 
 ---

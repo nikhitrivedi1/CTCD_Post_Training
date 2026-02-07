@@ -93,3 +93,7 @@ tmp/
 temp/
 *.tmp
 docs/analysis/data/ablation_history.json
+
+# Workbench results (keep .md summaries, exclude raw output)
+workbench/results/**/*.json
+workbench/results/**/*.log

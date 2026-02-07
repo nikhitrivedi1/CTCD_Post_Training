@@ -254,3 +254,80 @@ Every paper must answer:
 - Sanh et al. (2019) — DistilBERT
 - Romero et al. (2015) — FitNets (feature distillation)
 - Zagoruyko & Komodakis (2017) — Attention transfer
+
+---
+
+## Part 7: Google Scholar
+
+[Google Scholar](https://scholar.google.com) is the primary search engine for academic papers. Understanding how it works helps with both reading and publishing.
+
+### Using Google Scholar for Research
+
+**Finding papers:**
+- Search by keywords: `"knowledge distillation" frozen teacher`
+- Search by author: `author:hinton knowledge distillation`
+- Filter by year to find recent work
+- Use "Cited by N" to find follow-up work and gauge impact
+
+**Evaluating papers:**
+| Signal | What It Means |
+|--------|---------------|
+| High citations | Influential (but slow to accumulate for new papers) |
+| Cited by recent papers | Still relevant |
+| "Cited by" includes top venues | Recognized by the community |
+| Multiple versions (arXiv → conference) | Paper was peer-reviewed and accepted |
+
+**Tip:** Check the "Cited by" list of seminal papers (e.g., Hinton 2015) to find the latest KD work. This is often more effective than keyword search.
+
+### Google Scholar Profile
+
+Every researcher should create a [Google Scholar profile](https://scholar.google.com/citations). It:
+- Aggregates all your publications in one place
+- Tracks citations automatically
+- Computes h-index and i10-index
+- Makes you discoverable by other researchers
+- Shows up when people search your name + topic
+
+**Setup:**
+1. Go to [scholar.google.com](https://scholar.google.com) → "My Profile"
+2. Sign in with a university email (preferred) or any Google account
+3. Add your name, affiliation, research interests
+4. Claim your papers (Scholar auto-detects from arXiv, conference proceedings, etc.)
+
+### Citation Metrics
+
+| Metric | What It Measures | Good Benchmark (for a student) |
+|--------|-----------------|-------------------------------|
+| **Citations** | Total times your work is cited | Any citation is a win |
+| **h-index** | h papers with at least h citations | 1-3 by graduation |
+| **i10-index** | Papers with 10+ citations | 1 is great for a student |
+
+Don't obsess over metrics — they're lagging indicators. Focus on doing good work and making it visible.
+
+### Making Your Paper Discoverable
+
+Google Scholar indexes from arXiv, conference proceedings, and university repositories. To maximize visibility:
+
+1. **Post to arXiv first** — indexed within days, freely available
+2. **Use descriptive titles** — "When Teachers Fail" is searchable; "A Study of X" is not
+3. **Include keywords in abstract** — Scholar searches abstract text heavily
+4. **Cite relevant papers** — your paper appears in their "Cited by" lists
+5. **Link from your Scholar profile** — claim papers quickly after publication
+
+### arXiv + Scholar Workflow
+
+```
+1. Write paper
+2. Post to arXiv (free, instant, citable)
+   → Gets a DOI-like identifier (arXiv:2501.12345)
+   → Indexed by Google Scholar within ~1 week
+3. Submit to conference/journal
+4. If accepted, Scholar links arXiv version to published version
+5. Claim on your Scholar profile
+```
+
+**Why arXiv first?**
+- Establishes priority (timestamp proves you did it first)
+- Immediate visibility (no 6-month review wait)
+- Free access (no paywall)
+- Scholar tracks both versions and merges citations

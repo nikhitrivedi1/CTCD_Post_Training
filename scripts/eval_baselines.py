@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.evaluation.metrics import compute_classification_metrics
 from src.tasks import get_num_labels, get_primary_metric, is_translation_task
+from utils.labels import LABEL_MAP_REGISTRY
 
 # =============================================================================
 # Classification models
@@ -52,14 +53,8 @@ CLASSIFICATION_SFT_MODELS = {
     "qqp": {"bert-sft": "textattack/bert-base-uncased-QQP"},
 }
 
-# Label mapping for textattack MNLI (uses different label order)
-# Direct indexing: new_logits = logits[:, LABEL_MAPS[model]]
-# TextAttack MNLI: [C,E,N] at indices [0,1,2]
-# Dataset MNLI:    [E,N,C] at indices [0,1,2]
-# So: new[0]=old[1], new[1]=old[2], new[2]=old[0] → [1,2,0]
-LABEL_MAPS = {
-    "textattack/bert-base-uncased-MNLI": [1, 2, 0],
-}
+# Use shared label map registry
+LABEL_MAPS = LABEL_MAP_REGISTRY
 
 # =============================================================================
 # Translation models

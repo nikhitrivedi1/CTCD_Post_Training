@@ -101,9 +101,9 @@ All experiments use:
 
 ```bash
 # Run individual ablation
-python train.py --config configs/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+python distill.py --config configs/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
 
 # Run with custom name
-python train.py --config configs/mnli/bert_distilbert/ablations/03_cotrain_base-teacher_kl.yaml \
+python distill.py --config configs/mnli/bert_distilbert/ablations/03_cotrain_base-teacher_kl.yaml \
     --run_name ablation_cotrain
 ```

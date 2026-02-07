@@ -159,6 +159,75 @@ Self-correction mechanism:
 3. **MCC metric** — penalizes calibration errors harshly
 4. **Teacher uncertainty** — BERT isn't dramatically better than DistilBERT on grammar
 
+### Post-Hoc Analysis: Probing & Head Fine-Tuning
+
+To understand what distillation produces, we analyzed Ablation 04 (cotrain_sft) on MNLI:
+
+**Linear Probing Results:**
+
+| Model | Peak Layer | Probing Accuracy |
+|-------|------------|------------------|
+| Teacher (BERT-12L) | layer_12 | 61.90% |
+| Student (DistilBERT-6L) | layer_6 | **80.54%** |
+
+The student's hidden states contain *more* linearly-extractable task information than the teacher's. Distillation forces efficient representations—with fewer layers, the student must encode task signal densely.
+
+**Head-Only Fine-Tuning:**
+
+| Stage | Accuracy |
+|-------|----------|
+| Pre-finetune | 82.67% |
+| Post-finetune (3 epochs) | 82.61% |
+| Improvement | **-0.06%** |
+
+Head-only fine-tuning provides no benefit. This validates:
+1. Distillation already optimized the classification head jointly with the encoder
+2. ~82% accuracy is the encoder's ceiling, not a head limitation
+3. Co-trained distillation produces well-optimized students
+
+**Attention Entropy:**
+
+| Model | Mean Entropy | Ratio |
+|-------|--------------|-------|
+| Teacher (12L) | 2.137 | - |
+| Student (6L) | 1.901 | **0.889** |
+
+The student exhibits 11% lower attention entropy—more focused attention patterns. Distillation forces efficient attention: with fewer layers, the student must concentrate on task-relevant tokens rather than spreading attention diffusely.
+
+**CKA Layer Alignment:**
+
+| Student Layer | Best Teacher Match | CKA Score |
+|---------------|-------------------|-----------|
+| layer_1 | layer_1 | 0.841 |
+| layer_2 | layer_3 | 0.845 |
+| layer_3 | layer_5 | 0.783 |
+| layer_4 | layer_5 | 0.537 |
+| layer_5 | layer_11 | 0.339 |
+| layer_6 | layer_12 | 0.224 |
+
+Early student layers (1-3) align well with teacher layers (CKA 0.78-0.85). Final layers diverge significantly (CKA 0.22-0.34), indicating the student develops its own task-optimized representations rather than copying teacher structure. This is expected: the student compresses 12 teacher layers into 6, so later layers must combine information differently.
+
+**Prediction Disagreement:**
+
+| Metric | Teacher | Student |
+|--------|---------|---------|
+| Accuracy | 84.57% | 82.67% |
+| Mean confidence | 0.910 | 0.931 |
+| Confidence when wrong | 0.781 | 0.825 |
+
+| Agreement Category | % of Samples |
+|-------------------|--------------|
+| Both correct | 78.7% |
+| Both wrong | 10.6% |
+| Teacher only correct | 5.9% |
+| Student only correct | 4.0% |
+
+Key findings:
+1. **89.3% agreement** — teacher and student mostly make the same predictions
+2. **5.9% knowledge gap** — cases where teacher succeeds but student fails (distillation bottleneck)
+3. **4.0% student wins** — student learned patterns teacher missed (from ground truth)
+4. **Overconfidence when wrong** — student is more confident on errors (0.825 vs 0.781), a common calibration issue in distilled models
+
 ---
 
 ## 6. Practical Guidelines

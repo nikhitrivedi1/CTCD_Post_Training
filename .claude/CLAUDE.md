@@ -19,7 +19,7 @@
 
 ## Project Context
 - This is a knowledge distillation research project for CS-7150 Deep Learning.
-- Main components: train.py (entry point), src/training/trainer.py (DistillationTrainer).
+- Main components: distill.py (entry point), src/training/trainer.py (DistillationTrainer).
 - Configs in configs/ use YAML with inheritance (inherit: base.yaml).
 - RFA factorial study: 8 combinations of Response/Feature/Attention distillation signals.
 - Runs output to outputs/{run_name}/ with config.yaml, run_metadata.json, output.log.

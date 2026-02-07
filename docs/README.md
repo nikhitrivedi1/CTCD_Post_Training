@@ -87,6 +87,18 @@ W&B data analysis workflow.
 | [README.md](analysis/README.md) | Analysis workflow overview |
 | [scripts/fetch_wandb.py](analysis/scripts/fetch_wandb.py) | Script to download W&B data |
 
+### Workbench
+Post-hoc analysis tools for trained models. See [workbench/results/probing_analysis.md](../workbench/results/probing_analysis.md) for results.
+
+| Command | Description |
+|---------|-------------|
+| `probe` | Linear probing - measures task information in each layer |
+| `cka` | CKA similarity - compares teacher/student representations |
+| `attention-entropy` | Attention entropy - measures focus vs diffuse attention |
+| `disagreement` | Prediction disagreement and per-class accuracy breakdown |
+
+Usage: `python workbench/analyze.py <command> --teacher <model> --student <checkpoint> --task <task>`
+
 ### Paper
 Publication materials.
 

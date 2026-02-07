@@ -26,7 +26,7 @@ Complete reference for the knowledge distillation framework, covering all module
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              train.py (Entry Point)                         │
+│                              distill.py (Entry Point)                         │
 │  - Parses CLI arguments                                                     │
 │  - Loads config with inheritance                                            │
 │  - Orchestrates training pipeline                                           │
@@ -719,26 +719,26 @@ evaluation:
 
 ```bash
 # New run (auto-named with timestamp)
-python train.py --config configs/mnli/bert_distilbert/ablations/00.yaml
+python distill.py --config configs/mnli/bert_distilbert/ablations/00.yaml
 
 # Named run
-python train.py --run_name my_experiment --config configs/...
+python distill.py --run_name my_experiment --config configs/...
 
 # With timestamp suffix
-python train.py --run_name exp --config configs/... --timestamp
+python distill.py --run_name exp --config configs/... --timestamp
 # Creates: exp_2026-01-31_12-00Z
 
 # Resume existing run
-python train.py --run_name existing_run
+python distill.py --run_name existing_run
 
 # Force overwrite existing run
-python train.py --run_name old_run --config configs/... --force
+python distill.py --run_name old_run --config configs/... --force
 
 # Limit training steps (for testing)
-python train.py --config configs/... --max_steps 100
+python distill.py --config configs/... --max_steps 100
 
 # Set random seed
-python train.py --config configs/... --seed 123
+python distill.py --config configs/... --seed 123
 ```
 
 ---
@@ -832,7 +832,7 @@ Planned:  Multi-stage compression
 1. **Dataset** — Add loader in `src/data/datasets.py`, register in `load_dataset_for_task()`
 2. **Metrics** — Add compute function in `src/evaluation/metrics.py`, register in `get_compute_metrics()`
 3. **Config** — Create `configs/{task}/...yaml` with task-specific settings
-4. **Labels** — Set `num_labels` in `train.py` main function if classification
+4. **Labels** — Set `num_labels` in `distill.py` main function if classification
 
 ---
 

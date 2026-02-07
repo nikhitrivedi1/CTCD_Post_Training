@@ -49,49 +49,6 @@ def setup_logging(debug: bool = False):
         warnings.filterwarnings("ignore")
 
 
-class TeeWriter:
-    """Write to both a file and the original stream (stdout/stderr).
-
-    Handles carriage returns so tqdm progress bars don't spam the log file.
-    Terminal gets full interactive experience; file gets clean final states.
-    """
-
-    def __init__(self, file_path: Path, original_stream):
-        self.file = open(file_path, 'a')
-        self.original = original_stream
-        self.encoding = getattr(original_stream, 'encoding', 'utf-8')
-        self._line_buffer = ""
-
-    def write(self, data):
-        # Terminal: write immediately (preserves interactive behavior)
-        self.original.write(data)
-
-        # File: buffer lines, \r clears buffer (keeps only final state)
-        for char in data:
-            if char == '\r':
-                self._line_buffer = ""
-            elif char == '\n':
-                self.file.write(self._line_buffer + '\n')
-                self.file.flush()
-                self._line_buffer = ""
-            else:
-                self._line_buffer += char
-
-    def flush(self):
-        self.original.flush()
-
-    def close(self):
-        if self._line_buffer:
-            self.file.write(self._line_buffer + '\n')
-        self.file.close()
-
-    def isatty(self):
-        return self.original.isatty()
-
-    def fileno(self):
-        return self.original.fileno()
-
-
 def add_file_logging(output_dir: Path, debug: bool = False):
     """Add file logging to capture all output to the run's output directory.
 
@@ -102,25 +59,12 @@ def add_file_logging(output_dir: Path, debug: bool = False):
         output_dir: Path to the output directory
         debug: If True, use DEBUG level; otherwise INFO level
     """
+    from utils.logging import setup_file_logging
+
     output_dir.mkdir(parents=True, exist_ok=True)
     log_file = output_dir / "output.log"
 
-    # Capture stdout/stderr (print, tqdm, wandb output)
-    sys.stdout = TeeWriter(log_file, sys.stdout)
-    sys.stderr = TeeWriter(log_file, sys.stderr)
-
-    # Update existing logging handlers to use TeeWriter
-    # (StreamHandlers created before TeeWriter hold old stdout reference)
-    for handler in logging.root.handlers:
-        if isinstance(handler, logging.StreamHandler):
-            handler.stream = sys.stdout
-
-    # Also update transformers' logging handlers
-    import transformers.utils.logging as tf_logging
-    for handler in tf_logging.get_logger().handlers:
-        if isinstance(handler, logging.StreamHandler):
-            handler.stream = sys.stdout
-
+    setup_file_logging(log_file, update_transformers=True)
     logger.info(f"Logging to file: {log_file}")
 
 # Add project root to path for running without package install
@@ -677,7 +621,7 @@ def main():
                     sys.exit(
                         "\nError: --config is required for new runs.\n\n"
                         "Usage:\n"
-                        "  python train.py --run_name NAME --config CONFIG [--force]\n"
+                        "  python distill.py --run_name NAME --config CONFIG [--force]\n"
                     )
                 is_resume = False
                 logger.info(f"Starting fresh run: {run_name}")
@@ -692,9 +636,9 @@ def main():
                 sys.exit(
                     f"\nError: Run '{args.run_name}' does not exist and --config not provided.\n\n"
                     f"Usage:\n"
-                    f"  New run:    python train.py --run_name {args.run_name} --config CONFIG\n"
-                    f"  Resume:     python train.py --run_name EXISTING_RUN\n"
-                    f"  Overwrite:  python train.py --run_name NAME --config CONFIG --force\n"
+                    f"  New run:    python distill.py --run_name {args.run_name} --config CONFIG\n"
+                    f"  Resume:     python distill.py --run_name EXISTING_RUN\n"
+                    f"  Overwrite:  python distill.py --run_name NAME --config CONFIG --force\n"
                 )
             is_resume = False
             logger.info(f"Starting new run: {run_name}")
@@ -704,9 +648,9 @@ def main():
             sys.exit(
                 "\nError: No --run_name or --config provided.\n\n"
                 "Usage:\n"
-                "  New run:    python train.py --config CONFIG\n"
-                "  Named run:  python train.py --run_name NAME --config CONFIG\n"
-                "  Resume:     python train.py --run_name EXISTING_RUN\n"
+                "  New run:    python distill.py --config CONFIG\n"
+                "  Named run:  python distill.py --run_name NAME --config CONFIG\n"
+                "  Resume:     python distill.py --run_name EXISTING_RUN\n"
             )
         if args.force:
             logger.warning("--force without --run_name is redundant (auto-generated names are always unique)")
@@ -733,8 +677,8 @@ def main():
                 f"\nError: --config cannot be used when resuming.\n"
                 f"The stored config at {output_dir / 'config.yaml'} will be used.\n\n"
                 f"Usage:\n"
-                f"  Resume:     python train.py --run_name {run_name}\n"
-                f"  Overwrite:  python train.py --run_name {run_name} --config CONFIG --force\n"
+                f"  Resume:     python distill.py --run_name {run_name}\n"
+                f"  Overwrite:  python distill.py --run_name {run_name} --config CONFIG --force\n"
             )
         config = load_config_snapshot(output_dir)
         if config is None:
@@ -742,7 +686,7 @@ def main():
                 f"\nError: No stored config found at {output_dir / 'config.yaml'}\n"
                 f"The run directory exists but appears corrupted.\n\n"
                 f"Options:\n"
-                f"  Delete and restart:  python train.py --run_name {run_name} --config CONFIG --force\n"
+                f"  Delete and restart:  python distill.py --run_name {run_name} --config CONFIG --force\n"
                 f"  Or manually delete:  rm -rf {output_dir}\n"
             )
         logger.info(f"Loaded stored config from: {output_dir / 'config.yaml'}")
@@ -822,9 +766,14 @@ def main():
             save_run_metadata(output_dir, metadata)
             logger.warning(f"Recovered missing run_metadata.json for: {run_name}")
     else:
-        # New run
+        # New run — include timestamp in W&B ID for uniqueness
+        # (W&B tombstones deleted run IDs, so deterministic IDs can't be reused)
         config_id = generate_config_id(args.config)
-        wandb_run_id = truncate_for_wandb(run_name)
+        # Skip adding timestamp if run_name already contains one (--timestamp or auto-named)
+        if timestamp in run_name:
+            wandb_run_id = truncate_for_wandb(run_name)
+        else:
+            wandb_run_id = truncate_for_wandb(f"{run_name}_{timestamp}")
         metadata = {
             "run_name": run_name,
             "wandb_run_id": wandb_run_id,
@@ -845,7 +794,10 @@ def main():
     wandb_project = "Test" if args.debug else "Knowledge Distillation"
     os.environ.setdefault("WANDB_PROJECT", wandb_project)
     os.environ["WANDB_RUN_ID"] = wandb_run_id
-    os.environ["WANDB_RESUME"] = "allow"
+    if is_resume:
+        os.environ["WANDB_RESUME"] = "allow"
+    else:
+        os.environ.pop("WANDB_RESUME", None)
     # Use args.config for new runs, metadata["config"] for resume
     config_path = args.config or metadata.get("config")
     if config_path:
@@ -884,7 +836,7 @@ def main():
         fp16=(config["training"].get("fp16", True) and student.dtype != torch.float16) if device == "cuda" else False,
         dataloader_num_workers=config["training"].get("dataloader_num_workers", 4) if device == "cuda" else 0,  # MPS requires 0 workers
         dataloader_pin_memory=device == "cuda",  # Disable on MPS (not supported)
-        run_name=wandb_run_id,
+        run_name=run_name,
         max_steps=args.max_steps if args.max_steps > 0 else -1,
         load_best_model_at_end=True,
         # Select best checkpoint by task metric (accuracy/f1/mcc), not loss.
@@ -1079,6 +1031,13 @@ def main():
     # Save final model
     logger.info("Saving final model...")
     trainer.save_model()
+
+    # Save co-trained teacher (weights changed during training)
+    if teacher is not None and not config["distillation"].get("freeze_teacher", True):
+        teacher_dir = output_dir / "teacher"
+        logger.info(f"Saving co-trained teacher to {teacher_dir}...")
+        teacher.save_pretrained(teacher_dir)
+        tokenizer.save_pretrained(teacher_dir)
 
     # =========================================================================
     # Post-training evaluation

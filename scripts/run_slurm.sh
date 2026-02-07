@@ -173,7 +173,9 @@ if [ -n "$RUN_NAME" ]; then
     # (TIMESTAMP creates a new dir, so always needs --config)
     if [ -d "$OUTPUT_DIR" ] && [ -z "$FORCE" ] && [ -z "$TIMESTAMP" ]; then
         # Resume existing run (no --config needed)
-        python train.py --run_name "$RUN_NAME" $ARGS || EXIT_CODE=$?
+        CMD="python distill.py --run_name \"$RUN_NAME\" $ARGS"
+        echo "CMD: $CMD"
+        python distill.py --run_name "$RUN_NAME" $ARGS || EXIT_CODE=$?
     else
         # Create new run (--config required)
         if [ -z "$CONFIG" ]; then
@@ -181,11 +183,15 @@ if [ -n "$RUN_NAME" ]; then
             echo "Usage: sbatch scripts/run_slurm.sh $RUN_NAME <config.yaml>"
             exit 1
         fi
-        python train.py --run_name "$RUN_NAME" --config "$CONFIG" $ARGS || EXIT_CODE=$?
+        CMD="python distill.py --run_name \"$RUN_NAME\" --config \"$CONFIG\" $ARGS"
+        echo "CMD: $CMD"
+        python distill.py --run_name "$RUN_NAME" --config "$CONFIG" $ARGS || EXIT_CODE=$?
     fi
 else
     # Auto-named run: always start fresh
-    python train.py --config "$CONFIG" $ARGS || EXIT_CODE=$?
+    CMD="python distill.py --config \"$CONFIG\" $ARGS"
+    echo "CMD: $CMD"
+    python distill.py --config "$CONFIG" $ARGS || EXIT_CODE=$?
 fi
 
 EXIT_CODE=${EXIT_CODE:-0}

@@ -120,14 +120,14 @@ The goal of knowledge distillation is to close the gap between the student basel
 
 ```bash
 # Run individual ablation
-python train.py --config configs/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+python distill.py --config configs/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
 
 # Run with custom name
-python train.py --config configs/mnli/bert_distilbert/ablations/03_cotrain_base-teacher_kl.yaml \
+python distill.py --config configs/mnli/bert_distilbert/ablations/03_cotrain_base-teacher_kl.yaml \
     --run_name ablation_cotrain --new
 
 # Resume a run
-python train.py --run_name ablation_cotrain
+python distill.py --run_name ablation_cotrain
 ```
 
 ## References

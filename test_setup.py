@@ -95,7 +95,7 @@ def main():
         print()
         print("Next steps:")
         print("  1. Configure W&B: wandb login")
-        print("  2. Test training: python train.py --config configs/bert_distilbert_mnli.yaml --max_steps 10")
+        print("  2. Test training: python distill.py --config configs/bert_distilbert_mnli.yaml --max_steps 10")
         return 0
     else:
         print("✗ Some checks failed. Please install missing dependencies:")

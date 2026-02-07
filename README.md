@@ -17,6 +17,56 @@ any HuggingFace model pair.
 - **Cross-platform**: Local (Apple Silicon MPS/CPU), Google Colab, HPC clusters
 - **Config-driven**: Everything controlled via YAML configs
 
+### Two Complementary Tools
+
+| | **Distillation Framework** | **Workbench** |
+|---|---|---|
+| **Purpose** | Train distilled models | Analyze trained models |
+| **Entry point** | `distill.py` | `workbench/analyze.py` |
+| **Runtime** | Hours to days | Minutes |
+| **Resources** | GPU cluster, full datasets | Local CPU, sampled data |
+
+**Distillation Framework** (`distill.py`) is the heavy machine - it runs large-scale training experiments on GPU clusters, handles checkpointing, SLURM job chaining, and W&B logging. You point it at a config and let it run for hours.
+
+**Workbench** (`workbench/analyze.py`) is the quick experimentation bench - after the heavy machine produces trained models, you use the workbench for rapid post-hoc analysis: linear probing, attention entropy, prediction disagreement, CKA similarity. These run in minutes on CPU with sampled data, letting you iterate quickly on understanding what the models learned.
+
+```bash
+# Heavy machine: train a model (hours)
+python distill.py --config configs/mnli/bert_distilbert/default.yaml
+
+# Workbench: analyze the result (minutes)
+python workbench/analyze.py probe --teacher textattack/bert-base-uncased-MNLI --student outputs/mnli_00 --task mnli
+python workbench/analyze.py disagreement --teacher ... --student outputs/mnli_00 --task mnli
+```
+
+## DistilKit vs Unsloth
+
+DistilKit and [Unsloth](https://github.com/unslothai/unsloth) solve different problems in the model compression pipeline.
+
+| | **DistilKit** | **Unsloth** |
+|---|---|---|
+| **Goal** | Produce a smaller model that learns from a larger one | Make fine-tuning the same model faster |
+| **Method** | Knowledge distillation (teacher-student training) | Optimized CUDA kernels + memory tricks |
+| **Output** | A different, smaller architecture (e.g., BERT → DistilBERT) | Same architecture with adapted weights |
+| **Model types** | Any HuggingFace pair (encoders, decoders, seq2seq) | Decoder-only LLMs (Llama, Mistral, Gemma) |
+| **Research question** | *What knowledge transfers and how?* | *How fast can we fine-tune?* |
+| **Distillation signals** | Response (KL), Feature (MSE), Attention (KL) | N/A — no teacher model involved |
+| **Analysis tooling** | Workbench: CKA, probing, disagreement, attention entropy | N/A |
+| **Training mode** | Full fine-tune or LoRA, frozen or co-trained teacher | LoRA/QLoRA with fused kernels |
+
+**When to use DistilKit:**
+- You need a structurally smaller model (fewer layers, smaller hidden dim) for deployment
+- You want to study *which* distillation signals matter (RFA factorial design)
+- You're compressing across architectures (e.g., Llama-3B teaching a custom 500M model)
+- You need post-hoc analysis of what knowledge transferred
+
+**When to use Unsloth:**
+- You want to fine-tune a single LLM as fast as possible
+- You're doing LoRA/QLoRA adaptation and want 2-5x speedups
+- You don't need a smaller architecture, just adapted weights
+
+**Using them together:** Unsloth can accelerate the student's training loop inside DistilKit. Load the student via `FastLanguageModel`, apply LoRA, and pass it to `DistillationTrainer` — you get Unsloth's speed optimizations with DistilKit's knowledge transfer signals. This is most useful for LLM-scale distillation (e.g., Llama-70B → Llama-3B).
+
 ## Quick Start
 
 ### Installation
@@ -36,19 +86,19 @@ python test_setup.py
 
 ```bash
 # New run (auto-named with timestamp)
-python train.py --config configs/mnli/bert_distilbert/default.yaml
+python distill.py --config configs/mnli/bert_distilbert/default.yaml
 
 # New run with custom name
-python train.py --run_name mnli_00 --config configs/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+python distill.py --run_name mnli_00 --config configs/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
 
 # Resume existing run
-python train.py --run_name mnli_00
+python distill.py --run_name mnli_00
 
 # Overwrite existing run
-python train.py --run_name mnli_00 --config configs/... --force
+python distill.py --run_name mnli_00 --config configs/... --force
 
 # Local testing (10 steps)
-python train.py --config configs/... --max_steps 10
+python distill.py --config configs/... --max_steps 10
 
 # SLURM (with auto-requeue)
 sbatch scripts/run_slurm.sh configs/your_config.yaml
@@ -196,11 +246,20 @@ distillation/
 │   ├── training/        # DistillationTrainer
 │   ├── evaluation/      # Metrics
 │   └── utils/           # Config, checkpointing, environment
+├── workbench/           # Post-hoc analysis (the "quick bench")
+│   ├── analyze.py       # CLI: probe, cka, attention-entropy, disagreement
+│   ├── probing.py       # Linear probing per layer
+│   ├── cka.py           # CKA similarity between layers
+│   ├── attention.py     # Attention entropy analysis
+│   ├── disagreement.py  # Teacher-student prediction differences
+│   └── results/         # Analysis outputs (.json + .log)
+├── utils/               # Shared utilities
+│   └── logging.py       # TeeWriter for clean progress bar logging
 ├── scripts/             # Execution scripts
 │   ├── run_local.sh
 │   └── run_slurm.sh
 ├── test_setup.py        # Environment verification
-└── train.py            # Main entry point
+└── distill.py            # Main entry point
 ```
 
 ## Key Components
@@ -303,17 +362,17 @@ SEED=123 sbatch scripts/run_slurm.sh mnli_00 configs/...
 
 ```bash
 # BERT → DistilBERT on MNLI (sentence entailment)
-python train.py --run_name mnli_baseline --config configs/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+python distill.py --run_name mnli_baseline --config configs/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
 
 # BERT → DistilBERT on QQP (question pairs)
-python train.py --run_name qqp_baseline --config configs/qqp/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+python distill.py --run_name qqp_baseline --config configs/qqp/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
 
 # Auto-named runs (includes timestamp)
-python train.py --config configs/mnli/bert_distilbert/default.yaml
+python distill.py --config configs/mnli/bert_distilbert/default.yaml
 # Creates: outputs/mnli_default_2026-01-31_12-00Z/
 
 # Resume a run
-python train.py --run_name mnli_baseline
+python distill.py --run_name mnli_baseline
 ```
 
 ## Development
