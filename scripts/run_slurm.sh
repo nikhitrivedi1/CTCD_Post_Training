@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=distillation
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:a100:1
+#SBATCH --gres=gpu:h200:1
 #SBATCH --time=08:00:00
 #SBATCH --mem=64G
 #SBATCH --cpus-per-task=4
