@@ -1,6 +1,6 @@
 # MNLI Ablation Analysis
 
-**Date:** 2024-02-04
+**Date:** 2026-02-07
 **Task:** MultiNLI (Natural Language Inference)
 **Metric:** Accuracy
 **Model Pair:** BERT-base → DistilBERT
@@ -11,11 +11,11 @@
 
 | Rank | Config | Accuracy | Loss | Δ vs Baseline |
 |------|--------|----------|------|---------------|
-| 1 | 04_cotrain_sft | **82.69%** | 0.587 | +1.06% |
-| 2 | 03_cotrain_base | 82.62% | 0.519 | +0.99% |
-| 3 | 00_ce-only | 81.63% | 0.550 | baseline |
-| 4 | 01_frozen_base | 81.58% | 0.653 | -0.05% |
-| 5 | 02_frozen_sft | 79.82% | 0.647 | **-1.81%** |
+| 1 | 04_cotrain_sft | **82.69%** | 0.588 | +0.50% |
+| 2 | 03_cotrain_base | 82.62% | 0.522 | +0.43% |
+| 3 | 00_ce-only | 82.19% | 0.547 | baseline |
+| 4 | 01_frozen_base | 81.58% | 0.649 | -0.61% |
+| 5 | 02_frozen_sft | 79.82% | 0.647 | **-2.37%** |
 
 ---
 
@@ -59,10 +59,10 @@
 Both co-training configs outperform frozen and CE-only:
 - 04_cotrain_sft: 82.69%
 - 03_cotrain_base: 82.62%
-- Gap of ~1% over CE-only baseline
+- Gap of ~0.5% over CE-only baseline
 
 ### 2. Frozen SFT hurts
-02_frozen_sft underperforms CE-only by 1.81%:
+02_frozen_sft underperforms CE-only by 2.37%:
 - Frozen fine-tuned teacher provides overconfident wrong guidance
 - Student can't overcome strong KL gradients toward incorrect predictions
 

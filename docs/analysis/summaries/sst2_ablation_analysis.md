@@ -1,6 +1,6 @@
 # SST-2 Ablation Analysis
 
-**Date:** 2024-02-04
+**Date:** 2026-02-07
 **Task:** Stanford Sentiment Treebank (Binary Sentiment)
 **Metric:** Accuracy
 **Model Pair:** BERT-base → DistilBERT

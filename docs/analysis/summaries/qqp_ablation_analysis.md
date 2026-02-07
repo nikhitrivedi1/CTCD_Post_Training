@@ -1,6 +1,6 @@
 # QQP Ablation Analysis
 
-**Date:** 2024-02-04
+**Date:** 2026-02-07
 **Task:** Quora Question Pairs (Paraphrase Detection)
 **Metric:** F1 Score
 **Model Pair:** BERT-base → DistilBERT
@@ -11,11 +11,11 @@
 
 | Rank | Config | F1 | Loss | Δ vs Baseline |
 |------|--------|-----|------|---------------|
-| 1 | 03_cotrain_base | **90.61%** | 0.269 | +0.21% |
-| 2 | 04_cotrain_sft | 90.46% | 0.319 | +0.06% |
-| 3 | 01_frozen_base | 90.44% | 0.400 | +0.04% |
-| 4 | 00_ce-only | 90.40% | 0.301 | baseline |
-| 5 | 02_frozen_sft | **55.89%** | 0.661 | **-34.51%** ⚠️ |
+| 1 | 03_cotrain_base | **90.61%** | 0.269 | +0.35% |
+| 2 | 04_cotrain_sft | 90.46% | 0.325 | +0.20% |
+| 3 | 01_frozen_base | 90.44% | 0.400 | +0.18% |
+| 4 | 00_ce-only | 90.26% | 0.307 | baseline |
+| 5 | 02_frozen_sft | **55.89%** | 0.652 | **-34.37%** ⚠️ |
 
 ---
 
@@ -64,7 +64,7 @@ The frozen fine-tuned teacher completely prevents the student from learning:
 | Starting F1 | 51.96% | 86-88% |
 | Final F1 | 55.89% | 90%+ |
 | Starting Loss | 0.637 | 0.29-0.45 |
-| Final Loss | 0.661 | 0.27-0.40 |
+| Final Loss | 0.652 | 0.27-0.40 |
 | Improvement | +4% | +3-4% |
 
 ### Root Cause: Overconfident Wrong Teacher
@@ -85,7 +85,7 @@ The frozen fine-tuned teacher completely prevents the student from learning:
 ## Key Observations
 
 ### 1. Frozen SFT is catastrophically bad
-- 34.5% drop in F1 vs CE-only
+- 34.4% drop in F1 vs CE-only
 - Barely better than random guessing (50%)
 - Training dynamics show model is stuck
 

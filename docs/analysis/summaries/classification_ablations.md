@@ -1,6 +1,6 @@
 # Classification Ablation Analysis
 
-**Date:** 2024-02-04
+**Date:** 2026-02-07
 **Tasks:** MNLI, QQP, SST-2, CoLA
 **Model Pair:** BERT-base → DistilBERT
 
@@ -12,21 +12,21 @@
 
 | Rank | Config | Accuracy | Δ vs CE-only |
 |------|--------|----------|--------------|
-| 1 | 04_cotrain_sft | **82.69%** | +1.06% |
-| 2 | 03_cotrain_base | 82.62% | +0.99% |
-| 3 | 00_ce-only | 81.63% | baseline |
-| 4 | 01_frozen_base | 81.58% | -0.05% |
-| 5 | 02_frozen_sft | 79.82% | **-1.81%** |
+| 1 | 04_cotrain_sft | **82.69%** | +0.50% |
+| 2 | 03_cotrain_base | 82.62% | +0.43% |
+| 3 | 00_ce-only | 82.19% | baseline |
+| 4 | 01_frozen_base | 81.58% | -0.61% |
+| 5 | 02_frozen_sft | 79.82% | **-2.37%** |
 
 ### QQP (F1)
 
 | Rank | Config | F1 | Δ vs CE-only |
 |------|--------|-----|--------------|
-| 1 | 03_cotrain_base | **90.61%** | +0.21% |
-| 2 | 04_cotrain_sft | 90.46% | +0.06% |
-| 3 | 01_frozen_base | 90.44% | +0.04% |
-| 4 | 00_ce-only | 90.40% | baseline |
-| 5 | 02_frozen_sft | 55.89% | **-34.51%** ⚠️ |
+| 1 | 03_cotrain_base | **90.61%** | +0.35% |
+| 2 | 04_cotrain_sft | 90.46% | +0.20% |
+| 3 | 01_frozen_base | 90.44% | +0.18% |
+| 4 | 00_ce-only | 90.26% | baseline |
+| 5 | 02_frozen_sft | 55.89% | **-34.37%** ⚠️ |
 
 ### SST-2 (Accuracy)
 
@@ -42,11 +42,11 @@
 
 | Rank | Config | MCC | Δ vs CE-only |
 |------|--------|-----|--------------|
-| 1 | 00_ce-only | **54.56%** | baseline |
-| 2 | 01_frozen_base | 53.39% | -1.17% |
-| 3 | 03_cotrain_base | 51.73% | -2.83% |
-| 4 | 02_frozen_sft | 51.45% | -3.11% |
-| 5 | 04_cotrain_sft | 49.67% | **-4.89%** |
+| 1 | 00_ce-only | **53.80%** | baseline |
+| 2 | 01_frozen_base | 53.39% | -0.41% |
+| 3 | 03_cotrain_base | 51.73% | -2.07% |
+| 4 | 02_frozen_sft | 51.45% | -2.35% |
+| 5 | 04_cotrain_sft | 49.67% | **-4.13%** |
 
 ---
 
@@ -79,17 +79,17 @@
 ### 1. Frozen SFT Teacher is Dangerous
 
 **Evidence:**
-- MNLI: -1.81% vs CE-only
-- QQP: -34.51% vs CE-only (catastrophic failure)
-- CoLA: -3.11% vs CE-only
+- MNLI: -2.37% vs CE-only
+- QQP: -34.37% vs CE-only (catastrophic failure)
+- CoLA: -2.35% vs CE-only
 
 **Hypothesis:** Overconfident wrong predictions from fine-tuned teacher create strong gradients that fight against ground truth learning.
 
 ### 2. Co-training Generally Helps
 
 **Evidence:**
-- MNLI: +1.06% (cotrain_sft), +0.99% (cotrain_base)
-- QQP: +0.21% (cotrain_base)
+- MNLI: +0.50% (cotrain_sft), +0.43% (cotrain_base)
+- QQP: +0.35% (cotrain_base)
 - SST-2: +0.57% (cotrain_base)
 
 **Hypothesis:** Teacher that adapts alongside student provides more useful guidance than frozen expert.
@@ -97,8 +97,8 @@
 ### 3. CoLA is Different
 
 **Evidence:**
-- CE-only wins (54.56%) over all distillation methods
-- Co-training hurts more than frozen (-2.83% to -4.89%)
+- CE-only wins (53.80%) over all distillation methods
+- Co-training hurts more than frozen (-2.07% to -4.13%)
 
 **Hypothesis:**
 - Small dataset (8.5k examples) may not benefit from distillation

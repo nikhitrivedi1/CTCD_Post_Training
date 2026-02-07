@@ -1,6 +1,6 @@
 # CoLA Ablation Analysis
 
-**Date:** 2024-02-04
+**Date:** 2026-02-07
 **Task:** Corpus of Linguistic Acceptability (Grammar Judgment)
 **Metric:** Matthews Correlation Coefficient (MCC)
 **Model Pair:** BERT-base → DistilBERT
@@ -11,11 +11,11 @@
 
 | Rank | Config | MCC | Loss | Δ vs Baseline |
 |------|--------|-----|------|---------------|
-| 1 | 00_ce-only | **54.56%** | 0.558 | baseline |
-| 2 | 01_frozen_base | 53.39% | 0.482 | -1.17% |
-| 3 | 03_cotrain_base | 51.73% | 0.560 | -2.83% |
-| 4 | 02_frozen_sft | 51.45% | 0.516 | -3.11% |
-| 5 | 04_cotrain_sft | 49.67% | 0.643 | **-4.89%** |
+| 1 | 00_ce-only | **53.80%** | 0.556 | baseline |
+| 2 | 01_frozen_base | 53.39% | 0.482 | -0.41% |
+| 3 | 03_cotrain_base | 51.73% | 0.559 | -2.07% |
+| 4 | 02_frozen_sft | 51.45% | 0.516 | -2.35% |
+| 5 | 04_cotrain_sft | 49.67% | 0.643 | **-4.13%** |
 
 ---
 
@@ -27,12 +27,12 @@
 - Complete reversal of MNLI/QQP pattern
 
 ### 2. Co-training makes it worse
-- 03_cotrain_base: -2.83%
-- 04_cotrain_sft: -4.89% (worst)
+- 03_cotrain_base: -2.07%
+- 04_cotrain_sft: -4.13% (worst)
 - Opposite of MNLI where co-training helps
 
 ### 3. Frozen base is best distillation
-- 01_frozen_base: -1.17% (smallest gap)
+- 01_frozen_base: -0.41% (smallest gap)
 - Still worse than CE-only
 
 ---

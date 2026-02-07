@@ -6,7 +6,7 @@
 
 ## Abstract
 
-Knowledge distillation transfers knowledge from large teacher models to smaller students. Standard practice freezes a fine-tuned teacher and trains the student to match soft labels. We present a systematic ablation study across four GLUE tasks revealing that **frozen fine-tuned teachers can catastrophically harm student performance**—dropping F1 by 34% on QQP. The culprit: overconfident wrong predictions create gradient conflict with ground truth. Co-training provides a solution: teachers that adapt alongside students self-correct their errors. Our key insight: *a teacher's willingness to update matters more than its starting accuracy*.
+Knowledge distillation transfers knowledge from large teacher models to smaller students. Standard practice freezes a fine-tuned teacher and trains the student to match soft labels. We present a systematic ablation study across four GLUE tasks revealing that **frozen fine-tuned teachers can catastrophically harm student performance**—dropping F1 by 34.4% on QQP. The culprit: overconfident wrong predictions create gradient conflict with ground truth. Co-training provides a solution: teachers that adapt alongside students self-correct their errors. Our key insight: *a teacher's willingness to update matters more than its starting accuracy*.
 
 ---
 
@@ -19,7 +19,7 @@ Knowledge distillation transfers knowledge from large teacher models to smaller 
 
 ### Contributions
 1. Systematic 5-config ablation study across 4 GLUE tasks
-2. Discovery of **catastrophic failure** with frozen fine-tuned teachers (QQP: -34% F1)
+2. Discovery of **catastrophic failure** with frozen fine-tuned teachers (QQP: -34.4% F1)
 3. Evidence that co-training provides robustness to teacher miscalibration
 4. Identification of task-dependent effects (CoLA reversal)
 
@@ -61,23 +61,23 @@ Knowledge distillation transfers knowledge from large teacher models to smaller 
 
 | Rank | Config | Accuracy | Δ vs CE-only |
 |------|--------|----------|--------------|
-| 1 | 04_cotrain_sft | **82.69%** | +1.06% |
-| 2 | 03_cotrain_base | 82.62% | +0.99% |
-| 3 | 00_ce-only | 81.63% | baseline |
-| 4 | 01_frozen_base | 81.58% | -0.05% |
-| 5 | 02_frozen_sft | 79.82% | **-1.81%** |
+| 1 | 04_cotrain_sft | **82.69%** | +0.50% |
+| 2 | 03_cotrain_base | 82.62% | +0.43% |
+| 3 | 00_ce-only | 82.19% | baseline |
+| 4 | 01_frozen_base | 81.58% | -0.61% |
+| 5 | 02_frozen_sft | 79.82% | **-2.37%** |
 
-**Finding:** Frozen SFT underperforms CE-only by 1.81%. Co-training recovers +2.87% over frozen SFT.
+**Finding:** Frozen SFT underperforms CE-only by 2.37%. Co-training recovers +2.87% over frozen SFT.
 
 ### QQP (F1) ⚠️ CATASTROPHIC FAILURE
 
 | Rank | Config | F1 | Δ vs CE-only |
 |------|--------|-----|--------------|
-| 1 | 03_cotrain_base | **90.61%** | +0.21% |
-| 2 | 04_cotrain_sft | 90.46% | +0.06% |
-| 3 | 01_frozen_base | 90.44% | +0.04% |
-| 4 | 00_ce-only | 90.40% | baseline |
-| 5 | 02_frozen_sft | **55.89%** | **-34.51%** |
+| 1 | 03_cotrain_base | **90.61%** | +0.35% |
+| 2 | 04_cotrain_sft | 90.46% | +0.20% |
+| 3 | 01_frozen_base | 90.44% | +0.18% |
+| 4 | 00_ce-only | 90.26% | baseline |
+| 5 | 02_frozen_sft | **55.89%** | **-34.37%** |
 
 **Finding:** Frozen SFT is catastrophic—barely above random (50%). Student cannot learn when teacher provides confident wrong guidance on this binary task.
 
@@ -97,11 +97,11 @@ Knowledge distillation transfers knowledge from large teacher models to smaller 
 
 | Rank | Config | MCC | Δ vs CE-only |
 |------|--------|-----|--------------|
-| 1 | 00_ce-only | **54.56%** | baseline |
-| 2 | 01_frozen_base | 53.39% | -1.17% |
-| 3 | 03_cotrain_base | 51.73% | -2.83% |
-| 4 | 02_frozen_sft | 51.45% | -3.11% |
-| 5 | 04_cotrain_sft | 49.67% | **-4.89%** |
+| 1 | 00_ce-only | **53.80%** | baseline |
+| 2 | 01_frozen_base | 53.39% | -0.41% |
+| 3 | 03_cotrain_base | 51.73% | -2.07% |
+| 4 | 02_frozen_sft | 51.45% | -2.35% |
+| 5 | 04_cotrain_sft | 49.67% | **-4.13%** |
 
 **Finding:** CE-only wins! Distillation hurts on this small, difficult task. Co-training makes it worse.
 
@@ -111,10 +111,10 @@ Knowledge distillation transfers knowledge from large teacher models to smaller 
 
 | Task | Best Config | Worst Config | Frozen SFT Effect |
 |------|-------------|--------------|-------------------|
-| MNLI | cotrain_sft | frozen_sft | -1.81% (hurts) |
-| QQP | cotrain_base | frozen_sft | **-34.51%** (catastrophic) |
+| MNLI | cotrain_sft | frozen_sft | -2.37% (hurts) |
+| QQP | cotrain_base | frozen_sft | **-34.37%** (catastrophic) |
 | SST-2 | frozen_base / cotrain_base | - | 0% (neutral) |
-| CoLA | ce-only | cotrain_sft | -3.11% (hurts) |
+| CoLA | ce-only | cotrain_sft | -2.35% (hurts) |
 
 ### Pattern Consistency
 
@@ -176,7 +176,7 @@ The student's hidden states contain *more* linearly-extractable task information
 
 | Stage | Accuracy |
 |-------|----------|
-| Pre-finetune | 82.67% |
+| Pre-finetune | 82.69% |
 | Post-finetune (3 epochs) | 82.61% |
 | Improvement | **-0.06%** |
 
@@ -211,7 +211,7 @@ Early student layers (1-3) align well with teacher layers (CKA 0.78-0.85). Final
 
 | Metric | Teacher | Student |
 |--------|---------|---------|
-| Accuracy | 84.57% | 82.67% |
+| Accuracy | 84.57% | 82.69% |
 | Mean confidence | 0.910 | 0.931 |
 | Confidence when wrong | 0.781 | 0.825 |
 
@@ -251,7 +251,7 @@ Key findings:
 
 ## 7. Conclusion
 
-1. **Frozen fine-tuned teachers can catastrophically fail** — QQP shows -34% F1
+1. **Frozen fine-tuned teachers can catastrophically fail** — QQP shows -34.4% F1
 2. **Co-training provides safety** — adaptive teachers self-correct errors
 3. **Binary tasks are higher risk** — maximally wrong confident predictions
 4. **Not all tasks benefit** — CoLA shows distillation can hurt
@@ -289,5 +289,5 @@ The student cannot escape the local minimum created by confident wrong teacher g
 ## Data Sources
 
 - W&B Project: `karthik-ravi-1537-personal/Knowledge Distillation`
-- Raw data: [classification_ablations_2024-02-04.json](../../analysis/data/classification_ablations_2024-02-04.json)
+- Raw data: [classification_ablations_2026-02-07.json](../../analysis/data/classification_ablations_2026-02-07.json)
 - Analysis: [classification_ablations.md](../../analysis/summaries/classification_ablations.md)

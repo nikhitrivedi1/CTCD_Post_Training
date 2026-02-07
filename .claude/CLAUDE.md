@@ -32,6 +32,9 @@
 - Environment: distillation (Python 3.10)
 - Dependencies in environment.yml
 
+## Dates
+- The current year is 2026. Use this when writing dates in docs, logs, etc.
+
 ## Testing
 - GPU clusters: H200 (140GB), A100 (40GB).
 - Watch for OOM during evaluation - hidden states/attentions accumulate.
