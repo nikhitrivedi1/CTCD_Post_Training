@@ -66,8 +66,8 @@ Built on L0 winner: `cotrain_sft-teacher`
 
 | Signal | Loss Type | Implementation |
 |--------|-----------|----------------|
-| R (Response) | KL Divergence | `kl_divergence` on softened logits |
-| F (Feature) | MSE | `feature_mse` on hidden states |
+| R (Response) | KL Divergence | `response_kl` on softened logits |
+| F (Feature) | Cosine Similarity | `feature_cosine` on hidden states |
 | A (Attention) | KL Divergence | `attention_kl` on attention weights |
 
 ---
@@ -161,6 +161,69 @@ Knowledge Distillation Experiments
 
 ---
 
+## Diffusion Experiments
+
+Separate track from text KD. Two compression dimensions:
+
+```
+Diffusion Distillation
+├── Step Reduction (same model, fewer steps)
+│   ├── Progressive Distillation: 1024→512→...→4 steps
+│   ├── Consistency Distillation: any→1 step
+│   └── Baseline: DDIM naive reduction
+│
+└── Parameter Reduction (smaller model, same steps)
+    ├── Standard KD: large UNet → small UNet (R/F/A signals)
+    └── Combined: smaller model + fewer steps
+```
+
+| # | Config | Approach | Compression |
+|---|--------|----------|-------------|
+| D0 | DDPM teacher (1000 steps) | Baseline | None |
+| D1 | DDIM naive (100, 10, 4 steps) | No distillation | Steps only |
+| D2 | Progressive distillation (4 steps) | Step reduction | Steps only |
+| D3 | Small UNet + KD (1000 steps) | Parameter reduction | Params only |
+| D4 | Small UNet + progressive (4 steps) | Both | Params + steps |
+
+**Teacher:** `google/ddpm-cifar10-32` (~35M params, 32x32)
+**Dataset:** CIFAR-10
+**Metric:** FID (50K samples)
+
+See [docs/planning/diffusion-distillation.md](diffusion-distillation.md) for full plan.
+
+---
+
+## Voice Experiments (StyleTTS2)
+
+Capstone modality combining all KD approaches:
+
+```
+StyleTTS2 Distillation
+├── Style Diffusion Step Reduction (diffusion KD)
+│   ├── V0: Teacher (100 steps)
+│   ├── V1: Naive step reduction (10, 4 steps)
+│   └── V2: Progressive distillation (4 steps)
+│
+├── PL-BERT Encoder Compression (text KD)
+│   ├── V4: Full PL-BERT (12 layers)
+│   └── V5-V6: DistilPL-BERT (6 layers, R/FAR)
+│
+├── HiFi-GAN Decoder Compression (feature KD)
+│   ├── V7: Full decoder
+│   └── V8: 50% channels (Feature KD)
+│
+└── Combined Pipeline
+    └── V9: All components compressed
+```
+
+**Teacher:** `yl4579/StyleTTS2-LJSpeech`
+**Dataset:** LJSpeech (24h, single-speaker)
+**Metrics:** MOS (UTMOS proxy), PESQ, STOI, RTF
+
+See [docs/planning/voice-distillation.md](voice-distillation.md) for full plan.
+
+---
+
 ## Research Questions by Level
 
 | Level | Question | Method |
@@ -172,3 +235,7 @@ Knowledge Distillation Experiments
 | L1 | Can F+A replace R (logit-free distillation)? | Factorial |
 | L2 | What temperature is optimal? | Grid search |
 | L2 | How to balance CE vs distillation? | Grid search |
+| Diffusion | Does step reduction + param reduction compose? | Compare D2, D3, D4 |
+| Diffusion | Do R/F/A signals help for UNet distillation? | Factorial on D3 |
+| Voice | Does module-wise KD compose across components? | Compare V2+V6+V8 vs V9 |
+| Voice | Which component benefits most from KD? | Compare V2, V5, V8 individually |

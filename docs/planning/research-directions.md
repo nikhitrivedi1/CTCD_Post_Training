@@ -38,17 +38,19 @@ A systematic exploration of the knowledge distillation design space, combining m
 | **Translation** | Llama 3B → 1B | In Progress | Decoder-only, token-level KL |
 | **Summarization** | BART → DistilBART | Planned | Encoder-decoder, sequence-level |
 | **Code Generation** | CodeLlama → smaller | Future | Same as translation but code domain |
-| **Diffusion (Steps)** | DDPM-1000 → DDPM-4 | Stretch | Same size, fewer steps |
+| **Diffusion (Steps)** | DDPM-1000 → DDPM-4 | In Progress | Same size, fewer steps (Progressive Distillation) |
+| **Diffusion (Params)** | Large UNet → Small UNet | Planned | Smaller model, R/F/A on UNet outputs |
+| **Voice (StyleTTS2)** | StyleTTS2 → compressed | Planned | Capstone: text encoder + diffusion + decoder KD |
 
 ### Y-Axis: Depth (What to Distill)
 
 | Depth | What Transfers | Loss Type | Findings |
 |-------|----------------|-----------|----------|
 | **Response (R)** | Output logits | KL | ✓ **Best alone** - simpler is better |
-| **Feature (F)** | Hidden states | MSE, Cosine | ✗ Gradient conflict with R |
-| **Attention (A)** | Attention weights | MSE, KL | ✗ Gradient conflict with R |
+| **Feature (F)** | Hidden states | Cosine | ✗ Gradient conflict with R (re-running with fixes) |
+| **Attention (A)** | Attention weights | KL | ✗ Gradient conflict with R (re-running with fixes) |
 | **Relational** | Inter-sample relationships | Graph matching | Unexplored |
-| **Progressive** | Multi-step → fewer steps | Trajectory | Diffusion-specific |
+| **Progressive** | Multi-step → fewer steps | Trajectory MSE | Diffusion-specific (in progress) |
 
 ### Z-Axis: Teacher Strategy
 
@@ -185,13 +187,29 @@ loss = KL(student(x), teacher_ensemble)
 
 ## Part 5: Stretch Goals
 
-### Diffusion Distillation
+### Diffusion Distillation (In Progress)
 
 Two distinct problems:
 1. **Step reduction:** Same model, fewer denoising steps (Progressive Distillation)
 2. **Parameter reduction:** Smaller model, same steps (Standard KD)
 
 **Key insight:** These require different approaches. Step reduction needs trajectory matching; parameter reduction uses standard feature/response KD.
+
+**Approach:** Progressive Distillation on CIFAR-10 using pre-trained `google/ddpm-cifar10-32` (~35M params).
+
+| Aspect | Text KD (current) | Diffusion KD |
+|--------|-------------------|--------------|
+| Signal | Output logits (KL) | Denoised samples (MSE) |
+| Compression | Parameters (smaller model) | Steps (fewer iterations) |
+| Training loop | HF Trainer subclass | Custom loop (not HF Trainer) |
+
+**Key approaches:**
+- **Progressive Distillation** (Salimans & Ho, 2022): Iteratively halve steps. Student matches teacher's 2-step output in 1 step. Requires v-prediction.
+- **Consistency Models** (Song et al., 2023): Map any point on ODE trajectory to x_0 directly. Single training phase. 1-step generation by design.
+
+**Estimated GPU time:** 8-16h total on A100 (including FID evaluation).
+
+See [docs/planning/diffusion-distillation.md](diffusion-distillation.md) for full implementation plan.
 
 ### Adaptive Distillation
 
@@ -242,9 +260,15 @@ else:
 
 | # | Task | Rationale |
 |---|------|-----------|
-| 7 | Progressive distillation | Requires multiple model sizes |
+| 7 | Progressive distillation (chained) | Requires multiple model sizes |
 | 8 | Multi-teacher ensemble | Requires training multiple teachers |
-| 9 | Diffusion distillation | Different domain, high complexity |
+| 9 | Adaptive distillation | Confidence-based alpha scheduling |
+
+### In Progress
+
+| # | Task | Rationale |
+|---|------|-----------|
+| 10 | Diffusion distillation (CIFAR-10) | Third modality: step reduction via trajectory matching |
 
 ---
 
@@ -264,9 +288,11 @@ else:
 - Mirzadeh et al., 2020 - "Improved Knowledge Distillation via Teacher Assistant"
 - Furlanello et al., 2018 - "Born Again Neural Networks"
 
-### Frontier
-- Salimans and Ho, 2022 - "Progressive Distillation for Fast Sampling"
-- Song et al., 2023 - "Consistency Models"
+### Frontier (Active)
+- Ho et al., 2020 - "Denoising Diffusion Probabilistic Models" (DDPM background)
+- Salimans and Ho, 2022 - "Progressive Distillation for Fast Sampling" (core method)
+- Song et al., 2023 - "Consistency Models" (alternative approach)
+- Zhou and Chen et al., 2024 - "Simple and Fast Distillation of Diffusion Models" (practical, 0.64h on A100)
 
 ---
 
