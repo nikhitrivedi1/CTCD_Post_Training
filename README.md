@@ -1,7 +1,7 @@
 # Knowledge Distillation Framework
 
 A universal, config-driven knowledge distillation framework for compressing any teacher-student model pair across
-classification, generation, and translation tasks.
+classification and translation tasks.
 
 ## Overview
 
@@ -11,8 +11,8 @@ any HuggingFace model pair.
 
 ### Key Features
 
-- **Universal**: Works with any HuggingFace model pair (BERT, GPT, Llama, T5, etc.)
-- **Multi-task**: Classification, generation, translation, or custom tasks
+- **Universal**: Works with any HuggingFace model pair (BERT, Llama, etc.)
+- **Multi-task**: Classification, translation, or custom tasks
 - **Production-ready**: SLURM integration, automatic job chaining, W&B tracking
 - **Cross-platform**: Local (Apple Silicon MPS/CPU), Google Colab, HPC clusters
 - **Config-driven**: Everything controlled via YAML configs
@@ -32,11 +32,11 @@ any HuggingFace model pair.
 
 ```bash
 # Heavy machine: train a model (hours)
-python distill.py --config configs/mnli/bert_distilbert/default.yaml
+python distill.py --config configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
 
 # Workbench: analyze the result (minutes)
-python workbench/analyze.py probe --teacher textattack/bert-base-uncased-MNLI --student outputs/mnli_00 --task mnli
-python workbench/analyze.py disagreement --teacher ... --student outputs/mnli_00 --task mnli
+python workbench/analyze.py --test probe --teacher textattack/bert-base-uncased-MNLI --student outputs/mnli_00 --task mnli
+python workbench/analyze.py --test disagreement --teacher ... --student outputs/mnli_00 --task mnli
 ```
 
 ## DistilKit vs Unsloth
@@ -48,7 +48,7 @@ DistilKit and [Unsloth](https://github.com/unslothai/unsloth) solve different pr
 | **Goal** | Produce a smaller model that learns from a larger one | Make fine-tuning the same model faster |
 | **Method** | Knowledge distillation (teacher-student training) | Optimized CUDA kernels + memory tricks |
 | **Output** | A different, smaller architecture (e.g., BERT → DistilBERT) | Same architecture with adapted weights |
-| **Model types** | Any HuggingFace pair (encoders, decoders, seq2seq) | Decoder-only LLMs (Llama, Mistral, Gemma) |
+| **Model types** | Any HuggingFace pair (encoders, decoders) | Decoder-only LLMs (Llama, Mistral, Gemma) |
 | **Research question** | *What knowledge transfers and how?* | *How fast can we fine-tune?* |
 | **Distillation signals** | Response (KL), Feature (MSE), Attention (KL) | N/A — no teacher model involved |
 | **Analysis tooling** | Workbench: CKA, probing, disagreement, attention entropy | N/A |
@@ -86,10 +86,10 @@ python test_setup.py
 
 ```bash
 # New run (auto-named with timestamp)
-python distill.py --config configs/mnli/bert_distilbert/default.yaml
+python distill.py --config configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
 
 # New run with custom name
-python distill.py --run_name mnli_00 --config configs/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+python distill.py --run_name mnli_00 --config configs/classification/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
 
 # Resume existing run
 python distill.py --run_name mnli_00
@@ -103,6 +103,22 @@ python distill.py --config configs/... --max_steps 10
 # SLURM (with auto-requeue)
 sbatch scripts/run_slurm.sh configs/your_config.yaml
 ```
+
+### Logging
+
+All logs use UTC timestamps for consistency across machines and clusters:
+
+```
+2026-02-09 19:30:00,123Z - INFO - Loading model...
+```
+
+Use `--debug` for verbose logging with module names:
+
+```
+2026-02-09 19:30:00,123Z - src.training.trainer - DEBUG - ...
+```
+
+Logs are written to both stdout and `outputs/<run_name>/output.log`. On SLURM, they also appear in `logs/<jobid>.out`.
 
 See [docs/guides/run-options.md](docs/guides/run-options.md) for complete CLI reference.
 
@@ -170,14 +186,13 @@ def compute_metrics_your_task(eval_pred):
 ### Auto-detected
 
 - **Sequence Classification**: BERT, RoBERTa, DistilBERT, ALBERT, etc.
-- **Causal LM**: GPT-2, Llama, Mistral, etc.
-- **Seq2Seq**: T5, BART, mBART (requires minor extension)
+- **Causal LM**: Llama, Mistral, etc.
 
 The framework automatically detects model architecture from HuggingFace model names.
 
 ### LoRA Support
 
-For large models, enable LoRA in config:
+For large causal LM models (e.g., Llama translation), enable LoRA in config:
 
 ```yaml
 training:
@@ -195,33 +210,11 @@ training:
 
 1. **BERT → DistilBERT on MNLI**: Sentence entailment classification
 2. **BERT → DistilBERT on QQP**: Question pair similarity
-3. **Llama 3.2 3B → 1B on EN-FR**: Neural machine translation
+3. **BERT → DistilBERT on SST-2**: Sentiment analysis
+4. **BERT → DistilBERT on CoLA**: Linguistic acceptability
+5. **Llama 3.2 3B → 1B on EN-FR**: Neural machine translation (Europarl)
 
-### More Examples
-
-#### GPT-2 Distillation
-
-```yaml
-model:
-  teacher: gpt2-medium
-  student: gpt2
-data:
-  task: text_generation
-  dataset: wikitext
-```
-
-#### T5 Summarization
-
-```yaml
-model:
-  teacher: t5-base
-  student: t5-small
-data:
-  task: summarization
-  dataset: cnn_dailymail
-```
-
-#### Custom Domain
+### Custom Domain Example
 
 ```yaml
 model:
@@ -238,8 +231,8 @@ data:
 distillation/
 ├── configs/              # YAML configurations
 │   ├── base.yaml         # Shared defaults
-│   ├── examples/         # Generic example configs
-│   └── [task].yaml       # Task-specific configs
+│   ├── classification/   # MNLI, QQP, SST-2, CoLA configs
+│   └── translation/      # Europarl EN-FR configs
 ├── src/
 │   ├── data/            # Dataset loaders
 │   ├── models/          # Model loading (generic)
@@ -247,7 +240,7 @@ distillation/
 │   ├── evaluation/      # Metrics
 │   └── utils/           # Config, checkpointing, environment
 ├── workbench/           # Post-hoc analysis (the "quick bench")
-│   ├── analyze.py       # CLI: probe, cka, attention-entropy, disagreement
+│   ├── analyze.py       # CLI: --test probe|cka|attention-entropy|disagreement|all
 │   ├── probing.py       # Linear probing per layer
 │   ├── cka.py           # CKA similarity between layers
 │   ├── attention.py     # Attention entropy analysis
@@ -259,7 +252,7 @@ distillation/
 │   ├── run_local.sh
 │   └── run_slurm.sh
 ├── test_setup.py        # Environment verification
-└── distill.py            # Main entry point
+└── distill.py           # Main entry point
 ```
 
 ## Key Components
@@ -268,10 +261,11 @@ distillation/
 
 Extends HuggingFace `Trainer` with:
 
-- Frozen teacher model
-- Combined KL divergence + CE loss
+- **RFA distillation signals**: Response (KL/MSE/Cosine), Feature (MSE/Cosine), Attention (KL)
+- **Training modes**: Frozen teacher, co-trained teacher, CE-only baseline (no teacher)
+- **Staged distillation**: Sequential signal phases (e.g., Feature → Attention → Response)
 - Temperature-scaled distributions
-- Automatic loss component logging
+- Automatic loss component logging to W&B
 
 ### Config System
 
@@ -295,10 +289,10 @@ Extends HuggingFace `Trainer` with:
 
 ### Modifying Distillation Loss
 
-The core loss is in `src/training/trainer.py` (`compute_loss` method). You can:
+The core loss is in `src/training/trainer.py` (`compute_loss` method). Response, feature, and attention distillation are already implemented. You can:
 
 - Change temperature scaling strategy
-- Add additional loss terms (e.g., attention distillation)
+- Add new loss functions
 - Modify alpha weighting dynamically
 
 ### Multi-GPU Support
@@ -324,7 +318,7 @@ Currently single-GPU. To add multi-GPU:
 - Llama with LoRA: ~6-8 hours
 - Run training scripts directly or adapt for notebook usage
 
-### HPC/SLURM (Explorer H200/V100)
+### HPC/SLURM (H200/A100)
 
 - **Recommended:** Use conda for HPC environments
 - Production runs for Llama models
@@ -333,7 +327,7 @@ Currently single-GPU. To add multi-GPU:
 
 ```bash
 # Named run (new)
-sbatch scripts/run_slurm.sh mnli_00 configs/mnli/bert_distilbert/default.yaml
+sbatch scripts/run_slurm.sh mnli_00 configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
 # -> outputs/mnli_00/
 
 # Resume existing run
@@ -341,7 +335,7 @@ sbatch scripts/run_slurm.sh mnli_00
 # -> outputs/mnli_00/ (continues from checkpoint)
 
 # Auto-named run (includes timestamp)
-sbatch scripts/run_slurm.sh configs/mnli/bert_distilbert/default.yaml
+sbatch scripts/run_slurm.sh configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
 # -> outputs/mnli_default_2026-01-31_03-15Z/
 
 # Named run with timestamp (unique each submission)
@@ -362,13 +356,13 @@ SEED=123 sbatch scripts/run_slurm.sh mnli_00 configs/...
 
 ```bash
 # BERT → DistilBERT on MNLI (sentence entailment)
-python distill.py --run_name mnli_baseline --config configs/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+python distill.py --run_name mnli_baseline --config configs/classification/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
 
 # BERT → DistilBERT on QQP (question pairs)
-python distill.py --run_name qqp_baseline --config configs/qqp/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+python distill.py --run_name qqp_baseline --config configs/classification/qqp/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
 
 # Auto-named runs (includes timestamp)
-python distill.py --config configs/mnli/bert_distilbert/default.yaml
+python distill.py --config configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
 # Creates: outputs/mnli_default_2026-01-31_12-00Z/
 
 # Resume a run
@@ -419,8 +413,7 @@ Contributions welcome! Please:
 Areas for improvement:
 
 - Multi-GPU support
-- Seq2Seq model support
-- Additional distillation strategies (attention, hidden states)
+- Seq2Seq model support (T5, BART, mBART)
 - More evaluation metrics
 - Additional dataset loaders
 
