@@ -7,6 +7,7 @@ import os
 import random
 import shutil
 import sys
+import time
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,13 +28,14 @@ def setup_logging(debug: bool = False):
         debug: If True, use DEBUG level; otherwise INFO level
     """
     level = logging.DEBUG if debug else logging.INFO
-    format_str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s" if debug else "%(message)s"
+    format_str = "%(asctime)sZ - %(name)s - %(levelname)s - %(message)s" if debug else "%(asctime)sZ - %(levelname)s - %(message)s"
 
     logging.basicConfig(
         level=level,
         format=format_str,
         handlers=[logging.StreamHandler(sys.stdout)],
     )
+    logging.Formatter.converter = time.gmtime
 
     # Set transformers logging
     import transformers
