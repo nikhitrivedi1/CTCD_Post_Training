@@ -52,25 +52,45 @@
 
 ## Training Dynamics
 
-### MNLI Trends
+### MNLI Trends (Student/Pre → Student/Post Accuracy)
 
-| Config | Eval Loss Trend | Train Loss | Notes |
-|--------|-----------------|------------|-------|
-| 00_ce-only | 0.57 → 0.55 ↘ | 0.47 → 0.43 | Stable |
-| 01_frozen_base | 0.72 → 0.65 ↘ | 0.41 → 0.41 | Stable |
-| 02_frozen_sft | 0.72 → 0.65 ↘ | 0.46 → 0.45 | Stable but low acc |
-| 03_cotrain_base | 0.54 → 0.52 ↘ | 0.70 → 0.66 | Best overall |
-| 04_cotrain_sft | 0.55 → 0.58 ↗ | 0.68 → 0.64 | ⚠️ Loss spike at end |
+| Config | Student Acc | Teacher Acc | Eval Loss | Notes |
+|--------|-----------|-------------|-----------|-------|
+| 00_ce-only | 33.39% → 82.19% | — | 0.547 | Baseline |
+| 01_frozen_base | 34.69% → 81.58% | 31.32% → 31.32% | 0.649 | Frozen random teacher |
+| 02_frozen_sft | 33.39% → 79.82% | 84.57% → 84.57% | 0.647 | ⚠️ Frozen SFT hurts |
+| 03_cotrain_base | 34.69% → 82.62% | 31.32% → 73.25% | 0.522 | Teacher learns too |
+| 04_cotrain_sft | 33.39% → 82.69% | 84.57% → 81.66% | 0.588 | Teacher degrades slightly |
 
-### QQP Trends
+### QQP Trends (Student/Pre → Student/Post F1)
 
-| Config | Eval Loss | Eval F1 | Train Loss | Notes |
-|--------|-----------|---------|------------|-------|
-| 00_ce-only | 0.30 → 0.30 | 0.87 → 0.90 | 0.23 → 0.23 | Stable |
-| 01_frozen_base | 0.45 → 0.40 | 0.87 → 0.90 | 0.26 → 0.26 | Stable |
-| 02_frozen_sft | 0.64 → 0.65 | 0.52 → 0.55 | 0.55 → 0.55 | ⚠️ CATASTROPHIC |
-| 03_cotrain_base | 0.29 → 0.27 | 0.87 → 0.91 | 0.37 → 0.36 | Best |
-| 04_cotrain_sft | 0.29 → 0.33 | 0.88 → 0.90 | 0.37 → 0.36 | Slight loss increase |
+| Config | Student F1 | Teacher F1 | Eval Loss | Notes |
+|--------|-----------|------------|-----------|-------|
+| 00_ce-only | 50.48% → 90.26% | — | 0.307 | Baseline |
+| 01_frozen_base | 53.69% → 90.44% | 25.96% → 25.96% | 0.400 | Frozen random teacher |
+| 02_frozen_sft | 50.48% → 55.89% | 90.93% → 90.93% | 0.652 | ⚠️ CATASTROPHIC |
+| 03_cotrain_base | 53.69% → 90.61% | 25.96% → 90.97% | 0.269 | Teacher converges too |
+| 04_cotrain_sft | 50.48% → 90.46% | 90.93% → 91.32% | 0.325 | Teacher improves slightly |
+
+### SST-2 Trends (Student/Pre → Student/Post Accuracy)
+
+| Config | Student Acc | Teacher Acc | Eval Loss | Notes |
+|--------|-----------|-------------|-----------|-------|
+| 00_ce-only | 43.46% → 90.94% | — | 0.392 | Baseline |
+| 01_frozen_base | 45.76% → 91.51% | 50.92% → 50.92% | 0.399 | Frozen random teacher |
+| 02_frozen_sft | 43.46% → 90.94% | 92.43% → 92.43% | 0.368 | Frozen SFT neutral |
+| 03_cotrain_base | 45.76% → 91.51% | 50.92% → 93.58% | 0.311 | Teacher surpasses SFT |
+| 04_cotrain_sft | 43.46% → 91.28% | 92.43% → 92.32% | 0.376 | Teacher essentially stable |
+
+### CoLA Trends (Student/Pre → Student/Post MCC)
+
+| Config | Student MCC | Teacher MCC | Eval Loss | Notes |
+|--------|-----------|-------------|-----------|-------|
+| 00_ce-only | 5.07% → 53.80% | — | 0.556 | Baseline (best) |
+| 01_frozen_base | 5.04% → 53.39% | 10.40% → 10.40% | 0.482 | Frozen random, nearly ties |
+| 02_frozen_sft | 5.07% → 51.45% | 53.39% → 53.39% | 0.516 | Teacher ~= student final |
+| 03_cotrain_base | 5.04% → 51.73% | 10.40% → 58.08% | 0.560 | Teacher learns, student doesn't benefit |
+| 04_cotrain_sft | 5.07% → 49.67% | 53.39% → 56.29% | 0.643 | ⚠️ Worst student |
 
 ---
 

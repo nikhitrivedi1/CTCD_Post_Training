@@ -22,34 +22,38 @@
 ## Training Dynamics
 
 ### 00_no-teacher_ce-only
-- **Eval Loss:** 0.298 → 0.301 (stable)
-- **Eval F1:** 86.84% → 90.40%
-- **Train Loss:** 0.234 → 0.226
+- **Student F1:** 50.48% → 90.26%
+- **Eval Loss:** 0.381 → 0.307 (↘ decreasing, min=0.254)
+- **Train Loss:** 0.665 → 0.202 → 0.164
 - **Notes:** Clean, stable training
 
 ### 01_frozen_base-teacher_kl
-- **Eval Loss:** 0.455 → 0.400 (↘ improving)
-- **Eval F1:** 86.89% → 90.43%
-- **Train Loss:** 0.257 → 0.256
+- **Student F1:** 53.69% → 90.44%
+- **Teacher F1:** 25.96% → 25.96% (frozen, random head)
+- **Eval Loss:** 0.492 → 0.400 (↘ decreasing)
+- **Train Loss:** 0.340 → 0.340 → 0.243
 - **Notes:** Higher loss but matches CE-only performance
 
 ### 02_frozen_sft-teacher_kl ⚠️ CATASTROPHIC FAILURE
-- **Eval Loss:** 0.637 → 0.645 (↗ getting worse!)
-- **Eval F1:** 51.96% → 54.53% (barely above random)
-- **Train Loss:** 0.551 → 0.547 (stuck high)
-- **Notes:** Complete training failure - teacher prevents learning
+- **Student F1:** 50.48% → 55.89%
+- **Teacher F1:** 90.93% → 90.93% (frozen)
+- **Eval Loss:** 0.785 → 0.645 (↘ decreasing, min=0.625)
+- **Train Loss:** 1.091 → 1.091 → 0.502
+- **Notes:** Catastrophic — student barely improves despite 90.93% teacher
 
 ### 03_cotrain_base-teacher_kl
-- **Eval Loss:** 0.291 → 0.270 (↘ best)
-- **Eval F1:** 87.08% → 90.57%
-- **Train Loss:** 0.370 → 0.359
-- **Notes:** Best overall, clean convergence
+- **Student F1:** 53.69% → 90.61%
+- **Teacher F1:** 25.96% → 90.97% (+65.01%, co-trained from random)
+- **Eval Loss:** 0.360 → 0.270 (↘ best, min=0.238)
+- **Train Loss:** 0.994 → 0.994 → 0.253
+- **Notes:** Best overall, teacher and student both converge strongly
 
 ### 04_cotrain_sft-teacher_kl
-- **Eval Loss:** 0.289 → 0.327 (↗ slight increase)
-- **Eval F1:** 87.55% → 90.43%
-- **Train Loss:** 0.368 → 0.358
-- **Notes:** Good but loss increases late
+- **Student F1:** 50.48% → 90.46%
+- **Teacher F1:** 90.93% → 91.32% (+0.38%, slight improvement)
+- **Eval Loss:** 0.373 → 0.327 (↘ decreasing, min=0.256)
+- **Train Loss:** 1.794 → 1.794 → 0.275
+- **Notes:** Good convergence, teacher maintains quality
 
 ---
 
@@ -61,11 +65,11 @@ The frozen fine-tuned teacher completely prevents the student from learning:
 
 | Metric | 02_frozen_sft | Others |
 |--------|---------------|--------|
-| Starting F1 | 51.96% | 86-88% |
+| Starting F1 | 48.93% | 82-84% |
 | Final F1 | 55.89% | 90%+ |
-| Starting Loss | 0.637 | 0.29-0.45 |
-| Final Loss | 0.652 | 0.27-0.40 |
-| Improvement | +4% | +3-4% |
+| Starting Loss | 0.785 | 0.36-0.49 |
+| Final Loss | 0.645 | 0.27-0.40 |
+| Improvement | +7% | +7-8% |
 
 ### Root Cause: Overconfident Wrong Teacher
 

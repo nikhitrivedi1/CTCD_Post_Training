@@ -8,10 +8,10 @@ A systematic segmentation of factors that determine when KD helps, hurts, or is 
 
 | Task | Train Size | Classes | Balance | Metric | Difficulty | KD Effect |
 |------|------------|---------|---------|--------|------------|-----------|
-| MNLI | 393k | 3 | Balanced | Accuracy | Medium | **Helps** (+1%) |
-| QQP | 364k | 2 | 63/37 | F1 | Medium | **Catastrophic** (-34%) or Helps (+0.2%) |
+| MNLI | 393k | 3 | Balanced | Accuracy | Medium | **Helps** (+0.5%) |
+| QQP | 364k | 2 | 63/37 | F1 | Medium | **Catastrophic** (-34.4%) or Helps (+0.4%) |
 | SST-2 | 67k | 2 | Balanced | Accuracy | Easy | **Neutral** (±0.6%) |
-| CoLA | 8.5k | 2 | 70/30 | MCC | Hard | **Hurts** (-5%) |
+| CoLA | 8.5k | 2 | 70/30 | MCC | Hard | **Hurts** (-4.1%) |
 
 ---
 
@@ -57,10 +57,10 @@ Imbalanced classes amplify frozen teacher failures because:
 
 | Task | Distribution | Frozen SFT Effect |
 |------|--------------|-------------------|
-| MNLI | 33/33/33 (balanced) | -1.8% |
+| MNLI | 33/33/33 (balanced) | -2.4% |
 | SST-2 | 50/50 (balanced) | 0% |
-| QQP | 63/37 (imbalanced) | **-34%** |
-| CoLA | 70/30 (imbalanced) | -3% |
+| QQP | 63/37 (imbalanced) | **-34.4%** |
+| CoLA | 70/30 (imbalanced) | -2.4% |
 
 ### The QQP Catastrophe Explained
 - 63% of QQP is "not duplicate" (class 0)
@@ -92,10 +92,10 @@ Binary classification is higher risk for KD failure because:
 
 | Task | Classes | Wrong Prediction Severity | Frozen SFT Effect |
 |------|---------|---------------------------|-------------------|
-| MNLI | 3 | Partial (e.g., entail→neutral) | -1.8% |
-| QQP | 2 | **Maximal** (dup→not dup) | **-34%** |
+| MNLI | 3 | Partial (e.g., entail→neutral) | -2.4% |
+| QQP | 2 | **Maximal** (dup→not dup) | **-34.4%** |
 | SST-2 | 2 | Maximal (pos→neg) | 0% |
-| CoLA | 2 | Maximal (accept→reject) | -3% |
+| CoLA | 2 | Maximal (accept→reject) | -2.4% |
 
 ### Why SST-2 Escapes
 - Task is easy → teacher rarely wrong
@@ -116,21 +116,21 @@ Task difficulty interacts with KD in complex ways:
 
 | Task | Student CE-only | Teacher Accuracy | Gap | Difficulty |
 |------|-----------------|------------------|-----|------------|
-| SST-2 | 90.9% | ~93% | 2% | Easy |
-| MNLI | 81.6% | ~84% | 2.4% | Medium |
-| QQP | 90.4% (F1) | ~91% | 0.6% | Medium |
-| CoLA | 54.6% (MCC) | ~60% | 5.4% | Hard |
+| SST-2 | 90.9% | ~92% | 1.5% | Easy |
+| MNLI | 82.2% | ~85% | 2.4% | Medium |
+| QQP | 90.3% (F1) | ~91% | 0.7% | Medium |
+| CoLA | 53.8% (MCC) | ~53% | ~0% | Hard |
 
 ### The Difficulty Paradox
-- CoLA has the **largest** teacher-student gap (5.4%)
-- Yet KD **hurts** on CoLA
-- Why? Teacher's 60% MCC means 40% systematic errors
-- Student inherits these errors via KL
+- CoLA has **no** teacher-student gap (~0%)—the SFT teacher (53.4% MCC) barely matches the student CE-only (53.8%)
+- KD **hurts** because the teacher has nothing to offer
+- Teacher's ~53% MCC means ~47% systematic errors
+- Student inherits these errors via KL with no upside
 
 ### Sweet Spot
 ```
 KD works when:
-- Teacher is significantly better (gap > 2%)
+- Teacher is significantly better than student
 - Teacher is reliable (accuracy > 80%)
 - Task isn't saturated (student < 90%)
 ```
@@ -183,9 +183,9 @@ The "Stubborn Domain-Expert" (frozen SFT teacher) doesn't always fail. Understan
 
 | Task | Adaptive (04) | Stubborn (02) | Delta | Verdict |
 |------|---------------|---------------|-------|---------|
-| MNLI | 82.7% | 79.3% | **-3.4%** | Hurts |
+| MNLI | 82.7% | 79.8% | **-2.9%** | Hurts |
 | QQP | 90.5% | 55.9% | **-34.6%** | Catastrophic |
-| SST-2 | 91.3% | 90.9% | **-0.4%** | Neutral |
+| SST-2 | 91.3% | 90.9% | **-0.3%** | Neutral |
 | CoLA | 49.7% | 51.5% | **+1.8%** | Helps (!) |
 
 ### The Critical Question: How Wrong Can Teacher Be?
@@ -240,7 +240,7 @@ def stubborn_risk_score(error_rate, wrong_confidence, num_classes, minority_pct)
 
 | Task | Error | Conf | Classes | Minority | Score | Verdict |
 |------|-------|------|---------|----------|-------|---------|
-| MNLI | 16% | ~75% | 3 | 33% | **35** | Stubborn OK |
+| MNLI | 15% | ~75% | 3 | 33% | **35** | Stubborn OK |
 | QQP | 8% | 82% | 2 | 37% | **63** | Use Adaptive |
 | SST-2 | 7% | ~70% | 2 | 44% | **42** | Borderline |
 | CoLA | 40% | ~60% | 2 | 30% | **55** | Skip KD |
@@ -348,13 +348,13 @@ When the teacher sees it's wrong via CE loss, it reduces confidence on those exa
 ### Profile A: Large + Balanced + Medium
 **Examples:** MNLI
 **Recommendation:** KD beneficial, co-train preferred
-**Expected gain:** +1-3%
+**Expected gain:** +0.5%
 
 ### Profile B: Large + Imbalanced + Medium
 **Examples:** QQP
 **Recommendation:** Co-train ONLY, never frozen SFT
 **Risk:** Catastrophic failure with frozen teacher
-**Expected gain:** +0.2% (co-train) or -34% (frozen SFT)
+**Expected gain:** +0.4% (co-train) or -34.4% (frozen SFT)
 
 ### Profile C: Medium + Balanced + Easy
 **Examples:** SST-2
@@ -364,7 +364,7 @@ When the teacher sees it's wrong via CE loss, it reduces confidence on those exa
 ### Profile D: Small + Imbalanced + Hard
 **Examples:** CoLA
 **Recommendation:** Skip KD entirely
-**Expected gain:** Negative (-3% to -5%)
+**Expected gain:** Negative (-2.4% to -4.1%)
 
 ---
 

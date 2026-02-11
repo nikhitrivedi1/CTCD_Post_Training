@@ -1,6 +1,6 @@
 # Classification Ablation Results Explained
 
-**Date:** 2024-02-04
+**Date:** 2026-02-07
 
 ---
 
@@ -38,7 +38,7 @@
 
 ```
                 MNLI (Acc)    QQP (F1)
-CE-only         81.6%         90.4%
+CE-only         82.2%         90.3%
 Frozen SFT      79.8% ↓       55.9% ↓↓↓  ← CATASTROPHIC
 Co-train SFT    82.7% ↑       90.5% ↑
 ```
@@ -62,7 +62,7 @@ All methods: 90.9% - 91.5%  (only 0.6% spread)
 ### CoLA: Distillation Hurts (Reversal!)
 
 ```
-CE-only         54.6%  ← BEST
+CE-only         53.8%  ← BEST
 Frozen base     53.4%
 Co-train SFT    49.7%  ← WORST
 ```

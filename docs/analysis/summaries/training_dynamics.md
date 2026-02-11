@@ -1,6 +1,6 @@
 # Training Dynamics Analysis
 
-**Date:** 2024-02-04
+**Date:** 2026-02-07
 **Data Source:** W&B ablation runs (20 runs across MNLI, QQP, SST-2, CoLA)
 
 ---
@@ -68,7 +68,7 @@ CoLA shows a **split pattern** - co-training hurts while frozen helps with loss:
 
 | Config | eval/loss Start | eval/loss End | Trend | MCC |
 |--------|----------------|---------------|-------|-----|
-| 00_ce-only | 0.522 | 0.558 | ↗️ +7% | **54.6%** ✓ |
+| 00_ce-only | 0.524 | 0.556 | ↗️ +6% | **53.8%** ✓ |
 | 01_frozen_base | 0.523 | 0.482 | ↘️ -8% | 53.4% |
 | 02_frozen_sft | 0.579 | 0.516 | ↘️ -11% | 51.5% |
 | 03_cotrain_base | 0.510 | 0.560 | ↗️ +10% | 51.7% |
@@ -117,11 +117,11 @@ Teacher starts with HIGH loss (2.0!) but drops to near-zero. This self-correctio
 
 | Task | Config | eval/loss | Primary Metric | Notes |
 |------|--------|-----------|----------------|-------|
-| MNLI | cotrain_base | 0.518 ✓ | 82.6% acc ✓ | Lowest loss = best |
-| MNLI | cotrain_sft | 0.581 ⚠️ | **82.7%** acc ✓ | Higher loss, same perf |
-| QQP | frozen_sft | **0.645** ✗ | 55.9% F1 ✗ | High loss = terrible |
+| MNLI | cotrain_base | 0.522 ✓ | 82.6% acc ✓ | Lowest loss = best |
+| MNLI | cotrain_sft | 0.588 ⚠️ | **82.7%** acc ✓ | Higher loss, same perf |
+| QQP | frozen_sft | **0.652** ✗ | 55.9% F1 ✗ | High loss = terrible |
 | CoLA | frozen_base | 0.482 ✓ | 53.4% MCC ⚠️ | Lowest loss ≠ best |
-| CoLA | ce-only | 0.558 ⚠️ | **54.6%** MCC ✓ | Higher loss = best! |
+| CoLA | ce-only | 0.556 ⚠️ | **53.8%** MCC ✓ | Higher loss = best! |
 
 **Insight:** eval/loss = CE + α×KL, so distillation configs have inflated loss from the KL term even when performing well. CE-only configs have lower loss by definition (no KL term). **Always compare primary metrics, not loss.**
 

@@ -19,6 +19,44 @@
 
 ---
 
+## Training Dynamics
+
+### 00_no-teacher_ce-only
+- **Student Accuracy:** 43.46% → 90.94%
+- **Eval Loss:** 0.342 → 0.392 (↗ increasing, min=0.284)
+- **Train Loss:** 0.680 → 0.130 → 0.082
+- **Notes:** Loss increases late but accuracy peaks at 90.94%
+
+### 01_frozen_base-teacher_kl
+- **Student Accuracy:** 45.76% → 91.51%
+- **Teacher Accuracy:** 50.92% → 50.92% (frozen, random head)
+- **Eval Loss:** 0.415 → 0.399 (↘ decreasing)
+- **Train Loss:** 0.339 → 0.234 → 0.228
+- **Notes:** Best accuracy tied with 03, random teacher doesn't hurt
+
+### 02_frozen_sft-teacher_kl
+- **Student Accuracy:** 43.46% → 90.94%
+- **Teacher Accuracy:** 92.43% → 92.43% (frozen)
+- **Eval Loss:** 0.449 → 0.368 (↘ decreasing)
+- **Train Loss:** 1.333 → 0.144 → 0.070
+- **Notes:** Matches CE-only exactly — frozen SFT neutral on easy task
+
+### 03_cotrain_base-teacher_kl
+- **Student Accuracy:** 45.76% → 91.51%
+- **Teacher Accuracy:** 50.92% → 93.58% (+42.66%, co-trained from random)
+- **Eval Loss:** 0.309 → 0.311 (→ stable, min=0.240)
+- **Train Loss:** 0.993 → 0.201 → 0.142
+- **Notes:** Best loss, teacher surpasses fine-tuned BERT (92.43%)
+
+### 04_cotrain_sft-teacher_kl
+- **Student Accuracy:** 43.46% → 91.28%
+- **Teacher Accuracy:** 92.43% → 92.32% (-0.11%, essentially stable)
+- **Eval Loss:** 0.413 → 0.376 (↘ decreasing, min=0.268)
+- **Train Loss:** 1.321 → 0.207 → 0.140
+- **Notes:** Teacher holds steady, student slightly below co-train base
+
+---
+
 ## Key Observations
 
 ### 1. Task is saturated

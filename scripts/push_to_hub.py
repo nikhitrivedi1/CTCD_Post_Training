@@ -77,8 +77,8 @@ def derive_repo_name(model_dir):
     model_dir = Path(model_dir).resolve()
     name = model_dir.name
 
-    # If this is a checkpoint dir, include parent run name
-    if name.startswith("checkpoint-"):
+    # If this is a sub-directory (checkpoint or teacher), include parent run name
+    if name.startswith("checkpoint-") or name == "teacher":
         run_name = model_dir.parent.name
         return f"{run_name}_{name}"
 
@@ -109,7 +109,8 @@ def validate_model_dir(model_dir):
     return existing
 
 
-def push_model(model_dir, org, private=True, include_resume=False, dry_run=False):
+def push_model(model_dir, org, private=True, include_resume=False, dry_run=False,
+               repo_name=None, prefix=None):
     """Push model files to HuggingFace Hub.
 
     Args:
@@ -118,11 +119,19 @@ def push_model(model_dir, org, private=True, include_resume=False, dry_run=False
         private: Whether to create a private repo.
         include_resume: Whether to include optimizer/scheduler state for full resume.
         dry_run: If True, only print what would be uploaded.
+        repo_name: Override auto-derived repo name.
+        prefix: Upload files under this subdirectory in the repo (e.g., "student").
     """
     model_dir = Path(model_dir).resolve()
     existing = validate_model_dir(model_dir)
 
-    repo_name = derive_repo_name(model_dir)
+    if repo_name:
+        pass
+    elif prefix:
+        # With --prefix, use parent dir as repo name (e.g., teacher/ -> parent run name)
+        repo_name = model_dir.parent.name
+    else:
+        repo_name = derive_repo_name(model_dir)
     repo_id = f"{org}/{repo_name}"
 
     # Determine which files to upload
@@ -132,11 +141,14 @@ def push_model(model_dir, org, private=True, include_resume=False, dry_run=False
         upload_files |= existing & RESUME_FILES
 
     print(f"Repo:    {repo_id}")
+    if prefix:
+        print(f"Prefix:  {prefix}/")
     print(f"Private: {private}")
     print(f"Files:   {len(upload_files)}")
     for f in sorted(upload_files):
         size_mb = (model_dir / f).stat().st_size / (1024 * 1024)
-        print(f"  {f} ({size_mb:.1f} MB)")
+        dest = f"{prefix}/{f}" if prefix else f
+        print(f"  {dest} ({size_mb:.1f} MB)")
 
     if dry_run:
         print("\nDry run — nothing uploaded.")
@@ -145,25 +157,27 @@ def push_model(model_dir, org, private=True, include_resume=False, dry_run=False
     api = HfApi()
     api.create_repo(repo_id, private=private, exist_ok=True)
 
-    for fname in sorted(upload_files):
-        filepath = model_dir / fname
-        print(f"Uploading {fname}...", end=" ", flush=True)
-        api.upload_file(
-            path_or_fileobj=str(filepath),
-            path_in_repo=fname,
-            repo_id=repo_id,
-        )
-        print("done")
+    print("Uploading...", end=" ", flush=True)
+    api.upload_folder(
+        folder_path=str(model_dir),
+        path_in_repo=prefix or "",
+        repo_id=repo_id,
+        allow_patterns=list(upload_files),
+        commit_message=f"Upload {prefix or 'model'} files",
+    )
+    print("done")
 
-    # Upload a model card if one doesn't exist
-    metadata = _load_metadata(model_dir)
-    if metadata:
-        card = _build_model_card(metadata, repo_id)
-        api.upload_file(
-            path_or_fileobj=card.encode(),
-            path_in_repo="README.md",
-            repo_id=repo_id,
-        )
+    # Upload model card at repo root (skip when uploading to a subdirectory)
+    if not prefix:
+        metadata = _load_metadata(model_dir)
+        if metadata:
+            card = _build_model_card(metadata, repo_id)
+            api.upload_file(
+                path_or_fileobj=card.encode(),
+                path_in_repo="README.md",
+                repo_id=repo_id,
+                commit_message="Add model card",
+            )
 
     print(f"\nPushed to https://huggingface.co/{repo_id}")
 
@@ -291,6 +305,16 @@ def main():
         help="List your models on the Hub",
     )
     parser.add_argument(
+        "--repo-name",
+        default=None,
+        help="Override auto-derived repo name",
+    )
+    parser.add_argument(
+        "--prefix",
+        default=None,
+        help="Upload files under this subdirectory (e.g., 'student')",
+    )
+    parser.add_argument(
         "--delete",
         metavar="REPO_ID",
         help="Delete a model repo from the Hub (org/name)",
@@ -318,6 +342,8 @@ def main():
         private=not args.public,
         include_resume=args.include_resume,
         dry_run=args.dry_run,
+        repo_name=args.repo_name,
+        prefix=args.prefix,
     )
 
 

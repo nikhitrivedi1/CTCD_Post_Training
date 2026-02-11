@@ -22,34 +22,38 @@
 ## Training Dynamics
 
 ### 00_no-teacher_ce-only
-- **Eval Loss:** 0.5715 → 0.5508 (↘ decreasing)
-- **Eval Acc:** 76.99% → 81.19%
-- **Train Loss:** 0.468 (early) → 0.356 (mid) → 0.432 (late)
-- **Notes:** Stable training, consistent improvement
+- **Student Accuracy:** 33.39% → 82.19%
+- **Eval Loss:** 0.689 → 0.547 (↘ decreasing, min=0.488)
+- **Train Loss:** 1.097 → 0.450 → 0.332
+- **Notes:** Stable training, strong improvement
 
 ### 01_frozen_base-teacher_kl
-- **Eval Loss:** 0.7240 → 0.6538 (↘ decreasing)
-- **Eval Acc:** 77.04% → 81.39%
-- **Train Loss:** 0.414 → 0.391 → 0.406
-- **Notes:** Higher loss than CE-only due to KL term, but similar accuracy
+- **Student Accuracy:** 34.69% → 81.58%
+- **Teacher Accuracy:** 31.32% → 31.32% (frozen, random head)
+- **Eval Loss:** 0.839 → 0.649 (↘ decreasing)
+- **Train Loss:** 0.560 → 0.560 → 0.381
+- **Notes:** KL from random teacher adds noise, -0.61% vs CE-only
 
 ### 02_frozen_sft-teacher_kl
-- **Eval Loss:** 0.7162 → 0.6489 (↘ decreasing)
-- **Eval Acc:** 74.87% → 79.56%
-- **Train Loss:** 0.459 → 0.424 → 0.448
-- **Notes:** ⚠️ Starts lower, ends lower - frozen SFT teacher hurts
+- **Student Accuracy:** 33.39% → 79.82%
+- **Teacher Accuracy:** 84.57% → 84.57% (frozen)
+- **Eval Loss:** 0.810 → 0.647 (↘ decreasing)
+- **Train Loss:** 0.751 → 0.751 → 0.413
+- **Notes:** ⚠️ Frozen SFT teacher hurts student by -2.37%
 
 ### 03_cotrain_base-teacher_kl
-- **Eval Loss:** 0.5411 → 0.5185 (↘ decreasing, min=0.487)
-- **Eval Acc:** 78.18% → 82.62%
-- **Train Loss:** 0.705 → 0.554 → 0.656
-- **Notes:** Best loss trajectory, highest final accuracy
+- **Student Accuracy:** 34.69% → 82.62%
+- **Teacher Accuracy:** 31.32% → 73.25% (+41.93%, co-trained from random)
+- **Eval Loss:** 0.714 → 0.522 (↘ decreasing, min=0.477)
+- **Train Loss:** 1.667 → 1.667 → 0.493
+- **Notes:** Best loss trajectory, teacher learns alongside student
 
 ### 04_cotrain_sft-teacher_kl
-- **Eval Loss:** 0.5473 → 0.5810 (↗ **spike at end**)
-- **Eval Acc:** 78.81% → 82.50% (best=82.56%)
-- **Train Loss:** 0.681 → 0.561 → 0.639
-- **Notes:** ⚠️ Loss spike at end, but still highest accuracy
+- **Student Accuracy:** 33.39% → 82.69%
+- **Teacher Accuracy:** 84.57% → 81.66% (-2.91%, co-training destabilizes)
+- **Eval Loss:** 0.721 → 0.588 (↘ decreasing, min=0.502)
+- **Train Loss:** 1.685 → 1.685 → 0.502
+- **Notes:** Highest student accuracy despite teacher degradation
 
 ---
 
@@ -66,11 +70,11 @@ Both co-training configs outperform frozen and CE-only:
 - Frozen fine-tuned teacher provides overconfident wrong guidance
 - Student can't overcome strong KL gradients toward incorrect predictions
 
-### 3. Loss vs Accuracy divergence
-04_cotrain_sft shows loss spike but highest accuracy:
-- Final eval loss: 0.581 (highest among co-train)
-- Final accuracy: 82.69% (highest overall)
-- Suggests calibration issues, not prediction quality
+### 3. Co-training SFT teacher degrades
+04_cotrain_sft achieves highest student accuracy despite teacher degradation:
+- Teacher: 84.57% → 81.66% (-2.91%)
+- Student: 82.69% (best overall)
+- Shared learning rate slightly destabilizes already-converged teacher
 
 ---
 
@@ -78,4 +82,4 @@ Both co-training configs outperform frozen and CE-only:
 
 1. **For Paper 1:** Clear evidence that frozen SFT teachers hurt on MNLI
 2. **For methodology:** Co-training should be default for distillation
-3. **For future work:** Investigate loss spike in 04 - overfitting or calibration?
+3. **For future work:** Investigate teacher degradation in 04 - separate learning rates?

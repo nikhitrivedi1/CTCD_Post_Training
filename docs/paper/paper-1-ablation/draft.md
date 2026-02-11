@@ -152,6 +152,23 @@ Self-correction mechanism:
 3. Teacher updates, reducing confidence in wrong answer
 4. Student receives progressively better guidance
 
+### The Student Sets the Pace
+
+Co-training optimizes hyperparameters (learning rate, schedule, epochs) for the student. The teacher inherits these settings, producing two failure modes:
+
+| Config | Teacher State | Student-Paced Effect | Evidence |
+|--------|-------------|---------------------|----------|
+| 03 (base) | Random (31%) | **Undertrained** — reaches 73% vs 85% standalone | MNLI |
+| 04 (SFT) | Converged (85%) | **Destabilized** — drops to 82% | MNLI |
+
+Same root cause, opposite symptoms: the learning rate is too aggressive for an already-converged teacher (04) and the schedule too short for a from-scratch teacher (03).
+
+Yet the student surpasses the teacher in both cases (82.6% vs 73.3% in config 03). This is possible because the student receives a dual learning signal—CE from ground truth plus KL from the teacher—while the teacher only receives CE. The student cherry-picks: when the teacher is right, KL reinforces CE; when the teacher is wrong, CE overrides KL. The teacher has no such corrective mechanism.
+
+This effect is task-dependent. On QQP and SST-2, the co-trained base teacher reaches or exceeds standalone fine-tuning performance, suggesting the student-optimized hyperparameters happen to suit the teacher on those tasks. MNLI's 3-class optimization landscape appears most sensitive to this mismatch.
+
+**Implication:** Separate teacher learning rates could let the teacher reach its full potential (~85%) during co-training, potentially improving student quality further.
+
 ### Why CoLA is Different
 
 1. **Small dataset** (8.5k) — not enough data for distillation benefit
@@ -263,26 +280,56 @@ Key insight: *A teacher's willingness to update matters more than its starting a
 
 ## Appendix: Training Dynamics
 
-### MNLI Loss Trends
+### MNLI: Student & Teacher Trajectories
 
-| Config | Eval Loss Trend | Notes |
-|--------|-----------------|-------|
-| 00_ce-only | 0.57 → 0.55 ↘ | Stable |
-| 01_frozen_base | 0.72 → 0.65 ↘ | Higher due to KL |
-| 02_frozen_sft | 0.72 → 0.65 ↘ | Stable but low accuracy |
-| 03_cotrain_base | 0.54 → 0.52 ↘ | Best trajectory |
-| 04_cotrain_sft | 0.55 → 0.58 ↗ | Loss spike at end |
+| Config | Student Acc (pre→post) | Teacher Acc (pre→post) | Eval Loss |
+|--------|----------------------|----------------------|-----------|
+| 00_ce-only | 33.39% → 82.19% | — | 0.547 |
+| 01_frozen_base | 34.69% → 81.58% | 31.32% → 31.32% | 0.649 |
+| 02_frozen_sft | 33.39% → 79.82% | 84.57% → 84.57% | 0.647 |
+| 03_cotrain_base | 34.69% → 82.62% | 31.32% → 73.25% | 0.522 |
+| 04_cotrain_sft | 33.39% → 82.69% | 84.57% → 81.66% | 0.588 |
+
+### QQP: Student & Teacher Trajectories
+
+| Config | Student F1 (pre→post) | Teacher F1 (pre→post) | Eval Loss |
+|--------|---------------------|---------------------|-----------|
+| 00_ce-only | 50.48% → 90.26% | — | 0.307 |
+| 01_frozen_base | 53.69% → 90.44% | 25.96% → 25.96% | 0.400 |
+| 02_frozen_sft | 50.48% → 55.89% | 90.93% → 90.93% | 0.652 |
+| 03_cotrain_base | 53.69% → 90.61% | 25.96% → 90.97% | 0.269 |
+| 04_cotrain_sft | 50.48% → 90.46% | 90.93% → 91.32% | 0.325 |
+
+### SST-2: Student & Teacher Trajectories
+
+| Config | Student Acc (pre→post) | Teacher Acc (pre→post) | Eval Loss |
+|--------|----------------------|----------------------|-----------|
+| 00_ce-only | 43.46% → 90.94% | — | 0.392 |
+| 01_frozen_base | 45.76% → 91.51% | 50.92% → 50.92% | 0.399 |
+| 02_frozen_sft | 43.46% → 90.94% | 92.43% → 92.43% | 0.368 |
+| 03_cotrain_base | 45.76% → 91.51% | 50.92% → 93.58% | 0.311 |
+| 04_cotrain_sft | 43.46% → 91.28% | 92.43% → 92.32% | 0.376 |
+
+### CoLA: Student & Teacher Trajectories
+
+| Config | Student MCC (pre→post) | Teacher MCC (pre→post) | Eval Loss |
+|--------|----------------------|----------------------|-----------|
+| 00_ce-only | 5.07% → 53.80% | — | 0.556 |
+| 01_frozen_base | 5.04% → 53.39% | 10.40% → 10.40% | 0.482 |
+| 02_frozen_sft | 5.07% → 51.45% | 53.39% → 53.39% | 0.516 |
+| 03_cotrain_base | 5.04% → 51.73% | 10.40% → 58.08% | 0.560 |
+| 04_cotrain_sft | 5.07% → 49.67% | 53.39% → 56.29% | 0.643 |
 
 ### QQP: Frozen SFT Failure Mode
 
 | Metric | 02_frozen_sft | Others |
 |--------|---------------|--------|
-| Starting F1 | 51.96% | 86-88% |
-| Final F1 | 55.89% | 90%+ |
-| Starting Loss | 0.637 | 0.29-0.45 |
-| Training Loss | Stuck at 0.55 | Decreases |
+| Student F1 (pre) | 50.48% | 50-54% |
+| Student F1 (post) | 55.89% | 90%+ |
+| Teacher F1 | 90.93% (frozen) | 26-91% |
+| Eval Loss | 0.652 | 0.27-0.40 |
 
-The student cannot escape the local minimum created by confident wrong teacher guidance.
+The student barely improves (+5.4% F1) despite having a 90.93% teacher. The overconfident frozen teacher creates irreconcilable gradient conflict that traps the student near random performance.
 
 ---
 

@@ -1,6 +1,5 @@
 name: distillation
 channels:
-  - pytorch
   - conda-forge
   - defaults
 
@@ -8,14 +7,13 @@ dependencies:
   - python=3.10
   - pip
 
-  # PyTorch (automatically uses MPS on M2 Macs, CUDA on Linux/Windows)
-  # Requires >=2.6 due to CVE-2025-32434 (torch.load vulnerability)
-  - pytorch>=2.6
-  - torchvision
-  - torchaudio
-
-  # Install remaining packages via pip
+  # Install all packages via pip
   - pip:
+      # PyTorch (pip auto-selects CUDA on Linux, MPS on Mac)
+      # Requires >=2.6 due to CVE-2025-32434 (torch.load vulnerability)
+      - torch>=2.6
+      - torchvision
+      - torchaudio
       - transformers>=4.35.0
       - datasets>=2.14.0
       - evaluate>=0.4.0
