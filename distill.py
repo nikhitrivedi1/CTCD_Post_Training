@@ -117,7 +117,7 @@ def create_loss_strategy_from_config(
 
     Supports three modes:
     1. Single strategy (loss_type)
-    2. Combined strategies (loss_strategies) - for RFA matrix
+    2. Combined strategies (loss_strategies) - for FAR matrix
     3. Staged strategies (stages) - for F→R, F→A→R progressions
 
     Config format for single strategy:
@@ -125,7 +125,7 @@ def create_loss_strategy_from_config(
           loss_type: kl_divergence
           alpha: 0.5
 
-    Config format for combined strategies (RFA matrix):
+    Config format for combined strategies (FAR matrix):
         distillation:
           loss_strategies:
             - type: kl_divergence
@@ -155,7 +155,7 @@ def create_loss_strategy_from_config(
             alpha=alpha,
             temperature=temperature,
         )
-    # Check for combined strategies (RFA matrix)
+    # Check for combined strategies (FAR matrix)
     elif loss_strategies_config := distill_config.get("loss_strategies"):
         # Multiple strategies: create CombinedDistillationLoss
         strategies = []

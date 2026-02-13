@@ -8,7 +8,7 @@ Compressing StyleTTS2 as a fourth modality — combining text encoder KD, diffus
 
 | Component | Role | Approx Size | KD Approach |
 |-----------|------|-------------|-------------|
-| **PL-BERT** | Text encoder (12 layers) | ~110M | BERT-style KD (R/F/A) |
+| **PL-BERT** | Text encoder (12 layers) | ~110M | BERT-style KD (F/A/R) |
 | **Style Diffusion** | Latent style vector generation | ~20-30M | Progressive / Consistency distillation |
 | **Duration Predictor** | Phoneme duration modeling | ~5M | Response KD (MSE) |
 | **Prosody Predictor** | Pitch/energy modeling | ~5M | Response KD (MSE) |
@@ -69,7 +69,7 @@ Distill each component independently, then assemble.
 
 ```
 Teacher StyleTTS2 (full)
-├── PL-BERT (12 layers) ──────→ DistilPL-BERT (6 layers)     [BERT KD: R/F/A]
+├── PL-BERT (12 layers) ──────→ DistilPL-BERT (6 layers)     [BERT KD: F/A/R]
 ├── Style Diffusion ───────────→ Fewer diffusion steps         [Progressive Distill]
 ├── Duration/Prosody Predictors → Smaller predictors           [Response KD: MSE]
 ├── Pitch Extractor ───────────→ Keep frozen (small already)
@@ -179,7 +179,7 @@ configs/voice/
 1. **Classification** (BERT→DistilBERT): parameter compression, output distribution transfer
 2. **Translation** (Llama 3B→1B): parameter compression, token-level distribution transfer
 3. **Image Generation** (DDPM): step compression AND parameter compression
-4. **Speech Synthesis** (StyleTTS2): **all three** — text encoder KD (R/F/A), diffusion step reduction, and decoder compression
+4. **Speech Synthesis** (StyleTTS2): **all three** — text encoder KD (F/A/R), diffusion step reduction, and decoder compression
 
 StyleTTS2 is the capstone: it contains a BERT-like encoder (PL-BERT), a diffusion model (style generation), and a convolutional decoder (HiFi-GAN). Every KD technique we've developed applies to a different component. This demonstrates the universality of our distillation framework across architectures and modalities."
 

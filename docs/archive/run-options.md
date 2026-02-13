@@ -387,16 +387,16 @@ PREV_JOB_ID=12345 sbatch scripts/run_slurm.sh my_run_2026-02-01_12-00Z
 ### Mode 6: Concurrent SLURM Jobs
 
 ```bash
-sbatch scripts/run_slurm.sh rfa-01 configs/.../01.yaml  # Job 12345
-sbatch scripts/run_slurm.sh rfa-07 configs/.../07.yaml  # Job 12346
+sbatch scripts/run_slurm.sh far-01 configs/.../01.yaml  # Job 12345
+sbatch scripts/run_slurm.sh far-07 configs/.../07.yaml  # Job 12346
 ```
 
 Each job gets unique key, no collision:
 
 ```json
 {
-  "12345": {"run_name": "rfa-01_2026...", "output_dir": "..."},
-  "12346": {"run_name": "rfa-07_2026...", "output_dir": "..."}
+  "12345": {"run_name": "far-01_2026...", "output_dir": "..."},
+  "12346": {"run_name": "far-07_2026...", "output_dir": "..."}
 }
 ```
 

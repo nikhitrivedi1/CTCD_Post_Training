@@ -6,7 +6,7 @@ Draft paper on the FAR factorial study findings.
 
 ## Abstract
 
-Knowledge distillation research has explored transferring multiple types of knowledge: response (soft labels), features (hidden states), and attention patterns. We present a factorial study testing all 8 combinations of Response (R), Feature (F), and Attention (A) signals. Our finding: **R-only outperforms all multi-signal combinations**, including the full FAR. Adding Feature or Attention signals to Response *hurts* performance due to gradient conflict. The ranking R >> F > A suggests practitioners should use classic KL distillation rather than complex multi-signal approaches.
+Knowledge distillation research has explored transferring multiple types of knowledge: features (hidden states), attention patterns, and response (soft labels). We present a factorial study testing all 8 combinations of Feature (F), Attention (A), and Response (R) signals. Our finding: **R-only outperforms all multi-signal combinations**, including the full FAR. Adding Feature or Attention signals to Response *hurts* performance due to gradient conflict. The ranking R >> F > A suggests practitioners should use classic KL distillation rather than complex multi-signal approaches.
 
 ---
 

@@ -39,16 +39,16 @@ A systematic exploration of the knowledge distillation design space, combining m
 | **Summarization** | BART → DistilBART | Planned | Encoder-decoder, sequence-level |
 | **Code Generation** | CodeLlama → smaller | Future | Same as translation but code domain |
 | **Diffusion (Steps)** | DDPM-1000 → DDPM-4 | In Progress | Same size, fewer steps (Progressive Distillation) |
-| **Diffusion (Params)** | Large UNet → Small UNet | Planned | Smaller model, R/F/A on UNet outputs |
+| **Diffusion (Params)** | Large UNet → Small UNet | Planned | Smaller model, F/A/R on UNet outputs |
 | **Voice (StyleTTS2)** | StyleTTS2 → compressed | Planned | Capstone: text encoder + diffusion + decoder KD |
 
 ### Y-Axis: Depth (What to Distill)
 
 | Depth | What Transfers | Loss Type | Findings |
 |-------|----------------|-----------|----------|
-| **Response (R)** | Output logits | KL | ✓ **Best alone** - simpler is better |
 | **Feature (F)** | Hidden states | Cosine | ✗ Gradient conflict with R (re-running with fixes) |
 | **Attention (A)** | Attention weights | KL | ✗ Gradient conflict with R (re-running with fixes) |
+| **Response (R)** | Output logits | KL | ✓ **Best alone** - simpler is better |
 | **Relational** | Inter-sample relationships | Graph matching | Unexplored |
 | **Progressive** | Multi-step → fewer steps | Trajectory MSE | Diffusion-specific (in progress) |
 

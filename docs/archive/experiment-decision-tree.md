@@ -8,7 +8,7 @@ This document maps the experimental hierarchy for knowledge distillation researc
 
 ```
 L0: Teacher Setup (Ablation)
- └── L1: Distillation Signal (RFA Factorial)
+ └── L1: Distillation Signal (FAR Factorial)
       └── L2: Hyperparameters (Tuning)
 ```
 
@@ -47,9 +47,9 @@ Teacher Setup
 
 ---
 
-## L1: RFA Factorial Study
+## L1: FAR Factorial Study
 
-**Question:** Which distillation signals (Response/Feature/Attention) help most?
+**Question:** Which distillation signals (Feature/Attention/Response) help most?
 
 Built on top of L0 winner: `cotrain_sft-teacher`
 
@@ -66,29 +66,29 @@ Distillation Signals (2³ = 8 combinations)
     ├── F=0, A=0  → 01_r-only       (classic KD)
     ├── F=1, A=0  → 04_rf           (response + feature)
     ├── F=0, A=1  → 05_ra           (response + attention)
-    └── F=1, A=1  → 07_rfa          (full combination)
+    └── F=1, A=1  → 07_far          (full combination)
 ```
 
-### RFA Matrix
+### FAR Matrix
 
-| ID | R | F | A | Config | Description |
+| ID | F | A | R | Config | Description |
 |----|---|---|---|--------|-------------|
 | 00 | 0 | 0 | 0 | `00_ce-only.yaml` | CE baseline (no distillation) |
-| 01 | 1 | 0 | 0 | `01_r-only.yaml` | Response only (classic KL) |
-| 02 | 0 | 1 | 0 | `02_f-only.yaml` | Feature only (FitNets-style) |
-| 03 | 0 | 0 | 1 | `03_a-only.yaml` | Attention only |
-| 04 | 1 | 1 | 0 | `04_rf.yaml` | Response + Feature |
-| 05 | 1 | 0 | 1 | `05_ra.yaml` | Response + Attention |
-| 06 | 0 | 1 | 1 | `06_fa.yaml` | Feature + Attention |
-| 07 | 1 | 1 | 1 | `07_rfa.yaml` | Full RFA |
+| 01 | 0 | 0 | 1 | `01_r-only.yaml` | Response only (classic KL) |
+| 02 | 1 | 0 | 0 | `02_f-only.yaml` | Feature only (FitNets-style) |
+| 03 | 0 | 1 | 0 | `03_a-only.yaml` | Attention only |
+| 04 | 1 | 0 | 1 | `04_rf.yaml` | Response + Feature |
+| 05 | 0 | 1 | 1 | `05_ra.yaml` | Response + Attention |
+| 06 | 1 | 1 | 0 | `06_fa.yaml` | Feature + Attention |
+| 07 | 1 | 1 | 1 | `07_far.yaml` | Full FAR |
 
 ### Loss Functions
 
 | Signal | Loss Type | Implementation |
 |--------|-----------|----------------|
-| R (Response) | KL Divergence | `kl_divergence` on softened logits |
 | F (Feature) | MSE | `feature_mse` on hidden states |
 | A (Attention) | KL Divergence | `attention_kl` on attention weights |
+| R (Response) | KL Divergence | `kl_divergence` on softened logits |
 
 ---
 
@@ -126,13 +126,13 @@ Hyperparameters
 ## Naming Convention
 
 ```
-{task}_{l0-setup}_{l1-rfa}_{timestamp}
+{task}_{l0-setup}_{l1-far}_{timestamp}
 ```
 
 **Examples:**
-- `mnli_cotrain-sft_rfa-00` — MNLI, co-trained SFT teacher, CE baseline
-- `mnli_cotrain-sft_rfa-07` — MNLI, co-trained SFT teacher, full RFA
-- `mnli_cotrain-base_rfa-01` — MNLI, co-trained base teacher, R only
+- `mnli_cotrain-sft_far-00` — MNLI, co-trained SFT teacher, CE baseline
+- `mnli_cotrain-sft_far-07` — MNLI, co-trained SFT teacher, full FAR
+- `mnli_cotrain-base_far-01` — MNLI, co-trained base teacher, R only
 
 **Config paths:**
 ```
@@ -146,7 +146,7 @@ configs/
         │   ├── 03_cotrain_base-teacher_kl.yaml
         │   └── 04_cotrain_sft-teacher_kl.yaml
         │
-        └── rfa/                # L1 experiments (cotrain-sft base)
+        └── far/                # L1 experiments (cotrain-sft base)
             ├── 00_ce-only.yaml
             ├── 01_r-only.yaml
             ├── 02_f-only.yaml
@@ -154,7 +154,7 @@ configs/
             ├── 04_rf.yaml
             ├── 05_ra.yaml
             ├── 06_fa.yaml
-            └── 07_rfa.yaml
+            └── 07_far.yaml
 ```
 
 ---
@@ -168,10 +168,10 @@ configs/
    # ... etc
    ```
 
-2. **L1 RFA Factorial** — Test signal combinations on L0 winner
+2. **L1 FAR Factorial** — Test signal combinations on L0 winner
    ```bash
-   DEBUG=1 sbatch scripts/run_slurm.sh mnli_cotrain-sft_rfa-00 configs/mnli/.../rfa/00_ce-only.yaml
-   DEBUG=1 sbatch scripts/run_slurm.sh mnli_cotrain-sft_rfa-01 configs/mnli/.../rfa/01_r-only.yaml
+   DEBUG=1 sbatch scripts/run_slurm.sh mnli_cotrain-sft_far-00 configs/mnli/.../far/00_ce-only.yaml
+   DEBUG=1 sbatch scripts/run_slurm.sh mnli_cotrain-sft_far-01 configs/mnli/.../far/01_r-only.yaml
    # ... etc
    ```
 
@@ -203,7 +203,7 @@ Knowledge Distillation Experiments
 │  │
 │  └─────────────────────────────────────────────────────────┐
 │                                                            │
-├─ L1: RFA Factorial (which signals? R/F/A combinations)     │
+├─ L1: FAR Factorial (which signals? F/A/R combinations)     │
 │  │                                                         │
 │  │  Base: frozen_sft-teacher ◄─────────────────────────────┘
 │  │

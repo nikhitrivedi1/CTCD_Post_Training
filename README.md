@@ -235,7 +235,7 @@ distillation/
 
 Extends HuggingFace `Trainer` with:
 
-- **RFA distillation signals**: Response (KL/MSE/Cosine), Feature (MSE/Cosine), Attention (KL)
+- **FAR distillation signals**: Feature (MSE/Cosine), Attention (KL), Response (KL/MSE/Cosine)
 - **Training modes**: Frozen teacher, co-trained teacher, CE-only baseline (no teacher)
 - **Staged distillation**: Sequential signal phases (e.g., Feature → Attention → Response)
 - Temperature-scaled distributions

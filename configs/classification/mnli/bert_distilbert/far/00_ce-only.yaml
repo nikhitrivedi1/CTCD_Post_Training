@@ -1,6 +1,6 @@
-# RFA 00: CE-only baseline (no distillation)
+# FAR 00: CE-only baseline (no distillation)
 # R=0, F=0, A=0
-# Purpose: Baseline to compare RFA combinations against
+# Purpose: Baseline to compare FAR combinations against
 
 inherit: ../base.yaml
 

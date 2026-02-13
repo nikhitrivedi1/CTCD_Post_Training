@@ -1,4 +1,4 @@
-# RFA 03: Attention distillation only (attention KL)
+# FAR 03: Attention distillation only (attention KL)
 # R=0, F=0, A=1
 # Transfer attention patterns
 # Note: Head count differs (24 → 8), uses head averaging
@@ -20,4 +20,4 @@ distillation:
     type: average         # Average 24 heads → 8 heads (groups of 3)
 
 logging:
-  wandb_tags: ["translation", "rfa", "a-only", "attention"]
+  wandb_tags: ["translation", "far", "a-only", "attention"]

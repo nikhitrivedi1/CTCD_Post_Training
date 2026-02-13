@@ -1,4 +1,4 @@
-# RFA 01: Response distillation only (KL divergence)
+# FAR 01: Response distillation only (KL divergence)
 # R=1, F=0, A=0
 # Classic knowledge distillation via soft labels
 # Uses Adaptive Domain-Expert (best from L0)
@@ -16,4 +16,4 @@ distillation:
   loss_type: response_kl
 
 logging:
-  wandb_tags: ["translation", "rfa", "r-only", "response"]
+  wandb_tags: ["translation", "far", "r-only", "response"]

@@ -297,7 +297,7 @@ Understanding where teacher and student predictions differ reveals:
 - [x] Attention entropy analysis
 - [x] Prediction disagreement analysis
 - [x] CKA analysis for layer alignment
-- [ ] Compare across different distillation configurations (RFA ablations)
+- [ ] Compare across different distillation configurations (FAR ablations)
 - [ ] Investigate student overconfidence - calibration techniques?
 - [ ] Per-example error analysis on disagreement cases
 

@@ -1,4 +1,4 @@
-# RFA 05: Response + Attention distillation
+# FAR 05: Response + Attention distillation
 # R=1, F=0, A=1
 # Combines soft label transfer with attention pattern matching
 

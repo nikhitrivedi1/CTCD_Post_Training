@@ -1,4 +1,4 @@
-# RFA 06: Feature + Attention distillation
+# FAR 06: Feature + Attention distillation
 # R=0, F=1, A=1
 # Combines hidden state and attention pattern matching (no response)
 
@@ -26,4 +26,4 @@ distillation:
     type: average
 
 logging:
-  wandb_tags: ["translation", "rfa", "fa", "feature", "attention"]
+  wandb_tags: ["translation", "far", "fa", "feature", "attention"]

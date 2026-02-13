@@ -9,7 +9,7 @@ Two compression dimensions for diffusion models: fewer denoising steps AND small
 | Axis | What compresses | Method | Goal |
 |------|----------------|--------|------|
 | **Step reduction** | Sampling iterations | Progressive Distillation | 1000 → 4 steps |
-| **Parameter reduction** | Model size | Standard KD (R/F/A) | Large UNet → Small UNet |
+| **Parameter reduction** | Model size | Standard KD (F/A/R) | Large UNet → Small UNet |
 | **Combined** | Both | Progressive + KD | Smaller model, fewer steps |
 
 ## Overview
@@ -17,12 +17,12 @@ Two compression dimensions for diffusion models: fewer denoising steps AND small
 | Aspect | Text KD (existing) | Diffusion Step KD | Diffusion Param KD |
 |--------|--------------------|--------------------|---------------------|
 | **What compresses** | Parameters | Steps | Parameters |
-| **Signal** | Output logits (KL) | Denoised samples (MSE) | R/F/A on UNet outputs |
+| **Signal** | Output logits (KL) | Denoised samples (MSE) | F/A/R on UNet outputs |
 | **Teacher** | Fine-tuned classifier | Pre-trained DDPM | Large UNet |
 | **Student** | Smaller architecture | Same architecture | Smaller UNet |
 | **Training loop** | HF Trainer subclass | Custom loop | Custom loop |
 
-**Key insight:** Parameter reduction for UNets reuses our existing R/F/A signals. The UNet has attention layers and feature maps — Feature (cosine on intermediate activations) and Attention (KL on self-attention) directly apply. This connects diffusion KD back to our text KD framework.
+**Key insight:** Parameter reduction for UNets reuses our existing F/A/R signals. The UNet has attention layers and feature maps — Feature (cosine on intermediate activations) and Attention (KL on self-attention) directly apply. This connects diffusion KD back to our text KD framework.
 
 ---
 
@@ -172,7 +172,7 @@ for batch in dataloader:
 | Loss strategy pattern | Yes (conceptually) | New strategies needed |
 | `--force` / `--debug` flags | Yes | Same train.py CLI |
 | HF Trainer | No | Custom loop required |
-| Existing loss strategies | **Yes (for param reduction)** | R/F/A on UNet outputs/features |
+| Existing loss strategies | **Yes (for param reduction)** | F/A/R on UNet outputs/features |
 | Data pipeline | No | Images, not text |
 | Layer mapping / projections | **Yes (for param reduction)** | Map large UNet layers → small UNet |
 
@@ -226,7 +226,7 @@ The ultimate compression: smaller model AND fewer steps.
 |---|--------|--------|-------|-------------|
 | C0 | Teacher (reference) | 35M | 1000 | Baseline |
 | C1 | Step reduction only | 35M | 4 | Progressive distillation |
-| C2 | Param reduction only | ~10M | 1000 | Standard KD (R/F/A) |
+| C2 | Param reduction only | ~10M | 1000 | Standard KD (F/A/R) |
 | C3 | Both (sequential) | ~10M | 4 | First param KD, then progressive distill |
 | C4 | Both (joint) | ~10M | 4 | Simultaneous param + step reduction |
 
@@ -240,7 +240,7 @@ The ultimate compression: smaller model AND fewer steps.
 - (Stretch) Consistency Model — 1-step generation
 
 **2. FID vs. Parameters curve:**
-- Standard KD R/F/A on UNets
+- Standard KD F/A/R on UNets
 - Same FAR factorial from text KD, applied to diffusion
 
 **3. FID vs. (Steps × Params) Pareto frontier:**
@@ -256,7 +256,7 @@ The ultimate compression: smaller model AND fewer steps.
 2. **Translation** (Llama 3B→1B): parameter compression, token-level distribution transfer
 3. **Generation** (DDPM): step compression (1000→4) AND parameter compression (35M→10M)
 
-Text KD transfers output distributions. Diffusion step KD transfers sampling trajectories. Diffusion parameter KD bridges both paradigms — the same R/F/A signals that work for text also apply to UNet feature maps and attention layers. The core principle is universal: a teacher model provides richer training signal than ground truth alone."
+Text KD transfers output distributions. Diffusion step KD transfers sampling trajectories. Diffusion parameter KD bridges both paradigms — the same F/A/R signals that work for text also apply to UNet feature maps and attention layers. The core principle is universal: a teacher model provides richer training signal than ground truth alone."
 
 ---
 

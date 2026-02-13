@@ -9,13 +9,13 @@ DistilKit and [Unsloth](https://github.com/unslothai/unsloth) solve different pr
 | **Output** | A different, smaller architecture (e.g., BERT → DistilBERT) | Same architecture with adapted weights |
 | **Model types** | Any HuggingFace pair (encoders, decoders) | Decoder-only LLMs (Llama, Mistral, Gemma) |
 | **Research question** | *What knowledge transfers and how?* | *How fast can we fine-tune?* |
-| **Distillation signals** | Response (KL), Feature (MSE), Attention (KL) | N/A — no teacher model involved |
+| **Distillation signals** | Feature (MSE), Attention (KL), Response (KL) | N/A — no teacher model involved |
 | **Analysis tooling** | Workbench: CKA, probing, disagreement, attention entropy | N/A |
 | **Training mode** | Full fine-tune or LoRA, frozen or co-trained teacher | LoRA/QLoRA with fused kernels |
 
 **When to use DistilKit:**
 - You need a structurally smaller model (fewer layers, smaller hidden dim) for deployment
-- You want to study *which* distillation signals matter (RFA factorial design)
+- You want to study *which* distillation signals matter (FAR factorial design)
 - You're compressing across architectures (e.g., Llama-3B teaching a custom 500M model)
 - You need post-hoc analysis of what knowledge transferred
 

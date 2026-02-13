@@ -321,7 +321,7 @@ class CombinedDistillationLoss(DistillationLossStrategy):
     Combines multiple loss strategies with configurable weights.
 
     Useful for experimentation: e.g., KL + MSE + Cosine together,
-    or Response + Feature + Attention for RFA matrix experiments.
+    or Feature + Attention + Response for FAR matrix experiments.
     """
 
     def __init__(self, strategies: list, weights: list, alpha: float = 0.5):

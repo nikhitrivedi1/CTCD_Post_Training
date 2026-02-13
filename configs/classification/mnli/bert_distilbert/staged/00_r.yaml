@@ -1,5 +1,5 @@
 # Staged Baseline: R-only throughout (for comparison)
-# This is equivalent to RFA 01_r-only but in staged config format
+# This is equivalent to FAR 01_r-only but in staged config format
 
 inherit: ../base.yaml
 

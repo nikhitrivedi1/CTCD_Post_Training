@@ -1,4 +1,4 @@
-# RFA 02: Feature distillation only (hidden state MSE)
+# FAR 02: Feature distillation only (hidden state MSE)
 # R=0, F=1, A=0
 # Transfer intermediate representations
 # Note: Requires projection due to dim mismatch (3072 → 2048)
@@ -21,4 +21,4 @@ distillation:
     type: linear
 
 logging:
-  wandb_tags: ["translation", "rfa", "f-only", "feature"]
+  wandb_tags: ["translation", "far", "f-only", "feature"]

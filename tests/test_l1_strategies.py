@@ -495,11 +495,11 @@ def test_empty_layer_mapping():
 
 
 # =============================================================================
-# Test: Combined Loss Strategy (RFA Matrix)
+# Test: Combined Loss Strategy (FAR Matrix)
 # =============================================================================
 
-def test_combined_loss_rfa():
-    """Test combined loss with Feature + Attention (for RFA matrix experiments)."""
+def test_combined_loss_far():
+    """Test combined loss with Feature + Attention (for FAR matrix experiments)."""
     print("\n=== Test: Combined Loss (Feature + Attention) ===")
 
     from src.training import CombinedDistillationLoss

@@ -1,4 +1,4 @@
-# RFA 07: Response + Feature + Attention (all three)
+# FAR 07: Feature + Attention + Response (all three)
 # R=1, F=1, A=1
 # Full multi-level distillation
 # Note: May suffer from gradient conflict (observed in MNLI)
@@ -29,4 +29,4 @@ distillation:
     type: average
 
 logging:
-  wandb_tags: ["translation", "rfa", "rfa-all", "response", "feature", "attention"]
+  wandb_tags: ["translation", "far", "far-all", "response", "feature", "attention"]

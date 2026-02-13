@@ -40,13 +40,13 @@ A systematic exploration of the knowledge distillation design space across multi
 ## Compatibility Matrix
 
 ```
-│                          │     Response     │     Feature      │    Attention      │   Progressive   │
-├──────────────────────────┼──────────────────┼──────────────────┼───────────────────┼─────────────────┤
-│ Classification           │       ✓✓✓        │        ✓✓        │        ✓✓         │        -        │
-│ Translation              │       ✓✓✓        │        ✓         │        ✓          │        -        │
-│ Summarization            │       ✓✓✓        │        ✓         │        ✓✓         │        -        │
-│ Diffusion (Steps)        │        ✓         │        △         │        △          │       ✓✓✓       │
-│ Diffusion (Params)       │       ✓✓✓        │        ✓✓        │        ✓✓         │        -        │
+│                          │     Feature      │    Attention      │     Response     │   Progressive   │
+├──────────────────────────┼──────────────────┼───────────────────┼──────────────────┼─────────────────┤
+│ Classification           │        ✓✓        │        ✓✓         │       ✓✓✓        │        -        │
+│ Translation              │        ✓         │        ✓          │       ✓✓✓        │        -        │
+│ Summarization            │        ✓         │        ✓✓         │       ✓✓✓        │        -        │
+│ Diffusion (Steps)        │        △         │        △          │        ✓         │       ✓✓✓       │
+│ Diffusion (Params)       │        ✓✓        │        ✓✓         │       ✓✓✓        │        -        │
 
 Legend: ✓✓✓ Primary approach  ✓✓ Feasible  ✓ Possible  △ Challenging  - N/A
 ```

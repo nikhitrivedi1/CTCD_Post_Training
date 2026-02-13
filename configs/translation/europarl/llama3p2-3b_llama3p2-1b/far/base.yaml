@@ -1,2 +1,2 @@
-# RFA factorial study base - passthrough to model pair
+# FAR factorial study base - passthrough to model pair
 inherit: ../base.yaml

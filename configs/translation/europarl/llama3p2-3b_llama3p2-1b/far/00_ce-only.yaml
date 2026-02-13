@@ -1,4 +1,4 @@
-# RFA 00: CE-only baseline (no distillation)
+# FAR 00: CE-only baseline (no distillation)
 # R=0, F=0, A=0
 # Student learns from ground truth only - establishes baseline
 
@@ -16,4 +16,4 @@ distillation:
   loss_type: none
 
 logging:
-  wandb_tags: ["translation", "rfa", "baseline", "ce-only"]
+  wandb_tags: ["translation", "far", "baseline", "ce-only"]

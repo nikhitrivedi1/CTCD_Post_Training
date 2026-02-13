@@ -1,4 +1,4 @@
-# RFA 02: Feature distillation only (hidden state matching)
+# FAR 02: Feature distillation only (hidden state matching)
 # R=0, F=1, A=0
 # FitNets-style intermediate representation transfer
 

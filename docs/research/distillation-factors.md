@@ -284,17 +284,17 @@ DistilBERT's success with F during pre-training suggests **temporal staging** of
 
 ### 5.2 SeqLen × Signal Depth
 
-| SeqLen | Response (R) | Feature (F) | Attention (A) |
-|--------|--------------|-------------|---------------|
-| Short | Clean signal | Manageable | Manageable |
-| Long | Diluted | Memory intensive | O(n²) per layer |
+| SeqLen | Feature (F) | Attention (A) | Response (R) |
+|--------|-------------|---------------|--------------|
+| Short | Manageable | Manageable | Clean signal |
+| Long | Memory intensive | O(n²) per layer | Diluted |
 
 ### 5.3 Capacity Gap × Signal Depth
 
-| Gap | Response | Feature | Attention |
-|-----|----------|---------|-----------|
+| Gap | Feature | Attention | Response |
+|-----|---------|-----------|----------|
 | Small | Easy | Easy | Easy |
-| Large | Still works | Needs projection | Needs head mapping |
+| Large | Needs projection | Needs head mapping | Still works |
 
 ---
 

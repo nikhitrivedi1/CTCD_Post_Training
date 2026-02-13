@@ -47,7 +47,7 @@ Teacher Setup
 
 ## L1: FAR Factorial Study
 
-**Question:** Which distillation signals (Response/Feature/Attention) help most?
+**Question:** Which distillation signals (Feature/Attention/Response) help most?
 
 Built on L0 winner: `cotrain_sft-teacher`
 
@@ -66,9 +66,9 @@ Built on L0 winner: `cotrain_sft-teacher`
 
 | Signal | Loss Type | Implementation |
 |--------|-----------|----------------|
-| R (Response) | KL Divergence | `response_kl` on softened logits |
 | F (Feature) | Cosine Similarity | `feature_cosine` on hidden states |
 | A (Attention) | KL Divergence | `attention_kl` on attention weights |
+| R (Response) | KL Divergence | `response_kl` on softened logits |
 
 ---
 
@@ -173,7 +173,7 @@ Diffusion Distillation
 │   └── Baseline: DDIM naive reduction
 │
 └── Parameter Reduction (smaller model, same steps)
-    ├── Standard KD: large UNet → small UNet (R/F/A signals)
+    ├── Standard KD: large UNet → small UNet (F/A/R signals)
     └── Combined: smaller model + fewer steps
 ```
 
@@ -236,6 +236,6 @@ See [docs/planning/voice-distillation.md](voice-distillation.md) for full plan.
 | L2 | What temperature is optimal? | Grid search |
 | L2 | How to balance CE vs distillation? | Grid search |
 | Diffusion | Does step reduction + param reduction compose? | Compare D2, D3, D4 |
-| Diffusion | Do R/F/A signals help for UNet distillation? | Factorial on D3 |
+| Diffusion | Do F/A/R signals help for UNet distillation? | Factorial on D3 |
 | Voice | Does module-wise KD compose across components? | Compare V2+V6+V8 vs V9 |
 | Voice | Which component benefits most from KD? | Compare V2, V5, V8 individually |

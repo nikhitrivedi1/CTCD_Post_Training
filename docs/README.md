@@ -145,7 +145,7 @@ Our key finding: frozen SFT teachers can **hurt** student performance because co
 | 5 | 02 | 79.26% | Frozen SFT teacher |
 
 ### FAR Factorial Design
-Testing Response (R), Feature (F), Attention (A) combinations. See [experiment-decision-tree.md](planning/experiment-decision-tree.md).
+Testing Feature (F), Attention (A), Response (R) combinations. See [experiment-decision-tree.md](planning/experiment-decision-tree.md).
 
 ---
 

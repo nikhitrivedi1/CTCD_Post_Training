@@ -498,7 +498,7 @@ Both MNLI and QQP show the same pattern:
 
 ---
 
-## RFA Factorial Study
+## FAR Factorial Study
 
 **Date:** 2026-02-02
 
@@ -529,48 +529,48 @@ Factorial study of three distillation signals:
 
 | Config | R | F | A | Accuracy (Run 1) | Accuracy (Run 2) | Mean | Rank |
 |--------|---|---|---|------------------|------------------|------|------|
-| rfa-01 | 1 | 0 | 0 | 81.13% | 81.13% | **81.13%** | **1** |
-| rfa-05 | 1 | 0 | 1 | 80.59% | 80.59% | 80.59% | 2 |
-| rfa-04 | 1 | 1 | 0 | 80.49% | 80.49% | 80.49% | 3 |
-| rfa-07 | 1 | 1 | 1 | 79.68% | 80.77% | 80.23% | 4 |
-| rfa-02 | 0 | 1 | 0 | 79.42% | 79.42% | 79.42% | 5 |
-| rfa-06 | 0 | 1 | 1 | 79.43% | 79.43% | 79.43% | 6 |
-| rfa-03 | 0 | 0 | 1 | 78.69% | 78.69% | 78.69% | 7 |
-| rfa-00 | 0 | 0 | 0 | 78.55% | 78.55% | 78.55% | 8 |
+| far-01 | 1 | 0 | 0 | 81.13% | 81.13% | **81.13%** | **1** |
+| far-05 | 1 | 0 | 1 | 80.59% | 80.59% | 80.59% | 2 |
+| far-04 | 1 | 1 | 0 | 80.49% | 80.49% | 80.49% | 3 |
+| far-07 | 1 | 1 | 1 | 79.68% | 80.77% | 80.23% | 4 |
+| far-02 | 0 | 1 | 0 | 79.42% | 79.42% | 79.42% | 5 |
+| far-06 | 0 | 1 | 1 | 79.43% | 79.43% | 79.43% | 6 |
+| far-03 | 0 | 0 | 1 | 78.69% | 78.69% | 78.69% | 7 |
+| far-00 | 0 | 0 | 0 | 78.55% | 78.55% | 78.55% | 8 |
 
 ### Key Finding: R-Only Wins
 
 **Classic KL distillation (R-only) outperforms all multi-signal combinations.**
 
 ```
-rfa-01 (R only):  81.13%  ← Best
-rfa-07 (RFA all): 80.23%  ← -0.9% worse
-rfa-00 (CE only): 78.55%  ← Baseline
+far-01 (R only):  81.13%  ← Best
+far-07 (FAR all): 80.23%  ← -0.9% worse
+far-00 (CE only): 78.55%  ← Baseline
 ```
 
 Adding Feature (F) or Attention (A) signals to Response (R) **hurts** performance:
 - R → RF: 81.13% → 80.49% (-0.64%)
 - R → RA: 81.13% → 80.59% (-0.54%)
-- R → RFA: 81.13% → 80.23% (-0.90%)
+- R → FAR: 81.13% → 80.23% (-0.90%)
 
 ### Signal Contribution Analysis
 
-**Individual signal value (vs baseline rfa-00):**
+**Individual signal value (vs baseline far-00):**
 
 | Signal | Config | Δ Accuracy |
 |--------|--------|------------|
-| R | rfa-01 | +2.58% |
-| F | rfa-02 | +0.87% |
-| A | rfa-03 | +0.14% |
+| R | far-01 | +2.58% |
+| F | far-02 | +0.87% |
+| A | far-03 | +0.14% |
 
 **Ranking: R >> F > A > baseline**
 
 ### Why Combinations Underperform: Gradient Conflict
 
 Observation from training metrics:
-- **rfa-02 (F only)**: `feature_raw` decreases ✓
-- **rfa-03 (A only)**: `attention_raw` decreases ✓
-- **rfa-07 (RFA)**: `feature_raw` **increases**, `attention_raw` **increases** ✗
+- **far-02 (F only)**: `feature_raw` decreases ✓
+- **far-03 (A only)**: `attention_raw` decreases ✓
+- **far-07 (FAR)**: `feature_raw` **increases**, `attention_raw` **increases** ✗
 
 When combined, F and A signals *diverge* instead of converging. The optimizer cannot satisfy all three objectives simultaneously - gradients pull in conflicting directions.
 
@@ -588,7 +588,7 @@ a tug-of-war where no objective is satisfied well.
 
 Results are highly reproducible:
 - 7/8 configs: Identical accuracy across both runs (to 5 decimal places)
-- rfa-07: Slight variance (79.68% vs 80.77%) - possibly due to combined signal instability
+- far-07: Slight variance (79.68% vs 80.77%) - possibly due to combined signal instability
 
 ### Implications
 

@@ -110,7 +110,7 @@ This document catalogs tasks for systematically understanding knowledge distilla
   - Measures whether knowledge transfer is task-specific or general
 - **Distillation questions:**
   - Does co-trained distillation generalize better than frozen?
-  - Which distillation signal (R/F/A) helps transfer most?
+  - Which distillation signal (F/A/R) helps transfer most?
 
 ---
 

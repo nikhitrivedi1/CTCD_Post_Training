@@ -1,4 +1,4 @@
-# RFA 04: Response + Feature distillation
+# FAR 04: Response + Feature distillation
 # R=1, F=1, A=0
 # Combines soft label transfer with hidden state matching
 
@@ -24,4 +24,4 @@ distillation:
     type: linear
 
 logging:
-  wandb_tags: ["translation", "rfa", "rf", "response", "feature"]
+  wandb_tags: ["translation", "far", "rf", "response", "feature"]
