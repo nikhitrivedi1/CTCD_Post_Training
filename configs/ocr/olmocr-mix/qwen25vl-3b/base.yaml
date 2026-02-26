@@ -1,0 +1,6 @@
+inherit: ../sizes/5k.yaml
+
+model:
+  student: Qwen/Qwen2.5-VL-3B-Instruct
+  student_init: pretrained
+  processor: Qwen/Qwen2.5-VL-3B-Instruct

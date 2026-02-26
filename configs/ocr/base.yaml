@@ -1,0 +1,11 @@
+# OCR task base configuration
+# Shared settings for all OCR experiments
+
+inherit: ../base.yaml
+
+training:
+  fp16: false  # VLMs use bfloat16 natively
+
+evaluation:
+  compute_ocr_metrics: true
+  max_new_tokens: 2048

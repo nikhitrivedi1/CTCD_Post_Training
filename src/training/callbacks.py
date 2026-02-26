@@ -1,8 +1,9 @@
-"""Callbacks for SLURM signal handling and translation metrics evaluation."""
+"""Callbacks for SLURM signal handling, teacher evaluation, and translation metrics."""
 
 import logging
+import os
 import signal
-from typing import Optional
+from typing import List, Optional
 
 import torch
 from transformers import TrainerCallback
@@ -77,6 +78,85 @@ class SLURMSignalCallback(TrainerCallback):
             logger.info("Training will stop at the end of this step")
 
         return control
+
+
+class TeacherEvalCallback(TrainerCallback):
+    """
+    Evaluate co-trained teacher at each eval step.
+
+    Runs the teacher through the same eval pipeline as the student and injects
+    metrics into the metrics dict with an ``eval_teacher_`` prefix. This makes
+    teacher metrics visible in W&B charts and to downstream callbacks like
+    PeakMetricsCallback (add this callback *before* PeakMetricsCallback).
+    """
+
+    def __init__(self, trainer, teacher_label_map: Optional[List[int]] = None):
+        """
+        Initialize teacher evaluation callback.
+
+        Args:
+            trainer: DistillationTrainer instance (provides teacher, eval_dataset, etc.)
+            teacher_label_map: Optional label index remapping for teacher logits
+        """
+        self.trainer = trainer
+        self.teacher_label_map = teacher_label_map
+
+    def on_evaluate(self, args, state, control, metrics=None, **kwargs):
+        """
+        Run teacher evaluation and inject metrics after each student eval.
+
+        Args:
+            args: Training arguments
+            state: Trainer state
+            control: Trainer control
+            metrics: Mutable metrics dict from student eval
+        """
+        if metrics is None:
+            return
+
+        from src.evaluation.evaluate import evaluate_model, _remap_compute_metrics
+
+        compute_fn = self.trainer.compute_metrics
+        if self.teacher_label_map is not None:
+            compute_fn = _remap_compute_metrics(compute_fn, self.teacher_label_map)
+
+        device = str(next(self.trainer.teacher.parameters()).device)
+
+        logger.info("Evaluating teacher (mid-training)...")
+        teacher_metrics = evaluate_model(
+            model=self.trainer.teacher,
+            eval_dataset=self.trainer.eval_dataset,
+            tokenizer=self.trainer.tokenizer,
+            compute_metrics=compute_fn,
+            data_collator=self.trainer.data_collator,
+            batch_size=args.per_device_eval_batch_size,
+            device=device,
+            remove_unused_columns=args.remove_unused_columns,
+        )
+
+        # Inject into metrics dict so PeakMetricsCallback sees them
+        for k, v in teacher_metrics.items():
+            metrics[f"eval_teacher_{k}"] = v
+
+        # HF Trainer calls self.log() BEFORE on_evaluate, so teacher metrics
+        # miss the normal logging path. Re-invoke self.log() to push them
+        # through the full pipeline (W&B, TensorBoard, console, etc.).
+        self.trainer.log({f"eval_teacher_{k}": v for k, v in teacher_metrics.items()})
+
+        logger.info(
+            "  Teacher eval: "
+            + ", ".join(f"{k}={v:.4f}" for k, v in teacher_metrics.items() if isinstance(v, float))
+        )
+
+    def on_save(self, args, state, control, **kwargs):
+        """Save co-trained teacher alongside student at each checkpoint."""
+        if self.trainer.freeze_teacher:
+            return
+        checkpoint_dir = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
+        teacher_dir = os.path.join(checkpoint_dir, "teacher")
+        logger.info(f"Saving co-trained teacher to {teacher_dir}...")
+        self.trainer.teacher.save_pretrained(teacher_dir)
+        self.trainer.tokenizer.save_pretrained(teacher_dir)
 
 
 class TranslationMetricsCallback(TrainerCallback):
@@ -329,7 +409,7 @@ class PeakMetricsCallback(TrainerCallback):
             return
 
         # Metrics that aren't model quality (runtime stats, not "peaks")
-        skip_metrics = {"runtime", "samples_per_second", "steps_per_second"}
+        skip_metrics = {"runtime", "samples_per_second", "steps_per_second", "model_preparation_time"}
 
         for key, value in metrics.items():
             # Skip non-eval metrics and loss (lower is better for loss)
@@ -338,8 +418,11 @@ class PeakMetricsCallback(TrainerCallback):
 
             metric_name = key.replace("eval_", "")
 
+            # Normalize teacher-prefixed metrics (e.g. "teacher_runtime" → "runtime")
+            base_name = metric_name.removeprefix("teacher_")
+
             # Skip runtime/throughput metrics
-            if metric_name in skip_metrics:
+            if base_name in skip_metrics:
                 continue
 
             # Filter to tracked metrics if specified

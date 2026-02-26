@@ -230,6 +230,13 @@ class DistillationTrainer(Trainer):
         # - only through its own CE loss (computed separately below)
         teacher_logits_for_distill = teacher_logits.detach()
 
+        # Align vocab dimensions for cross-tokenizer distillation
+        # (e.g., Qwen3-VL has 4 extra special tokens vs Qwen2.5-VL)
+        if student_logits.size(-1) != teacher_logits_for_distill.size(-1):
+            min_vocab = min(student_logits.size(-1), teacher_logits_for_distill.size(-1))
+            student_logits = student_logits[..., :min_vocab]
+            teacher_logits_for_distill = teacher_logits_for_distill[..., :min_vocab]
+
         # Also detach hidden states and attentions for Feature/Attention losses
         # This prevents the bug where teacher gets pulled toward student representations
         teacher_outputs_for_distill = teacher_outputs

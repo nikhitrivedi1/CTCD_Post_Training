@@ -1,9 +1,9 @@
-"""Dataset loaders for GLUE tasks (MNLI, QQP, SST-2, CoLA) and Europarl translation."""
+"""Dataset loaders for GLUE tasks (MNLI, QQP, SST-2, CoLA), Europarl translation, and OCR."""
 
-from datasets import load_dataset
+from datasets import concatenate_datasets, load_dataset, load_from_disk
 from transformers import PreTrainedTokenizer
 
-from src.tasks import TASKS, is_translation_task
+from src.tasks import TASKS, is_translation_task, is_ocr_task
 
 
 def load_mnli(tokenizer: PreTrainedTokenizer, max_length: int = 128):
@@ -250,6 +250,128 @@ def load_europarl(
     return train_tokenized, val_tokenized, tokenizer
 
 
+def load_ocr(
+    processor,
+    data_dir: str = "data/ocr/documents",
+    max_train_samples: int | None = None,
+    max_length: int = 1024,
+    include_reasoning: bool = False,
+):
+    """
+    Load pre-processed OCR dataset (images + text pairs).
+
+    Expects a local dataset created by scripts/prepare_ocr_data.py with
+    'image' (PIL) and 'text' (markdown) columns.
+
+    Args:
+        processor: AutoProcessor for Qwen VL models (handles image + text)
+        data_dir: Path to pre-processed dataset directory (with train/ and eval/ subdirs)
+        max_train_samples: Maximum training samples (truncate before preprocessing)
+        max_length: Maximum token sequence length
+        include_reasoning: If True, use 'reasoning_and_output' column instead of 'text'
+
+    Returns:
+        Tuple of (train_dataset, eval_dataset, processor)
+    """
+    import logging
+    from pathlib import Path
+
+    logger = logging.getLogger(__name__)
+
+    data_path = Path(data_dir)
+    logger.info(f"Loading pre-processed dataset from {data_path}...")
+
+    if (data_path / "train").exists():
+        # Single dataset directory (e.g., data/ocr/documents/train/)
+        train_dataset = load_from_disk(str(data_path / "train"))
+        eval_dataset = load_from_disk(str(data_path / "eval")) if (data_path / "eval").exists() else None
+    else:
+        # Multi-subset directory (e.g., data/ocr/olmocr-mix-full/{00_documents,01_books,...}/train/)
+        train_parts, eval_parts = [], []
+        for subset_dir in sorted(data_path.iterdir()):
+            if not subset_dir.is_dir() or not (subset_dir / "train").exists():
+                continue
+            logger.info(f"  Loading subset: {subset_dir.name}")
+            train_parts.append(load_from_disk(str(subset_dir / "train")))
+            if (subset_dir / "eval").exists():
+                eval_parts.append(load_from_disk(str(subset_dir / "eval")))
+        if not train_parts:
+            raise FileNotFoundError(f"No train splits found in {data_path}")
+        train_dataset = concatenate_datasets(train_parts)
+        eval_dataset = concatenate_datasets(eval_parts) if eval_parts else None
+
+    if max_train_samples and len(train_dataset) > max_train_samples:
+        train_dataset = train_dataset.select(range(max_train_samples))
+
+    eval_count = len(eval_dataset) if eval_dataset is not None else 0
+    logger.info(f"OCR dataset loaded: {len(train_dataset)} train, {eval_count} eval")
+
+    text_column = "reasoning_and_output" if include_reasoning else "text"
+
+    # OCR prompt — matches olmOCR's document extraction prompt
+    system_prompt = (
+        "Below is an image of a document page. Extract all text content "
+        "and output it in clean markdown format, preserving the document's "
+        "structure (headings, lists, tables, etc.)."
+    )
+
+    def preprocess(example):
+        """Format chat messages; image processing deferred to collation time.
+
+        We only apply the chat template here to produce formatted text.
+        The VLMDataCollator handles tokenization and image processing,
+        avoiding Arrow serialization issues with variable-size pixel tensors.
+        """
+        text = example[text_column] or ""
+
+        # Truncate the OCR text to limit sequence length.
+        # Conservative estimate: ~1 token per 4 chars.
+        max_text_chars = max_length * 4
+        if len(text) > max_text_chars:
+            text = text[:max_text_chars]
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": system_prompt},
+                    {"type": "image", "image": example["image"]},
+                ],
+            },
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": text},
+                ],
+            },
+        ]
+
+        # Apply chat template to get text with image placeholders
+        formatted_text = processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=False
+        )
+
+        return {"formatted_text": formatted_text}
+
+    # Keep image column, replace text columns with formatted_text
+    train_columns = train_dataset.column_names
+    eval_columns = eval_dataset.column_names if eval_dataset is not None else []
+
+    logger.info(f"Formatting train split ({len(train_dataset)} samples) with chat template...")
+    train_dataset = train_dataset.map(
+        preprocess,
+        remove_columns=[c for c in train_columns if c != "image"],
+    )
+    if eval_dataset is not None:
+        logger.info(f"Formatting eval split ({len(eval_dataset)} samples) with chat template...")
+        eval_dataset = eval_dataset.map(
+            preprocess,
+            remove_columns=[c for c in eval_columns if c != "image"],
+        )
+
+    return train_dataset, eval_dataset, processor
+
+
 def load_dataset_for_task(config: dict):
     """
     Load dataset based on config specification.
@@ -260,10 +382,30 @@ def load_dataset_for_task(config: dict):
     Returns:
         Tuple of (train_dataset, eval_dataset, tokenizer)
     """
-    from transformers import AutoTokenizer
+    from transformers import AutoTokenizer, AutoProcessor
 
     # Determine task type
     task_name = config.get("data", {}).get("task", "").lower()
+
+    # Validate task exists in registry
+    if task_name not in TASKS:
+        raise ValueError(f"Unknown task: {task_name}. Supported: {list(TASKS.keys())}")
+
+    # OCR tasks use AutoProcessor (handles both image and text)
+    if is_ocr_task(task_name):
+        import logging
+        _logger = logging.getLogger(__name__)
+        processor_name = config["model"].get("processor", config["model"]["student"])
+        _logger.info(f"Loading processor: {processor_name}...")
+        processor = AutoProcessor.from_pretrained(processor_name)
+        return load_ocr(
+            processor=processor,
+            data_dir=config.get("data", {}).get("data_dir", "data/ocr/documents"),
+            max_train_samples=config.get("data", {}).get("max_train_samples"),
+            max_length=config.get("data", {}).get("max_length", 1024),
+            include_reasoning=config.get("data", {}).get("include_reasoning", False),
+        )
+
     teacher_model = config["model"]["teacher"]
 
     # Load appropriate tokenizer
@@ -274,10 +416,6 @@ def load_dataset_for_task(config: dict):
         tokenizer.padding_side = "left"
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
-
-    # Validate task exists in registry
-    if task_name not in TASKS:
-        raise ValueError(f"Unknown task: {task_name}. Supported: {list(TASKS.keys())}")
 
     # Load dataset based on task
     # Note: Each task has unique preprocessing, so explicit dispatch is needed

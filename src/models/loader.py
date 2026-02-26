@@ -11,7 +11,7 @@ from transformers import (
     PreTrainedTokenizer
 )
 
-from src.tasks import is_translation_task
+from src.tasks import is_translation_task, is_ocr_task
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +84,42 @@ def _load_causal_lm(name: str, init: str, device: str, tokenizer: PreTrainedToke
     if len(tokenizer) > model.config.vocab_size:
         logger.info(f"Resizing embeddings: {model.config.vocab_size} -> {len(tokenizer)}")
         model.resize_token_embeddings(len(tokenizer))
+
+    return model
+
+
+def _load_vlm(name: str, init: str, device: str, eager_attention: bool = False):
+    """Load a Vision-Language Model (Qwen2.5-VL or Qwen3-VL family).
+
+    Auto-detects the correct model class based on the model config.
+
+    Args:
+        name: HuggingFace model ID (e.g., "Qwen/Qwen3-VL-2B-Instruct")
+        init: "pretrained" (fresh init not supported for VLMs)
+        device: Device string
+        eager_attention: Use eager attention (for attention distillation)
+
+    Returns:
+        Model on device
+    """
+    from transformers import AutoModelForImageTextToText
+
+    dtype = torch.bfloat16 if device == "cuda" else torch.float32
+
+    kwargs = {
+        "torch_dtype": dtype,
+        "device_map": "auto" if device == "cuda" else None,
+    }
+
+    if eager_attention:
+        kwargs["attn_implementation"] = "eager"
+
+    if init == "fresh":
+        logger.warning("Fresh init not recommended for VLMs, using pretrained")
+
+    logger.info(f"Loading VLM: {name} (dtype={dtype})...")
+    model = AutoModelForImageTextToText.from_pretrained(name, **kwargs)
+    logger.info(f"Loaded VLM: {name}")
 
     return model
 
@@ -168,6 +204,7 @@ def load_models(config: dict, device: str, tokenizer: PreTrainedTokenizer, num_l
     alpha = config.get("distillation", {}).get("alpha", 0.5)
 
     translation = is_translation_task(task)
+    ocr = is_ocr_task(task)
     eager = _needs_attention_outputs(config)
     if eager:
         logger.info("Using eager attention (required for attention distillation)")
@@ -177,13 +214,19 @@ def load_models(config: dict, device: str, tokenizer: PreTrainedTokenizer, num_l
         reason = "teacher is null" if teacher_name is None else "alpha=0.0"
         logger.info(f"No teacher needed ({reason}) - CE-only mode")
         teacher = None
+    elif ocr:
+        teacher = _load_vlm(teacher_name, "pretrained", device, eager)
     elif translation:
         teacher = _load_causal_lm(teacher_name, "pretrained", device, tokenizer, eager)
     else:
         teacher = _load_classifier(teacher_name, "pretrained", num_labels, device)
 
     # Load student
-    if translation:
+    if ocr:
+        student = _load_vlm(student_name, student_init, device, eager)
+        if config.get("training", {}).get("use_lora", False):
+            student = _apply_lora(student, config["training"]["lora"])
+    elif translation:
         student = _load_causal_lm(student_name, student_init, device, tokenizer, eager)
         if config.get("training", {}).get("use_lora", False):
             student = _apply_lora(student, config["training"]["lora"])
@@ -225,13 +268,16 @@ def load_models_from_checkpoint(
 
     task = config.get("data", {}).get("task", "").lower()
     translation = is_translation_task(task)
+    ocr = is_ocr_task(task)
     teacher_name = config["model"].get("teacher")
     alpha = config.get("distillation", {}).get("alpha", 0.5)
     checkpoint_dir = Path(checkpoint_dir)
 
     # Load student from checkpoint
     student_path = str(checkpoint_dir)
-    if translation:
+    if ocr:
+        student = _load_vlm(student_path, "pretrained", device)
+    elif translation:
         student = _load_causal_lm(student_path, "pretrained", device, tokenizer)
     else:
         student = _load_classifier(student_path, "pretrained", num_labels, device)
@@ -248,7 +294,9 @@ def load_models_from_checkpoint(
             # Frozen teacher: reload from original model ID
             teacher_src = teacher_name
 
-        if translation:
+        if ocr:
+            teacher = _load_vlm(teacher_src, "pretrained", device)
+        elif translation:
             teacher = _load_causal_lm(teacher_src, "pretrained", device, tokenizer)
         else:
             teacher = _load_classifier(teacher_src, "pretrained", num_labels, device)

@@ -1,0 +1,17 @@
+# 50K training samples (~1562 steps/epoch at batch 32)
+inherit: ../base.yaml
+
+data:
+  max_train_samples: 50000
+
+training:
+  warmup_steps: 500
+
+checkpointing:
+  save_steps: 500
+
+logging:
+  logging_steps: 50
+
+evaluation:
+  eval_steps: 500

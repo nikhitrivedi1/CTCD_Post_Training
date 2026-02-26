@@ -41,6 +41,14 @@ TASKS = {
         "subset": None,
         "primary_metric": "bleu",
     },
+    # OCR tasks
+    "ocr": {
+        "num_labels": None,
+        "type": "ocr",
+        "dataset": "olmocr-mix",
+        "subset": None,
+        "primary_metric": "edit_similarity",
+    },
 }
 
 
@@ -66,6 +74,11 @@ def is_classification_task(task: str) -> bool:
 def is_translation_task(task: str) -> bool:
     """Check if task is a translation task."""
     return get_task_type(task) == "translation"
+
+
+def is_ocr_task(task: str) -> bool:
+    """Check if task is an OCR task."""
+    return get_task_type(task) == "ocr"
 
 
 def get_primary_metric(task: str) -> str | None:

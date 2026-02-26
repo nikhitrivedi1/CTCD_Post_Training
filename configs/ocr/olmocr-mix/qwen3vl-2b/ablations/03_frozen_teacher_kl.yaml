@@ -1,0 +1,13 @@
+# 03_frozen_teacher_kl: Phase 2c logit-level KD
+# Teacher (olmOCR 7B or Qwen3-VL-8B) provides soft labels via KL divergence
+# Requires tokenizer compatibility check before running
+
+inherit: ../base.yaml
+
+model:
+  teacher: allenai/olmOCR-2-7B-1025-FP8
+
+distillation:
+  temperature: 2.0
+  alpha: 0.3
+  freeze_teacher: true

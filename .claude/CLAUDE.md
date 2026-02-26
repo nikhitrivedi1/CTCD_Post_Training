@@ -29,8 +29,12 @@
   ```bash
   source ~/.zshrc && conda activate distillation
   ```
-- Environment: distillation (Python 3.10)
+- Environment: distillation (Python 3.11)
 - Dependencies in environment.yml
+- **Never install packages directly** via `pip install` or `conda install`. Always:
+  1. Add the dependency to `environment.yml`
+  2. Run `conda env update --file environment.yml` to install
+- For optional heavyweight deps (e.g. playwright + browser binaries), make them gracefully optional in code
 
 ## Dates
 - The current year is 2026. Use this when writing dates in docs, logs, etc.

@@ -90,10 +90,13 @@ def set_reproducibility_seed(seed: int = 42):
     torch.backends.cudnn.benchmark = False
 
 from src.data.datasets import load_dataset_for_task
+from src.data.collators import VLMDataCollator
 from src.evaluation import get_compute_metrics, run_evaluation
-from src.tasks import get_num_labels, get_primary_metric
+from src.tasks import get_num_labels, get_primary_metric, is_ocr_task
 from src.models import load_models
-from src.training.callbacks import SLURMSignalCallback, TranslationMetricsCallback, PeakMetricsCallback
+from src.training.callbacks import (
+    SLURMSignalCallback, TeacherEvalCallback, TranslationMetricsCallback, PeakMetricsCallback,
+)
 from src.training.trainer import DistillationTrainer
 from src.training.losses import (
     get_loss_strategy,
@@ -552,6 +555,9 @@ def _train(
         prediction_loss_only=num_labels is None,  # Seq2seq tasks: prevents OOM, metrics need generation anyway
         seed=args.seed,
         data_seed=args.seed,
+        # VLM datasets store raw images + text; the collator handles tokenization.
+        # Must keep these columns so the collator can process them.
+        remove_unused_columns=not is_ocr_task(task),
     )
 
     # Choose trainer based on whether we have a teacher
@@ -599,6 +605,13 @@ def _train(
     if env == "slurm":
         logger.info("Adding SLURM signal handler...")
         trainer.add_callback(SLURMSignalCallback(trainer))
+
+    # Add teacher eval during training (co-training only, before PeakMetrics so peaks are tracked)
+    if isinstance(trainer, DistillationTrainer) and not trainer.freeze_teacher:
+        logger.info("Adding teacher eval callback (co-training)...")
+        trainer.add_callback(TeacherEvalCallback(
+            trainer, teacher_label_map=trainer.teacher_label_map,
+        ))
 
     # Add peak metrics tracking
     logger.info("Adding peak metrics callback...")
@@ -681,6 +694,7 @@ def main():
     parser.add_argument("--force", action="store_true",
                         help="Overwrite existing run (deletes existing outputs and starts fresh).")
     parser.add_argument("--max_steps", type=int, default=-1, help="Max training steps (for testing)")
+    parser.add_argument("--epochs", type=int, default=None, help="Override num_epochs from config")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--debug", action="store_true",
                         help="Enable DEBUG level logging for verbose output")
@@ -787,6 +801,11 @@ def main():
         logger.info(f"Loading config from {args.config}")
         config = load_config(args.config)
 
+    # Apply CLI overrides to config
+    if args.epochs is not None:
+        config["training"]["num_epochs"] = args.epochs
+        logger.info(f"CLI override: num_epochs={args.epochs}")
+
     logger.info(f"Output directory: {args.output_dir}")
 
     # Add file logging to output directory
@@ -821,12 +840,28 @@ def main():
 
     # Load dataset
     logger.info("Loading dataset...")
-    train_dataset, eval_dataset, tokenizer = load_dataset_for_task(config)
+    train_dataset, eval_dataset, tokenizer_or_processor = load_dataset_for_task(config)
+
+    # Truncate training set if max_train_samples is set
+    max_train_samples = config.get("data", {}).get("max_train_samples")
+    if max_train_samples is not None and max_train_samples < len(train_dataset):
+        train_dataset = train_dataset.select(range(max_train_samples))
+        logger.info(f"Truncated training set to {max_train_samples} samples")
+
+    # For VLMs, load_dataset_for_task returns an AutoProcessor (which contains a tokenizer).
+    # Extract the tokenizer for use throughout the pipeline.
+    task = config.get("data", {}).get("task", "").lower()
+    processor = None
+    if hasattr(tokenizer_or_processor, 'tokenizer'):
+        processor = tokenizer_or_processor
+        tokenizer = processor.tokenizer
+    else:
+        tokenizer = tokenizer_or_processor
+
     logger.info(f"Train size: {len(train_dataset)}")
-    logger.info(f"Eval size: {len(eval_dataset)}")
+    logger.info(f"Eval size: {len(eval_dataset) if eval_dataset is not None else 0}")
 
     # Determine number of labels for classification tasks
-    task = config.get("data", {}).get("task", "").lower()
     num_labels = get_num_labels(task)
 
     # Find checkpoint to resume from
@@ -923,7 +958,10 @@ def main():
     # Get compute metrics function and data collator (shared by eval and training)
     compute_metrics = get_compute_metrics(task, tokenizer=tokenizer)
     data_collator = None
-    if num_labels is None:  # Translation/seq2seq task
+    if is_ocr_task(task):
+        logger.info("Using VLMDataCollator for vision-language model inputs")
+        data_collator = VLMDataCollator(processor=processor)
+    elif num_labels is None:  # Translation/seq2seq task
         logger.info("Using DataCollatorForSeq2Seq for dynamic padding and label masking")
         data_collator = DataCollatorForSeq2Seq(
             tokenizer=tokenizer,
@@ -945,6 +983,7 @@ def main():
             config, device, tokenizer, num_labels,
             eval_dataset, compute_metrics, data_collator,
             task, phase="pre",
+            remove_unused_columns=not is_ocr_task(task),
         )
 
     # =========================================================================
@@ -969,6 +1008,7 @@ def main():
         checkpoint_dir=output_dir,
         evaluate_teacher=log_pre_post,
         prev_metrics=(student_pre, teacher_pre) if log_pre_post else None,
+        remove_unused_columns=not is_ocr_task(task),
     )
 
     # Remove from incomplete registry

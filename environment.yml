@@ -4,7 +4,9 @@ channels:
   - defaults
 
 dependencies:
-  - python=3.10
+  - python=3.11
+  - git-lfs           # Git Large File Storage (HF dataset downloads)
+  - poppler           # PDF rendering (used by olmocr for data prep)
   - pip
 
   # Install all packages via pip
@@ -27,6 +29,20 @@ dependencies:
       - numpy>=1.24.0
       - tqdm>=4.66.0
       - python-dotenv>=1.0.0
+
+      # OCR / Vision-Language Model support
+      - olmocr>=0.4.0
+      - qwen-vl-utils>=0.0.8
+      - Pillow>=10.0.0
+      - compressed-tensors>=0.8.0  # Required for FP8 quantized models (e.g. olmOCR-2-7B-1025-FP8)
+
+      # olmOCR-Bench scoring dependencies
+      - fuzzysearch>=0.7.0
+      - rapidfuzz>=3.0.0
+      - sequence-align>=0.1.0
+      - pypdfium2>=4.0.0
+      - syntok>=1.4.0
+      - playwright>=1.40.0     # KaTeX math rendering for bench scoring
 
       # Development tools (optional)
       - pytest>=7.4.0

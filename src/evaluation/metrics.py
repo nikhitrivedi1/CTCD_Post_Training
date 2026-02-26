@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional, Callable
 import evaluate
 import numpy as np
 
-from src.tasks import is_classification_task, is_translation_task
+from src.tasks import is_classification_task, is_translation_task, is_ocr_task
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +118,86 @@ def compute_translation_metrics(tokenizer):
     return compute_metrics
 
 
+def _edit_distance(s1: str, s2: str) -> int:
+    """Compute Levenshtein edit distance between two strings."""
+    if len(s1) < len(s2):
+        return _edit_distance(s2, s1)
+    if len(s2) == 0:
+        return len(s1)
+
+    prev_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        curr_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = prev_row[j + 1] + 1
+            deletions = curr_row[j] + 1
+            substitutions = prev_row[j] + (c1 != c2)
+            curr_row.append(min(insertions, deletions, substitutions))
+        prev_row = curr_row
+
+    return prev_row[-1]
+
+
+def compute_ocr_metrics(tokenizer):
+    """
+    Create a compute_metrics function for OCR tasks.
+
+    Computes edit similarity (1 - normalized edit distance) and exact match rate.
+
+    Args:
+        tokenizer: Tokenizer (or processor.tokenizer) for decoding predictions
+
+    Returns:
+        Function that computes edit_similarity and exact_match
+    """
+
+    def compute_metrics(eval_pred) -> Dict[str, float]:
+        """Compute OCR metrics: edit similarity and exact match.
+
+        Args:
+            eval_pred: Tuple of (predictions, labels)
+
+        Returns:
+            Dictionary with edit_similarity and exact_match scores
+        """
+        logits, labels = eval_pred
+
+        if len(logits.shape) == 3:
+            predictions = np.argmax(logits, axis=-1)
+        else:
+            predictions = logits
+
+        # Replace -100 padding in labels
+        pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
+        labels = np.where(labels != -100, labels, pad_token_id)
+
+        decoded_preds = tokenizer.batch_decode(predictions, skip_special_tokens=True)
+        decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
+
+        edit_sims = []
+        exact_matches = 0
+
+        for pred, label in zip(decoded_preds, decoded_labels):
+            pred, label = pred.strip(), label.strip()
+            if pred == label:
+                exact_matches += 1
+                edit_sims.append(1.0)
+            else:
+                max_len = max(len(pred), len(label))
+                if max_len == 0:
+                    edit_sims.append(1.0)
+                else:
+                    dist = _edit_distance(pred, label)
+                    edit_sims.append(1.0 - dist / max_len)
+
+        return {
+            "edit_similarity": np.mean(edit_sims) if edit_sims else 0.0,
+            "exact_match": exact_matches / len(decoded_preds) if decoded_preds else 0.0,
+        }
+
+    return compute_metrics
+
+
 def get_compute_metrics(task: str, tokenizer: Optional[Any] = None) -> Optional[Callable]:
     """
     Get the appropriate compute_metrics function for a task.
@@ -135,5 +215,9 @@ def get_compute_metrics(task: str, tokenizer: Optional[Any] = None) -> Optional[
         if tokenizer is None:
             raise ValueError("Tokenizer required for translation metrics")
         return compute_translation_metrics(tokenizer)
+    elif is_ocr_task(task):
+        if tokenizer is None:
+            raise ValueError("Tokenizer required for OCR metrics")
+        return compute_ocr_metrics(tokenizer)
     else:
         return None

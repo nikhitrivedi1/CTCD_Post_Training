@@ -4,10 +4,12 @@ Handles the full lifecycle of evaluation models: load → evaluate → return me
 Models are function-local and GC'd on return — no manual memory management needed.
 """
 
+import inspect
 import logging
 from typing import Dict, List, Optional, Tuple
 
 import torch
+from torch.utils.data import DataLoader
 
 from src.models import load_models, load_models_from_checkpoint
 from src.tasks import get_primary_metric
@@ -24,12 +26,15 @@ def evaluate_model(
     batch_size: int = 32,
     device: str = None,
     loss_only: bool = False,
+    remove_unused_columns: bool = True,
 ) -> Dict[str, float]:
     """
-    Evaluate a model standalone (without the full Trainer overhead).
+    Evaluate a model using a direct torch inference loop.
 
-    Uses a minimal Trainer just for evaluation. This is used to get
-    pre-training and post-training metrics for both teacher and student.
+    Uses a simple DataLoader + torch.no_grad() loop instead of creating a
+    temporary HF Trainer. Creating a Trainer spawns a new Accelerator whose
+    singleton AcceleratorState can overwrite the main Trainer's mixed-precision
+    settings, corrupting subsequent training if called mid-run.
 
     Args:
         model: Model to evaluate
@@ -38,40 +43,74 @@ def evaluate_model(
         compute_metrics: Metrics computation function
         data_collator: Optional data collator
         batch_size: Batch size for evaluation
-        device: Device string for MPS compatibility
+        device: Device string (inferred from model if None)
         loss_only: If True, only compute loss (faster for seq2seq tasks)
+        remove_unused_columns: If False, keep all dataset columns (needed for VLM tasks
+            where the collator processes raw columns like 'image' and 'formatted_text')
 
     Returns:
         Dictionary of metric name -> value
     """
-    from transformers import Trainer, TrainingArguments
+    from transformers import default_data_collator
 
-    # Minimal training args just for evaluation
-    eval_args = TrainingArguments(
-        output_dir="/tmp/eval_temp",
-        per_device_eval_batch_size=batch_size,
-        report_to="none",  # Don't log to W&B during standalone eval
-        disable_tqdm=True,
-        dataloader_pin_memory=device == "cuda",  # Disable on MPS
-        prediction_loss_only=loss_only,  # Maps to HF's prediction_loss_only
+    if device is None:
+        device = str(next(model.parameters()).device)
+
+    # Filter dataset columns to match model.forward() signature
+    if remove_unused_columns and hasattr(eval_dataset, "column_names"):
+        sig_cols = set(inspect.signature(model.forward).parameters.keys())
+        sig_cols |= {"label", "label_ids"}  # HF convention
+        cols_to_remove = [c for c in eval_dataset.column_names if c not in sig_cols]
+        if cols_to_remove:
+            eval_dataset = eval_dataset.remove_columns(cols_to_remove)
+
+    dataloader = DataLoader(
+        eval_dataset,
+        batch_size=batch_size,
+        collate_fn=data_collator or default_data_collator,
+        shuffle=False,
+        pin_memory="cuda" in str(device),
     )
 
-    eval_trainer = Trainer(
-        model=model,
-        args=eval_args,
-        eval_dataset=eval_dataset,
-        tokenizer=tokenizer,
-        compute_metrics=compute_metrics,
-        data_collator=data_collator,
-    )
+    logger.info(f"Running evaluation ({len(eval_dataset)} samples)...")
+    was_training = model.training
+    model.eval()
 
-    # Run evaluation (HF Trainer.evaluate() leaves model in eval mode)
-    training_mode = model.training
-    metrics = eval_trainer.evaluate()
-    model.train(training_mode)
+    all_logits = []
+    all_labels = []
+    total_loss = 0.0
+    num_samples = 0
 
-    # Clean up prefix and return
-    return {k.replace("eval_", ""): v for k, v in metrics.items()}
+    for batch in dataloader:
+        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v
+                 for k, v in batch.items()}
+        with torch.no_grad():
+            outputs = model(**batch)
+
+        bs = next(v.shape[0] for v in batch.values() if isinstance(v, torch.Tensor))
+        if outputs.loss is not None:
+            total_loss += outputs.loss.item() * bs
+        num_samples += bs
+
+        if not loss_only and hasattr(outputs, "logits"):
+            all_logits.append(outputs.logits.cpu())
+            if "labels" in batch:
+                all_labels.append(batch["labels"].cpu())
+
+    model.train(was_training)
+
+    # Build metrics dict
+    metrics = {}
+    if num_samples > 0:
+        metrics["loss"] = total_loss / num_samples
+
+    if not loss_only and compute_metrics is not None and all_logits:
+        all_logits_np = torch.cat(all_logits).numpy()
+        all_labels_np = torch.cat(all_labels).numpy() if all_labels else None
+        if all_labels_np is not None:
+            metrics.update(compute_metrics((all_logits_np, all_labels_np)))
+
+    return metrics
 
 
 def log_pre_post_metrics(
@@ -137,6 +176,7 @@ def evaluate_models(
     phase: str,
     loss_only: bool = False,
     teacher_label_map: Optional[List[int]] = None,
+    remove_unused_columns: bool = True,
 ) -> Tuple[Dict[str, float], Optional[Dict[str, float]]]:
     """
     Evaluate student and teacher, logging metrics with the given phase prefix.
@@ -153,6 +193,7 @@ def evaluate_models(
         phase: "pre" or "post" (used for logging prefix)
         loss_only: If True, only compute loss (faster for seq2seq)
         teacher_label_map: Optional label index remapping for teacher logits
+        remove_unused_columns: If False, keep all dataset columns (needed for VLM tasks)
 
     Returns:
         Tuple of (student_metrics, teacher_metrics)
@@ -165,6 +206,7 @@ def evaluate_models(
         batch_size=eval_batch_size,
         device=device,
         loss_only=loss_only,
+        remove_unused_columns=remove_unused_columns,
     )
 
     logger.info(f"Evaluating student ({phase}-training)...")
@@ -261,6 +303,7 @@ def run_evaluation(
     checkpoint_dir=None,
     evaluate_teacher: bool = True,
     prev_metrics: Optional[Tuple[Dict, Optional[Dict]]] = None,
+    remove_unused_columns: bool = True,
 ) -> Tuple[Dict[str, float], Optional[Dict[str, float]]]:
     """
     Run a complete evaluation phase: load models, evaluate, return metrics.
@@ -280,6 +323,7 @@ def run_evaluation(
         checkpoint_dir: If provided, load models from checkpoint instead of config
         evaluate_teacher: Whether to evaluate the teacher model
         prev_metrics: Previous (student_metrics, teacher_metrics) for gain computation
+        remove_unused_columns: If False, keep all dataset columns (needed for VLM tasks)
 
     Returns:
         Tuple of (student_metrics, teacher_metrics)
@@ -315,6 +359,7 @@ def run_evaluation(
         phase=phase,
         loss_only=loss_only,
         teacher_label_map=teacher_label_map,
+        remove_unused_columns=remove_unused_columns,
     )
 
     # Log transfer metrics if previous metrics provided

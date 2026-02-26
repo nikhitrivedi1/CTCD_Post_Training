@@ -32,7 +32,7 @@ from pathlib import Path
 from huggingface_hub import HfApi, list_models
 
 
-# Files that make up a usable HF model
+# Files that make up a usable HF model (full weights)
 MODEL_FILES = {
     "model.safetensors",
     "config.json",
@@ -40,6 +40,19 @@ MODEL_FILES = {
     "tokenizer_config.json",
     "special_tokens_map.json",
     "vocab.txt",
+}
+
+# LoRA adapter files (from use_lora training)
+ADAPTER_FILES = {
+    "adapter_model.safetensors",
+    "adapter_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "special_tokens_map.json",
+    "added_tokens.json",
+    "vocab.json",
+    "merges.txt",
+    "chat_template.jinja",
 }
 
 # Extra provenance files from our training pipeline
@@ -88,11 +101,14 @@ def derive_repo_name(model_dir):
 def validate_model_dir(model_dir):
     """Check that the directory contains the minimum required model files.
 
+    Accepts either full model files (model.safetensors + config.json)
+    or LoRA adapter files (adapter_model.safetensors + adapter_config.json).
+
     Args:
         model_dir: Path to the model directory.
 
     Returns:
-        Set of files found that we'd upload.
+        Tuple of (existing files set, bool is_adapter).
     """
     model_dir = Path(model_dir)
     if not model_dir.is_dir():
@@ -100,13 +116,22 @@ def validate_model_dir(model_dir):
         sys.exit(1)
 
     existing = {f.name for f in model_dir.iterdir() if f.is_file()}
-    required = {"model.safetensors", "config.json"}
-    missing = required - existing
+
+    # Check for LoRA adapter files first
+    adapter_required = {"adapter_model.safetensors", "adapter_config.json"}
+    if adapter_required.issubset(existing):
+        return existing, True
+
+    # Fall back to full model files
+    model_required = {"model.safetensors", "config.json"}
+    missing = model_required - existing
     if missing:
         print(f"Error: Missing required files: {missing}")
+        print("Expected either model.safetensors + config.json (full model)")
+        print("or adapter_model.safetensors + adapter_config.json (LoRA adapter)")
         sys.exit(1)
 
-    return existing
+    return existing, False
 
 
 def push_model(model_dir, org, private=True, include_resume=False, dry_run=False,
@@ -123,7 +148,7 @@ def push_model(model_dir, org, private=True, include_resume=False, dry_run=False
         prefix: Upload files under this subdirectory in the repo (e.g., "student").
     """
     model_dir = Path(model_dir).resolve()
-    existing = validate_model_dir(model_dir)
+    existing, is_adapter = validate_model_dir(model_dir)
 
     if repo_name:
         pass
@@ -135,12 +160,16 @@ def push_model(model_dir, org, private=True, include_resume=False, dry_run=False
     repo_id = f"{org}/{repo_name}"
 
     # Determine which files to upload
-    upload_files = existing & MODEL_FILES
+    if is_adapter:
+        upload_files = existing & ADAPTER_FILES
+    else:
+        upload_files = existing & MODEL_FILES
     upload_files |= existing & PROVENANCE_FILES
     if include_resume:
         upload_files |= existing & RESUME_FILES
 
     print(f"Repo:    {repo_id}")
+    print(f"Type:    {'LoRA adapter' if is_adapter else 'full model'}")
     if prefix:
         print(f"Prefix:  {prefix}/")
     print(f"Private: {private}")
@@ -171,7 +200,7 @@ def push_model(model_dir, org, private=True, include_resume=False, dry_run=False
     if not prefix:
         metadata = _load_metadata(model_dir)
         if metadata:
-            card = _build_model_card(metadata, repo_id)
+            card = _build_model_card(metadata, repo_id, is_adapter=is_adapter)
             api.upload_file(
                 path_or_fileobj=card.encode(),
                 path_in_repo="README.md",
@@ -200,27 +229,32 @@ def _load_metadata(model_dir):
     return None
 
 
-def _build_model_card(metadata, repo_id):
+def _build_model_card(metadata, repo_id, is_adapter=False):
     """Build a minimal model card from run metadata.
 
     Args:
         metadata: Dict from run_metadata.json.
         repo_id: HuggingFace repo ID.
+        is_adapter: Whether this is a LoRA adapter.
 
     Returns:
         Model card string.
     """
+    tags = ["- knowledge-distillation", "- cs-7150"]
+    if is_adapter:
+        tags.append("- peft")
+        tags.append("- lora")
+
     lines = [
         "---",
-        "library_name: transformers",
+        "library_name: peft" if is_adapter else "library_name: transformers",
         "tags:",
-        "- knowledge-distillation",
-        "- cs-7150",
+        *tags,
         "---",
         "",
         f"# {repo_id.split('/')[-1]}",
         "",
-        "Model produced by knowledge distillation (CS-7150).",
+        f"{'LoRA adapter' if is_adapter else 'Model'} produced by knowledge distillation (CS-7150).",
         "",
     ]
 

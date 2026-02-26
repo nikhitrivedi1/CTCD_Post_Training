@@ -42,6 +42,7 @@
 # Environment variables:
 #   SEED=123      - Custom random seed
 #   MAX_STEPS=10  - Limit steps (for testing)
+#   EPOCHS=5      - Override num_epochs from config
 #   TIMESTAMP=1   - Append timestamp to run_name
 #   FORCE=1       - Overwrite existing run
 #   DEBUG=1       - Enable verbose DEBUG logging
@@ -70,6 +71,7 @@ echo "GPU: $GPU_NAME ($GPU_MEM)"
 module load anaconda3/2024.06
 eval "$(conda shell.bash hook)"
 conda activate distillation
+export HF_HOME=/scratch/$USER/.cache/huggingface
 
 # Parse arguments: detect if $1 is config (ends with .yaml/.yml) or run_name
 if [[ "$1" == *.yaml ]] || [[ "$1" == *.yml ]]; then
@@ -115,6 +117,12 @@ fi
 if [ -n "$FORCE" ]; then
     ARGS="$ARGS --force"
     echo "Force mode: will overwrite existing run"
+fi
+
+# Optional: epoch override
+if [ -n "$EPOCHS" ]; then
+    ARGS="$ARGS --epochs $EPOCHS"
+    echo "Epoch override: $EPOCHS"
 fi
 
 # Optional: debug logging

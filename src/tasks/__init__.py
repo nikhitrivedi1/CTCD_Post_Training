@@ -6,6 +6,7 @@ from .registry import (
     get_task_type,
     is_classification_task,
     is_translation_task,
+    is_ocr_task,
     get_primary_metric,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "get_task_type",
     "is_classification_task",
     "is_translation_task",
+    "is_ocr_task",
     "get_primary_metric",
 ]
