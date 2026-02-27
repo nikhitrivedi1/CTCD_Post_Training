@@ -58,12 +58,13 @@ DEFAULT_MAX_NEW_TOKENS = 2048
 DEFAULT_DPI = 150
 OCR_PROMPT = "Extract all text from this document page. Output clean markdown."
 
-# Graceful shutdown flag — set by SIGTERM handler
+# Graceful shutdown flag — set by SIGTERM from shell (on SLURM time limit,
+# the shell receives SIGUSR1 and kills Python with SIGTERM).
 _shutdown_requested = False
 
 
 def _handle_sigterm(signum, frame):
-    """Handle SIGTERM from SLURM — request graceful shutdown after current page."""
+    """Handle SIGTERM — request graceful shutdown after current page."""
     global _shutdown_requested
     _shutdown_requested = True
     logger.warning("SIGTERM received — finishing current page then shutting down")
@@ -753,11 +754,12 @@ def main():
         shard_idx, num_shards = [int(x) for x in args.shard.split("/")]
         if shard_idx < 1 or shard_idx > num_shards:
             parser.error(f"Invalid shard spec: {args.shard} (must be N/M where 1 <= N <= M)")
-        shard_size = len(unique_pages) // num_shards
+        total_pages = len(unique_pages)
+        shard_size = total_pages // num_shards
         start = (shard_idx - 1) * shard_size
-        end = len(unique_pages) if shard_idx == num_shards else shard_idx * shard_size
+        end = total_pages if shard_idx == num_shards else shard_idx * shard_size
         unique_pages = unique_pages[start:end]
-        logger.info(f"Shard {shard_idx}/{num_shards}: pages {start}-{end} ({len(unique_pages)} pages)")
+        logger.info(f"Shard {shard_idx}/{num_shards}: pages {start + 1}–{end} of {total_pages} ({len(unique_pages)} pages)")
 
     logger.info(f"Unique (pdf, page) pairs to process: {len(unique_pages)}")
 

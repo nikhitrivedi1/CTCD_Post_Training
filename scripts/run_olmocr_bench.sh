@@ -6,7 +6,7 @@
 #SBATCH --time=08:00:00
 #SBATCH --mem=64G
 #SBATCH --output=logs/bench_%j.out
-#SBATCH --signal=SIGTERM@300
+#SBATCH --signal=SIGUSR1@120
 
 # olmOCR-Bench evaluation on SLURM
 #
@@ -16,8 +16,14 @@
 #   sbatch scripts/run_olmocr_bench.sh --output_dir D                          # resume
 #   sbatch scripts/run_olmocr_bench.sh --score_only --output_dir D
 #
-# Auto-resubmit: on SIGTERM (time limit), the job registers in .incomplete_jobs
+# Auto-resubmit: on SIGUSR1 (time limit), the job registers in .incomplete_jobs
 # and the shell auto-resubmits with just --output_dir [--shard].
+
+# SIGUSR1 handling: Python's signal handlers can't interrupt model.generate()
+# (C extension, blocks for ~25 min/page). Instead, the shell handles SIGUSR1:
+# run Python in background, trap the signal, kill Python, then auto-resubmit.
+SIGUSR1_RECEIVED=0
+trap 'SIGUSR1_RECEIVED=1' SIGUSR1
 
 module load cuda/12.1
 module load anaconda3/2024.06
@@ -43,8 +49,20 @@ echo "Args: $@"
 echo "Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo "=============================="
 
-python scripts/eval_olmocr_bench.py "$@" || EXIT_CODE=$?
-EXIT_CODE=${EXIT_CODE:-0}
+# Run Python in background so `wait` can be interrupted by SIGUSR1
+python scripts/eval_olmocr_bench.py "$@" &
+PYTHON_PID=$!
+wait $PYTHON_PID
+EXIT_CODE=$?
+
+# If SIGUSR1 was received, kill Python and treat as clean exit for resubmit
+if [ "$SIGUSR1_RECEIVED" = "1" ]; then
+    echo ""
+    echo "SIGUSR1 received — stopping Python for auto-resubmit"
+    kill $PYTHON_PID 2>/dev/null
+    wait $PYTHON_PID 2>/dev/null
+    EXIT_CODE=0
+fi
 
 # Auto-resubmit if job was interrupted (entry still in .incomplete_jobs registry)
 if [ $EXIT_CODE -eq 0 ] && [ -f ".incomplete_jobs" ]; then
