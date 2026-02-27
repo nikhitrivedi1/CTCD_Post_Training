@@ -5,7 +5,9 @@ channels:
 
 dependencies:
   - python=3.11
+  - git               # Conda's git uses conda's OpenSSL (avoids system lib conflicts on HPC)
   - git-lfs           # Git Large File Storage (HF dataset downloads)
+  - openssl           # Explicit so conda resolves git+openssl compatibility together
   - poppler           # PDF rendering (used by olmocr for data prep)
   - pip
 

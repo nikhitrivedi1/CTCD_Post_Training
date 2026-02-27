@@ -48,7 +48,17 @@ See also: [DistilKit vs Unsloth](docs/distilkit-vs-unsloth.md)
 ```bash
 conda env create -f environment.yml
 conda activate distillation
+source scripts/env/init.sh
 ```
+
+`init.sh` installs conda hooks that automatically set `PATH`, `LD_LIBRARY_PATH`,
+and `HF_HOME` on every `conda activate distillation`. Run it whenever the
+environment is created or recreated. See [scripts/README.md](scripts/README.md)
+for details.
+
+If you hit library issues in an interactive session, source the fallback
+manually: `source scripts/env/activate.sh`. SLURM scripts source this
+automatically for safety.
 
 ### Verify Installation
 

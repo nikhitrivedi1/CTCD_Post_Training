@@ -20,6 +20,11 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+import torch
+import pypdfium2
+from PIL import Image
+from transformers import AutoModelForImageTextToText, AutoProcessor
+from peft import PeftModel
 from tqdm import tqdm
 
 # Add project root to path for olmocr imports
@@ -70,10 +75,6 @@ def load_model_and_processor(model_id: str = None, checkpoint_path: str = None, 
     Returns:
         Tuple of (model, processor, model_name, commit_hash)
     """
-    import torch
-    from transformers import AutoModelForImageTextToText, AutoProcessor
-    from peft import PeftModel
-
     dtype = torch.bfloat16 if device == "cuda" else torch.float32
 
     if checkpoint_path:
@@ -119,7 +120,7 @@ def load_model_and_processor(model_id: str = None, checkpoint_path: str = None, 
 # ---------------------------------------------------------------------------
 # PDF rendering
 # ---------------------------------------------------------------------------
-def render_pdf_page(pdf_path: str, page_num: int, dpi: int = 150):
+def render_pdf_page(pdf_path: str, page_num: int, dpi: int = 150) -> Image.Image:
     """Render a single PDF page to a PIL Image.
 
     Args:
@@ -130,8 +131,6 @@ def render_pdf_page(pdf_path: str, page_num: int, dpi: int = 150):
     Returns:
         PIL Image of the rendered page
     """
-    import pypdfium2
-
     pdf_doc = pypdfium2.PdfDocument(pdf_path)
     if page_num < 1 or page_num > len(pdf_doc):
         raise ValueError(f"Page {page_num} out of range for {pdf_path} ({len(pdf_doc)} pages)")
@@ -145,7 +144,7 @@ def render_pdf_page(pdf_path: str, page_num: int, dpi: int = 150):
 # ---------------------------------------------------------------------------
 # Generation
 # ---------------------------------------------------------------------------
-def generate_markdown(model, processor, image, device: str, max_new_tokens: int) -> str:
+def generate_markdown(model, processor, image: Image.Image, device: str, max_new_tokens: int) -> str:
     """Generate markdown from a document image.
 
     Args:
@@ -158,8 +157,6 @@ def generate_markdown(model, processor, image, device: str, max_new_tokens: int)
     Returns:
         Generated markdown text
     """
-    import torch
-
     messages = [
         {"role": "user", "content": [
             {"type": "image", "image": image},
@@ -683,7 +680,6 @@ def main():
 
     # Generation phase
     if not args.score_only:
-        import torch
         device = "cuda" if torch.cuda.is_available() else "cpu"
         model, processor, model_name, commit_hash = load_model_and_processor(
             model_id=args.model, checkpoint_path=args.checkpoint, device=device
@@ -818,7 +814,7 @@ def main():
         return
 
     # Completeness check: report how many markdowns are available
-    all_unique = collect_unique_pages(all_tests)  # full set, not sharded
+    all_unique = collect_unique_pages(all_tests)
     available = sum(
         1 for pdf_rel, page_num in all_unique
         if os.path.exists(os.path.join(markdowns_dir, pdf_to_md_name(pdf_rel, page_num)))
@@ -828,8 +824,6 @@ def main():
     logger.info(f"Scoring {available}/{len(all_unique)} pages ({pct_available:.1f}% available, {missing} missing)")
     results_by_category, results_by_jsonl, individual_results = score_tests(all_tests, markdowns_dir)
     score_of_total, score_of_scored = compute_overall_score(results_by_jsonl)
-
-    # Output
     print_results_table(results_by_category, score_of_total, score_of_scored)
     save_results(output_dir, results_by_category, results_by_jsonl,
                  score_of_total, score_of_scored, metadata, individual_results)

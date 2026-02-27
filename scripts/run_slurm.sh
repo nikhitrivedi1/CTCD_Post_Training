@@ -70,8 +70,7 @@ GPU_MEM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader 2>/dev/null 
 echo "GPU: $GPU_NAME ($GPU_MEM)"
 module load anaconda3/2024.06
 eval "$(conda shell.bash hook)"
-conda activate distillation
-export HF_HOME=/scratch/$USER/.cache/huggingface
+source scripts/env/activate.sh
 
 # Parse arguments: detect if $1 is config (ends with .yaml/.yml) or run_name
 if [[ "$1" == *.yaml ]] || [[ "$1" == *.yml ]]; then

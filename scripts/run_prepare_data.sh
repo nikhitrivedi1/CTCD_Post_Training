@@ -15,8 +15,7 @@
 
 module load anaconda3/2024.06
 eval "$(conda shell.bash hook)"
-conda activate distillation
-export HF_HOME=/scratch/$USER/.cache/huggingface
+source scripts/env/activate.sh
 
 mkdir -p logs
 
