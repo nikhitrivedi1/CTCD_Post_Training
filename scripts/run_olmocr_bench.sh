@@ -12,8 +12,12 @@
 #
 # Usage:
 #   sbatch scripts/run_olmocr_bench.sh --model allenai/olmOCR-2-7B-1025-FP8
-#   sbatch scripts/run_olmocr_bench.sh --model Qwen/Qwen3-VL-2B-Instruct
-#   sbatch scripts/run_olmocr_bench.sh --checkpoint outputs/.../checkpoint-400
+#   sbatch scripts/run_olmocr_bench.sh --model X --output_dir D --shard 1/4
+#   sbatch scripts/run_olmocr_bench.sh --output_dir D                          # resume
+#   sbatch scripts/run_olmocr_bench.sh --score_only --output_dir D
+#
+# Auto-resubmit: on SIGTERM (time limit), the job registers in .incomplete_jobs
+# and the shell auto-resubmits with just --output_dir [--shard].
 
 module load cuda/12.1
 module load anaconda3/2024.06
@@ -39,36 +43,41 @@ echo "Args: $@"
 echo "Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo "=============================="
 
-python scripts/eval_olmocr_bench.py "$@"
+python scripts/eval_olmocr_bench.py "$@" || EXIT_CODE=$?
+EXIT_CODE=${EXIT_CODE:-0}
 
-# Auto-resubmit if generation was interrupted (SIGTERM from time limit)
-RESUME_FILE=".bench_resume_$SLURM_JOB_ID"
-if [ -f "$RESUME_FILE" ]; then
-    OUTPUT_DIR=$(cat "$RESUME_FILE")
-    rm -f "$RESUME_FILE"
+# Auto-resubmit if job was interrupted (entry still in .incomplete_jobs registry)
+if [ $EXIT_CODE -eq 0 ] && [ -f ".incomplete_jobs" ]; then
+    JOB_INFO=$(python3 -c "
+import json
+try:
+    jobs = json.load(open('.incomplete_jobs'))
+    info = jobs.get('$SLURM_JOB_ID', {})
+    if info.get('type') == 'bench':
+        print(info.get('output_dir', ''))
+        print(info.get('shard', ''))
+    else:
+        print('')
+        print('')
+except:
+    print('')
+    print('')
+")
+    OUTPUT_DIR=$(echo "$JOB_INFO" | sed -n '1p')
+    SHARD=$(echo "$JOB_INFO" | sed -n '2p')
 
-    # Rebuild args: replace --resume or add it, pointing to the output dir
-    RESUBMIT_ARGS=""
-    SKIP_NEXT=false
-    for arg in "$@"; do
-        if $SKIP_NEXT; then
-            SKIP_NEXT=false
-            continue
+    if [ -n "$OUTPUT_DIR" ]; then
+        echo ""
+        echo "=== Auto-resubmitting ==="
+        echo "Output dir: $OUTPUT_DIR"
+        RESUBMIT_ARGS="--output_dir $OUTPUT_DIR"
+        if [ -n "$SHARD" ]; then
+            RESUBMIT_ARGS="$RESUBMIT_ARGS --shard $SHARD"
+            echo "Shard: $SHARD"
         fi
-        if [ "$arg" = "--resume" ]; then
-            SKIP_NEXT=true
-            continue
-        fi
-        RESUBMIT_ARGS="$RESUBMIT_ARGS $arg"
-    done
-    RESUBMIT_ARGS="$RESUBMIT_ARGS --resume $OUTPUT_DIR"
-
-    echo ""
-    echo "=== Auto-resubmitting ==="
-    echo "Output dir: $OUTPUT_DIR"
-    echo "Args:$RESUBMIT_ARGS"
-    sbatch "$0" $RESUBMIT_ARGS
-    echo "========================="
+        PREV_JOB_ID="$SLURM_JOB_ID" sbatch "$0" $RESUBMIT_ARGS
+        echo "========================="
+    fi
 fi
 
 echo "=============================="

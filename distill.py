@@ -424,6 +424,7 @@ def add_incomplete_job(run_name: str, output_dir: Path):
     job_key = get_job_key()
     jobs = load_incomplete_jobs()
     jobs[job_key] = {
+        "type": "training",
         "run_name": run_name,
         "output_dir": str(output_dir),
     }

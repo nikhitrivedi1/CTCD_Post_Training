@@ -16,6 +16,7 @@
 - Commit messages: short summary line, optional body for context.
 - Do NOT include Co-Authored-By unless explicitly requested.
 - Push when explicitly asked.
+- **DCP**: When the user says "DCP", do: **D**ouble-check the code, **C**ommit, **P**ush.
 
 ## Project Context
 - This is a knowledge distillation research project for CS-7150 Deep Learning.

@@ -4,9 +4,20 @@ Runs any HuggingFace VLM (or LoRA checkpoint) against the olmOCR-Bench benchmark
 producing standardized pass/fail scores comparable to published results.
 
 Usage:
+    # New run (auto-derives output dir)
     python scripts/eval_olmocr_bench.py --model allenai/olmOCR-2-7B-1025-FP8
-    python scripts/eval_olmocr_bench.py --model Qwen/Qwen3-VL-2B-Instruct
-    python scripts/eval_olmocr_bench.py --checkpoint outputs/.../checkpoint-400
+
+    # New run with explicit output dir
+    python scripts/eval_olmocr_bench.py --model Qwen/Qwen3-VL-2B-Instruct --output_dir outputs/bench/my-run
+
+    # Resume (model loaded from metadata.json)
+    python scripts/eval_olmocr_bench.py --output_dir outputs/bench/my-run
+
+    # Sharded run
+    python scripts/eval_olmocr_bench.py --model X --output_dir D --shard 1/4
+
+    # Score only (after all shards complete)
+    python scripts/eval_olmocr_bench.py --score_only --output_dir outputs/bench/my-run
 """
 
 import argparse
@@ -59,6 +70,70 @@ def _handle_sigterm(signum, frame):
 
 
 signal.signal(signal.SIGTERM, _handle_sigterm)
+
+
+# ---------------------------------------------------------------------------
+# Incomplete jobs registry (shared .incomplete_jobs file, same as distill.py)
+# ---------------------------------------------------------------------------
+_INCOMPLETE_JOBS = Path(".incomplete_jobs")
+
+
+def _load_incomplete_jobs() -> dict:
+    """Load incomplete jobs registry.
+
+    Returns:
+        Dict mapping job_id to job info dict.
+    """
+    if _INCOMPLETE_JOBS.exists():
+        try:
+            return json.loads(_INCOMPLETE_JOBS.read_text())
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def _save_incomplete_jobs(jobs: dict):
+    """Save incomplete jobs registry atomically.
+
+    Args:
+        jobs: Dict mapping job_id to job info.
+    """
+    tmp = _INCOMPLETE_JOBS.with_suffix(".tmp")
+    tmp.write_text(json.dumps(jobs, indent=2))
+    tmp.rename(_INCOMPLETE_JOBS)
+
+
+def _register_bench_job(output_dir: str, shard: str = None):
+    """Register current bench job in incomplete registry.
+
+    Removes previous job entry if PREV_JOB_ID is set (SLURM resubmission handoff).
+
+    Args:
+        output_dir: Output directory path.
+        shard: Shard spec (e.g. "1/4") or None.
+    """
+    prev = os.environ.get("PREV_JOB_ID")
+    if prev:
+        jobs = _load_incomplete_jobs()
+        if prev in jobs:
+            del jobs[prev]
+            _save_incomplete_jobs(jobs)
+
+    key = os.environ.get("SLURM_JOB_ID") or f"local_{os.getpid()}"
+    jobs = _load_incomplete_jobs()
+    jobs[key] = {"type": "bench", "output_dir": output_dir, "shard": shard or ""}
+    _save_incomplete_jobs(jobs)
+    logger.info(f"Registered bench job in incomplete registry: {key}")
+
+
+def _remove_bench_job():
+    """Remove current job from incomplete registry (marks it complete)."""
+    key = os.environ.get("SLURM_JOB_ID") or f"local_{os.getpid()}"
+    jobs = _load_incomplete_jobs()
+    if key in jobs:
+        del jobs[key]
+        _save_incomplete_jobs(jobs)
+        logger.info(f"Removed job from incomplete registry: {key}")
 
 
 # ---------------------------------------------------------------------------
@@ -615,9 +690,8 @@ def main():
     group.add_argument("--model", type=str, help="HuggingFace model ID")
     group.add_argument("--checkpoint", type=str, help="Path to LoRA checkpoint")
 
-    parser.add_argument("--output_dir", type=str, default=None, help="Output directory (default: auto-derived)")
-    parser.add_argument("--resume", type=str, default=None, metavar="PATH",
-                        help="Resume a previous run (exact output dir path required)")
+    parser.add_argument("--output_dir", type=str, default=None,
+                        help="Output directory. If it exists with metadata.json, resumes automatically.")
     parser.add_argument("--shard", type=str, default=None, help="Shard spec N/M (e.g. 1/4 = first of 4 shards)")
     parser.add_argument("--bench_dir", type=str, default=DEFAULT_BENCH_DIR, help="Path to olmOCR-bench data")
     parser.add_argument("--max_new_tokens", type=int, default=DEFAULT_MAX_NEW_TOKENS)
@@ -628,31 +702,40 @@ def main():
     # Validate required args based on mode
     if args.score_only:
         if not args.output_dir:
-            parser.error("--score_only requires --output_dir to locate markdowns")
-    else:
-        if not args.model and not args.checkpoint:
-            parser.error("one of the arguments --model --checkpoint is required")
+            parser.error("--score_only requires --output_dir")
 
-    # Output directory
-    if args.resume:
-        output_dir = args.resume
-        if not os.path.isdir(output_dir):
-            parser.error(f"Resume path not found: {output_dir}")
-        # Validate model matches the resumed run
+    # Output directory (auto-detect resume from existing metadata.json)
+    if args.output_dir:
+        output_dir = args.output_dir
         meta_path = os.path.join(output_dir, "metadata.json")
-        if os.path.exists(meta_path):
+        if os.path.isdir(output_dir) and os.path.exists(meta_path):
+            # Resume: load model from metadata if not provided via args
             with open(meta_path) as f:
                 prev_meta = json.load(f)
-            prev_model = prev_meta.get("model_name", "")
-            curr_model = _model_name_from_args(args.model, args.checkpoint)
-            if prev_model and curr_model != prev_model:
-                parser.error(
-                    f"Model mismatch: --model/--checkpoint resolves to '{curr_model}' "
-                    f"but resumed run used '{prev_model}'"
-                )
-    elif args.output_dir:
-        output_dir = args.output_dir
+            if not args.model and not args.checkpoint:
+                stored_id = prev_meta.get("model_id", "")
+                if not stored_id:
+                    parser.error("metadata.json has no model_id — specify --model or --checkpoint")
+                if stored_id.startswith("local:"):
+                    args.checkpoint = stored_id.replace("local:", "")
+                else:
+                    args.model = stored_id
+            else:
+                # Both provided — validate match
+                curr_model = _model_name_from_args(args.model, args.checkpoint)
+                prev_model = prev_meta.get("model_name", "")
+                if prev_model and curr_model != prev_model:
+                    parser.error(
+                        f"Model mismatch: '{curr_model}' vs stored '{prev_model}'"
+                    )
+            logger.info(f"Resuming into existing dir: {output_dir}")
+        elif not args.score_only and not args.model and not args.checkpoint:
+            # Explicit dir but no metadata — new run, model required
+            parser.error("--model or --checkpoint required for new runs")
     else:
+        # No --output_dir: score_only already caught above, so this is a new generation run
+        if not args.model and not args.checkpoint:
+            parser.error("--model or --checkpoint required for new runs")
         output_dir = derive_output_dir(args.model, args.checkpoint)
     markdowns_dir = os.path.join(output_dir, "markdowns")
     os.makedirs(markdowns_dir, exist_ok=True)
@@ -665,8 +748,8 @@ def main():
 
     # Apply sharding
     if args.shard:
-        if not args.output_dir and not args.resume:
-            parser.error("--shard requires --output_dir or --resume so all shards write to the same directory")
+        if not args.output_dir:
+            parser.error("--shard requires --output_dir so all shards write to the same directory")
         shard_idx, num_shards = [int(x) for x in args.shard.split("/")]
         if shard_idx < 1 or shard_idx > num_shards:
             parser.error(f"Invalid shard spec: {args.shard} (must be N/M where 1 <= N <= M)")
@@ -677,6 +760,10 @@ def main():
         logger.info(f"Shard {shard_idx}/{num_shards}: pages {start}-{end} ({len(unique_pages)} pages)")
 
     logger.info(f"Unique (pdf, page) pairs to process: {len(unique_pages)}")
+
+    # Register in incomplete jobs for SLURM auto-resubmission
+    if not args.score_only:
+        _register_bench_job(output_dir, args.shard)
 
     # Generation phase
     if not args.score_only:
@@ -785,20 +872,8 @@ def main():
             json.dump(metadata, f, indent=2)
 
         if _shutdown_requested:
-            # Write output dir for shell script auto-resubmission
-            resume_file = f".bench_resume_{os.environ.get('SLURM_JOB_ID', os.getpid())}"
-            with open(resume_file, "w") as f:
-                f.write(output_dir)
-            logger.info(f"Wrote resume file: {resume_file}")
-
-            # Also log the manual resume command
-            cmd_parts = ["sbatch scripts/run_olmocr_bench.sh"]
-            if args.model:
-                cmd_parts.append(f"--model {args.model}")
-            elif args.checkpoint:
-                cmd_parts.append(f"--checkpoint {args.checkpoint}")
-            cmd_parts.append(f"--resume {output_dir}")
-            logger.info(f"Resume with:\n  {' '.join(cmd_parts)}")
+            # Leave registry entry as incomplete — shell will auto-resubmit
+            logger.info(f"Interrupted. Auto-resubmit will resume from: {output_dir}")
             sys.exit(0)
     else:
         logger.info("Score-only mode — skipping generation")
@@ -810,6 +885,7 @@ def main():
 
     # Scoring phase (skip for sharded runs — score with --score_only after all shards complete)
     if args.shard and not args.score_only:
+        _remove_bench_job()
         logger.info(f"Shard {args.shard} complete — run with --score_only to score after all shards finish")
         return
 
@@ -827,6 +903,9 @@ def main():
     print_results_table(results_by_category, score_of_total, score_of_scored)
     save_results(output_dir, results_by_category, results_by_jsonl,
                  score_of_total, score_of_scored, metadata, individual_results)
+
+    # Mark complete in registry
+    _remove_bench_job()
 
 
 if __name__ == "__main__":

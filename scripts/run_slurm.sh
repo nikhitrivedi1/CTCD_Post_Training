@@ -244,7 +244,7 @@ except:
                 echo "========================================="
 
                 # Resubmit with PREV_JOB_ID for handoff (new job removes old entry)
-                PREV_JOB_ID="$SLURM_JOB_ID" SEED="$SEED" MAX_STEPS="$MAX_STEPS" sbatch "$0" "$ACTUAL_RUN_NAME"
+                PREV_JOB_ID="$SLURM_JOB_ID" SEED="$SEED" MAX_STEPS="$MAX_STEPS" EPOCHS="$EPOCHS" DEBUG="$DEBUG" sbatch "$0" "$ACTUAL_RUN_NAME"
             else
                 echo ""
                 echo "========================================="
