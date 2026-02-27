@@ -27,12 +27,11 @@ ACTIVATE_DIR="$CONDA_PREFIX/etc/conda/activate.d"
 DEACTIVATE_DIR="$CONDA_PREFIX/etc/conda/deactivate.d"
 mkdir -p "$ACTIVATE_DIR" "$DEACTIVATE_DIR"
 
-cat > "$ACTIVATE_DIR/distillation.sh" << 'HOOK'
-export PATH="$CONDA_PREFIX/bin:$PATH"
-export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
-if [ -d "/scratch" ]; then
-    export HF_HOME="/scratch/$USER/.cache/huggingface"
-fi
+ACTIVATE_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/activate.sh"
+
+cat > "$ACTIVATE_DIR/distillation.sh" << HOOK
+# Installed by scripts/env/init.sh — delegates to activate.sh
+source "$ACTIVATE_SH"
 HOOK
 
 cat > "$DEACTIVATE_DIR/distillation.sh" << 'HOOK'
