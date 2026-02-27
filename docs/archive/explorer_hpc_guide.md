@@ -1371,7 +1371,7 @@ git push
 ├── configs/               # YAML configuration files
 │   └── ablations/         # Ablation study configs
 ├── scripts/               # SLURM job scripts
-│   └── run_slurm.sh
+│   └── run_training.sh
 ├── logs/                  # Job output logs (gitignore)
 ├── outputs/               # Model checkpoints (gitignore)
 ├── src/                   # Source code
@@ -1449,7 +1449,7 @@ python distill.py --config config.yaml --max_steps 100
 # Check for errors, memory usage, output format
 
 # Then submit full job
-sbatch scripts/run_slurm.sh
+sbatch scripts/run_training.sh
 ```
 
 ### 6. Multiple Experiment Management
@@ -1459,7 +1459,7 @@ sbatch scripts/run_slurm.sh
 for config in configs/ablations/*.yaml; do
     name=$(basename "$config" .yaml)
     echo "Submitting $name"
-    sbatch --job-name="$name" scripts/run_slurm.sh "$config" "$name"
+    sbatch --job-name="$name" scripts/run_training.sh "$config" "$name"
     sleep 1  # Avoid overwhelming the scheduler
 done
 

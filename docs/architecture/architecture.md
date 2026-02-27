@@ -238,12 +238,12 @@ python distill.py --run_name my_run  # resume
 
 ### 4.2 SLURM (Explorer HPC)
 
-**Training:** `scripts/run_slurm.sh`
+**Training:** `scripts/run_training.sh`
 
 ```bash
-sbatch scripts/run_slurm.sh my_run configs/.../ablation.yaml   # new named run
-sbatch scripts/run_slurm.sh my_run                              # resume
-sbatch scripts/run_slurm.sh configs/.../ablation.yaml           # auto-named
+sbatch scripts/run_training.sh my_run configs/.../ablation.yaml   # new named run
+sbatch scripts/run_training.sh my_run                              # resume
+sbatch scripts/run_training.sh configs/.../ablation.yaml           # auto-named
 ```
 
 Environment variables: `SEED`, `MAX_STEPS`, `EPOCHS`, `TIMESTAMP`, `FORCE`, `DEBUG`
@@ -272,7 +272,7 @@ All SLURM scripts handle time limit interruptions. The pattern:
 
 | Script | Signal | Buffer | State | Resume Mechanism |
 |--------|--------|--------|-------|-----------------|
-| **Training** (`run_slurm.sh`) | `SIGUSR1@120` | 2 min | HF checkpoints + `training_state.json` | `.incomplete_jobs` JSON → auto `sbatch` |
+| **Training** (`run_training.sh`) | `SIGUSR1@120` | 2 min | HF checkpoints + `training_state.json` | `.incomplete_jobs` JSON → auto `sbatch` |
 | **Evaluation** (`run_olmocr_bench.sh`) | `SIGTERM@300` | 5 min | Per-page atomic writes (`.tmp` + rename) | `.bench_resume_{JOB_ID}` → auto `sbatch` |
 
 **Training auto-resume flow:**
@@ -480,7 +480,7 @@ src/
   tasks/registry.py                 # Task registry
   utils/                            # Config, checkpoint, environment
 scripts/
-  run_slurm.sh                      # SLURM training
+  run_training.sh                   # SLURM training
   run_olmocr_bench.sh               # SLURM eval
   eval_olmocr_bench.py              # Benchmark eval
   run_prepare_data.sh               # SLURM data prep

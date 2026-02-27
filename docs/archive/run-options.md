@@ -354,8 +354,8 @@ srun --gres=gpu:1 python distill.py --run_name my_run --config ...
 ### Mode 4: sbatch (Batch SLURM)
 
 ```bash
-sbatch scripts/run_slurm.sh my_run configs/.../config.yaml
-TIMESTAMP=1 sbatch scripts/run_slurm.sh my_run configs/.../config.yaml
+sbatch scripts/run_training.sh my_run configs/.../config.yaml
+TIMESTAMP=1 sbatch scripts/run_training.sh my_run configs/.../config.yaml
 ```
 
 | Event | Action |
@@ -371,8 +371,8 @@ TIMESTAMP=1 sbatch scripts/run_slurm.sh my_run configs/.../config.yaml
 When job 12345 times out:
 
 ```bash
-# run_slurm.sh automatically does:
-PREV_JOB_ID=12345 sbatch scripts/run_slurm.sh my_run_2026-02-01_12-00Z
+# run_training.sh automatically does:
+PREV_JOB_ID=12345 sbatch scripts/run_training.sh my_run_2026-02-01_12-00Z
 ```
 
 | Event | Action |
@@ -387,8 +387,8 @@ PREV_JOB_ID=12345 sbatch scripts/run_slurm.sh my_run_2026-02-01_12-00Z
 ### Mode 6: Concurrent SLURM Jobs
 
 ```bash
-sbatch scripts/run_slurm.sh far-01 configs/.../01.yaml  # Job 12345
-sbatch scripts/run_slurm.sh far-07 configs/.../07.yaml  # Job 12346
+sbatch scripts/run_training.sh far-01 configs/.../01.yaml  # Job 12345
+sbatch scripts/run_training.sh far-07 configs/.../07.yaml  # Job 12346
 ```
 
 Each job gets unique key, no collision:

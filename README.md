@@ -85,7 +85,7 @@ python distill.py --run_name mnli_00 --config configs/... --force
 python distill.py --config configs/... --max_steps 10
 
 # SLURM (with auto-requeue)
-sbatch scripts/run_slurm.sh configs/your_config.yaml
+sbatch scripts/run_training.sh configs/your_config.yaml
 ```
 
 ### Logging
@@ -234,7 +234,7 @@ distillation/
 │   └── logging.py       # TeeWriter for clean progress bar logging
 ├── scripts/             # Execution scripts
 │   ├── run_local.sh
-│   └── run_slurm.sh
+│   └── run_training.sh
 ├── test_setup.py        # Environment verification
 └── distill.py           # Main entry point
 ```
@@ -307,33 +307,33 @@ Currently single-GPU. To add multi-GPU:
 - **Recommended:** Use conda for HPC environments
 - Production runs for Llama models
 - Auto-requeue handles 8-hour limits
-- Configure in `scripts/run_slurm.sh`
+- Configure in `scripts/run_training.sh`
 
 ```bash
 # Named run (new)
-sbatch scripts/run_slurm.sh mnli_00 configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
+sbatch scripts/run_training.sh mnli_00 configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
 # -> outputs/mnli_00/
 
 # Resume existing run
-sbatch scripts/run_slurm.sh mnli_00
+sbatch scripts/run_training.sh mnli_00
 # -> outputs/mnli_00/ (continues from checkpoint)
 
 # Auto-named run (includes timestamp)
-sbatch scripts/run_slurm.sh configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
+sbatch scripts/run_training.sh configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
 # -> outputs/mnli_default_2026-01-31_03-15Z/
 
 # Named run with timestamp (unique each submission)
-TIMESTAMP=1 sbatch scripts/run_slurm.sh mnli_00 configs/...
+TIMESTAMP=1 sbatch scripts/run_training.sh mnli_00 configs/...
 # -> outputs/mnli_00_2026-01-31_03-15Z/
 
 # Force overwrite existing run
-FORCE=1 sbatch scripts/run_slurm.sh mnli_00 configs/...
+FORCE=1 sbatch scripts/run_training.sh mnli_00 configs/...
 
 # Testing on cluster (10 steps only)
-MAX_STEPS=10 sbatch scripts/run_slurm.sh configs/...
+MAX_STEPS=10 sbatch scripts/run_training.sh configs/...
 
 # Custom seed
-SEED=123 sbatch scripts/run_slurm.sh mnli_00 configs/...
+SEED=123 sbatch scripts/run_training.sh mnli_00 configs/...
 ```
 
 ## Running Included Examples

@@ -40,7 +40,7 @@ All SLURM scripts use `#SBATCH --signal=SIG@120` to send a signal 120 seconds
 before the time limit. This gives Python time to finish the current unit of work,
 save state, and exit cleanly.
 
-### Training (`run_slurm.sh`)
+### Training (`run_training.sh`)
 
 - Signal: `SIGUSR1@120`
 - Resume: Automatic — script checks `.incomplete_jobs` and resubmits via `sbatch`

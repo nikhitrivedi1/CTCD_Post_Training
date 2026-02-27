@@ -117,7 +117,7 @@ DistilKit has built-in SLURM integration for long-running jobs:
 
 **SLURM signal handling:** When the job approaches its time limit, SLURM sends SIGUSR1 (configured via `#SBATCH --signal=SIGUSR1@120`). DistilKit's `SLURMSignalCallback` catches this and saves a checkpoint before the job is killed.
 
-**Auto-resubmission:** `scripts/run_slurm.sh` reads `training_state.json` after each job. If training isn't complete, it resubmits with `resume_from_checkpoint` pointing to the latest checkpoint. This chains jobs across SLURM's time limits.
+**Auto-resubmission:** `scripts/run_training.sh` reads `training_state.json` after each job. If training isn't complete, it resubmits with `resume_from_checkpoint` pointing to the latest checkpoint. This chains jobs across SLURM's time limits.
 
 ```
 Job 1 (8 hrs) → checkpoint at step 4800 → SIGUSR1 → save → exit
@@ -651,7 +651,7 @@ Rule of thumb: **4–8 CPUs per GPU** for data loading. More CPUs help with data
 | Multi-GPU DDP | **Supported** | Change `python` → `torchrun` |
 | SLURM signal handling | **Supported** | Built-in `SLURMSignalCallback` |
 | Checkpointing + resume | **Supported** | Built-in via `save_steps`, `training_state.json` |
-| Auto-resubmission | **Supported** | Built-in via `run_slurm.sh` |
+| Auto-resubmission | **Supported** | Built-in via `run_training.sh` |
 | Gradient checkpointing | **Supported** | Set `gradient_checkpointing: true` in TrainingArguments |
 | BF16 mixed precision | **Supported** | Models load in bf16 by default |
 | Multi-worker data loading | **Supported** | `dataloader_num_workers` config |
