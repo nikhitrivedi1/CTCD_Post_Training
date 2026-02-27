@@ -779,7 +779,7 @@ def main():
                 metadata = json.load(f)
         else:
             metadata = {
-                "model_id": args.model or str(args.checkpoint),
+                "model_id": args.model or f"local:{args.checkpoint}",
                 "model_name": model_name,
                 "commit_hash": commit_hash,
                 "generation_params": {
@@ -800,6 +800,10 @@ def main():
                 "node": os.environ.get("SLURM_NODELIST", "unknown"),
                 "started": datetime.now(timezone.utc).isoformat(),
             })
+
+        # Write metadata.json immediately so subsequent resumes can auto-detect model
+        with open(meta_path, "w") as f:
+            json.dump(metadata, f, indent=2)
 
         # Clean up stale .tmp files from interrupted writes
         for tmp_file in glob.glob(os.path.join(markdowns_dir, "*.tmp")):
