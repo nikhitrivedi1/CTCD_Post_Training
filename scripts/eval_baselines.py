@@ -23,7 +23,6 @@ import torch
 from datasets import load_dataset
 from tqdm import tqdm
 from transformers import (
-    AutoModelForCausalLM,
     AutoModelForSequenceClassification,
     AutoTokenizer,
 )
@@ -32,6 +31,7 @@ from transformers import (
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.evaluation.metrics import compute_classification_metrics
+from src.inference import InferenceEngine
 from src.tasks import get_num_labels, get_primary_metric, is_translation_task
 from utils.labels import LABEL_MAP_REGISTRY
 
@@ -246,17 +246,9 @@ def evaluate_translation_model(
 
     print(f"\n  Loading {model_id}...")
 
-    # Load model and tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        torch_dtype=torch.float16,
-        device_map="auto",
+    engine = InferenceEngine.load(
+        model_id=model_id, model_type="causal_lm", device=str(device)
     )
-    model.eval()
 
     # Load dataset
     dataset = load_dataset(*config["dataset"], trust_remote_code=True)
@@ -271,40 +263,17 @@ def evaluate_translation_model(
     target_lang = config["target_lang"]
     max_new_tokens = config.get("max_new_tokens", 128)
 
-    all_predictions = []
-    all_references = []
+    # Format all prompts
+    prompts = [
+        f"Translate the following English text to French:\n\n{item['translation'][source_lang]}\n\nFrench translation:"
+        for item in eval_data
+    ]
+    all_references = [item["translation"][target_lang] for item in eval_data]
 
-    for i in tqdm(range(0, len(eval_data), batch_size), desc="  Evaluating", leave=False):
-        batch = eval_data[i : i + batch_size]
-
-        # Format prompts for translation
-        prompts = [
-            f"Translate the following English text to French:\n\n{item['translation'][source_lang]}\n\nFrench translation:"
-            for item in batch
-        ]
-
-        inputs = tokenizer(
-            prompts,
-            truncation=True,
-            max_length=256,
-            padding=True,
-            return_tensors="pt",
-        ).to(device)
-
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                do_sample=False,
-                pad_token_id=tokenizer.pad_token_id,
-            )
-
-        # Decode only the generated part
-        for j, output in enumerate(outputs):
-            input_len = inputs["input_ids"][j].shape[0]
-            generated = tokenizer.decode(output[input_len:], skip_special_tokens=True)
-            all_predictions.append(generated.strip())
-            all_references.append(batch[j]["translation"][target_lang])
+    # Generate translations via engine
+    all_predictions = engine.generate(
+        prompts, max_new_tokens=max_new_tokens, batch_size=batch_size
+    )
 
     # Compute BLEU
     bleu_metric = evaluate.load("sacrebleu")

@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
-#SBATCH --signal=SIGUSR1@120
+#SBATCH --signal=B:SIGUSR1@120
 
 # SLURM script for knowledge distillation on Explorer HPC
 # Handles job time limits by automatically resubmitting incomplete jobs

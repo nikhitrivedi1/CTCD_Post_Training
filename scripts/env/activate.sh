@@ -9,10 +9,10 @@
 #
 # What it sets:
 #   PATH             — Prepends conda's bin dir (ensures conda executables first)
-#   LD_LIBRARY_PATH  — Prepends conda's lib dir so the dynamic linker finds
-#                      conda's newer libstdc++ before the system's. Without this,
-#                      torch/CUDA loads the system's older libstdc++ which lacks
-#                      CXXABI_1.3.15 needed by conda packages (e.g. olmocr's ICU).
+#   LD_PRELOAD       — Preloads conda's libstdc++ so torch/CUDA gets the newer
+#                      version with CXXABI_1.3.15 (needed by olmocr's ICU etc.).
+#                      Uses LD_PRELOAD instead of LD_LIBRARY_PATH to avoid
+#                      overriding other libraries (e.g. OpenSSL for git).
 #   HF_HOME          — Redirects HuggingFace cache to /scratch (avoids home quota)
 
 # Activate conda environment if not already active
@@ -24,8 +24,8 @@ fi
 # Conda executables before system (git, python, etc.)
 export PATH="$CONDA_PREFIX/bin:$PATH"
 
-# Conda libs before system libs (fixes libstdc++ CXXABI conflict)
-export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+# Preload conda's libstdc++ (fixes CXXABI conflict without affecting other libs)
+export LD_PRELOAD="$CONDA_PREFIX/lib/libstdc++.so.6${LD_PRELOAD:+:$LD_PRELOAD}"
 
 # HuggingFace cache on scratch (home dir has quota limits on HPC)
 if [ -d "/scratch" ]; then

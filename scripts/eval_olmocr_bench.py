@@ -18,6 +18,7 @@ Usage:
 
     # Score only (after all shards complete)
     python scripts/eval_olmocr_bench.py --score_only --output_dir outputs/bench/my-run
+
 """
 
 import argparse
@@ -34,13 +35,13 @@ from pathlib import Path
 import torch
 import pypdfium2
 from PIL import Image
-from transformers import AutoModelForImageTextToText, AutoProcessor
-from peft import PeftModel
 from tqdm import tqdm
 
 # Add project root to path for olmocr imports
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.inference import InferenceEngine
 
 logging.basicConfig(
     level=logging.INFO,
@@ -138,62 +139,6 @@ def _remove_bench_job():
 
 
 # ---------------------------------------------------------------------------
-# Model loading
-# ---------------------------------------------------------------------------
-def load_model_and_processor(model_id: str = None, checkpoint_path: str = None, device: str = "cuda"):
-    """Load a VLM model and processor.
-
-    Args:
-        model_id: HuggingFace model ID (e.g. 'Qwen/Qwen3-VL-2B-Instruct')
-        checkpoint_path: Path to LoRA checkpoint (mutually exclusive with model_id)
-        device: Device to load model on
-
-    Returns:
-        Tuple of (model, processor, model_name, commit_hash)
-    """
-    dtype = torch.bfloat16 if device == "cuda" else torch.float32
-
-    if checkpoint_path:
-        # Load LoRA checkpoint — adapter_config.json specifies base model
-        checkpoint_path = Path(checkpoint_path)
-        adapter_config_path = checkpoint_path / "adapter_config.json"
-        if not adapter_config_path.exists():
-            raise FileNotFoundError(f"No adapter_config.json in {checkpoint_path}")
-
-        with open(adapter_config_path) as f:
-            adapter_config = json.load(f)
-        base_model_id = adapter_config["base_model_name_or_path"]
-
-        logger.info(f"Loading base model: {base_model_id}")
-        model = AutoModelForImageTextToText.from_pretrained(
-            base_model_id, torch_dtype=dtype, device_map="auto" if device == "cuda" else None
-        )
-        logger.info(f"Loading LoRA adapter: {checkpoint_path}")
-        model = PeftModel.from_pretrained(model, str(checkpoint_path))
-        model = model.merge_and_unload()
-
-        processor = AutoProcessor.from_pretrained(base_model_id)
-        # Derive name: use dir name for run outputs, parent name for checkpoint-N/
-        if checkpoint_path.name.startswith("checkpoint-"):
-            model_name = checkpoint_path.parent.name
-        else:
-            model_name = checkpoint_path.name
-        commit_hash = f"local:{checkpoint_path}"
-    else:
-        logger.info(f"Loading model: {model_id}")
-        model = AutoModelForImageTextToText.from_pretrained(
-            model_id, torch_dtype=dtype, device_map="auto" if device == "cuda" else None
-        )
-        processor = AutoProcessor.from_pretrained(model_id)
-        model_name = model_id.split("/")[-1]
-        commit_hash = getattr(model.config, "_commit_hash", "unknown")
-
-    model.eval()
-    logger.info(f"Model loaded: {model_name} ({sum(p.numel() for p in model.parameters()) / 1e6:.0f}M params)")
-    return model, processor, model_name, commit_hash
-
-
-# ---------------------------------------------------------------------------
 # PDF rendering
 # ---------------------------------------------------------------------------
 def render_pdf_page(pdf_path: str, page_num: int, dpi: int = 150) -> Image.Image:
@@ -215,45 +160,6 @@ def render_pdf_page(pdf_path: str, page_num: int, dpi: int = 150) -> Image.Image
     image = bitmap.to_pil()
     pdf_doc.close()
     return image
-
-
-# ---------------------------------------------------------------------------
-# Generation
-# ---------------------------------------------------------------------------
-def generate_markdown(model, processor, image: Image.Image, device: str, max_new_tokens: int) -> str:
-    """Generate markdown from a document image.
-
-    Args:
-        model: VLM model
-        processor: AutoProcessor
-        image: PIL Image of the document page
-        device: Device string
-        max_new_tokens: Maximum tokens to generate
-
-    Returns:
-        Generated markdown text
-    """
-    messages = [
-        {"role": "user", "content": [
-            {"type": "image", "image": image},
-            {"type": "text", "text": OCR_PROMPT},
-        ]}
-    ]
-    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    inputs = processor(text=[text], images=[image], return_tensors="pt").to(device)
-
-    with torch.no_grad():
-        output_ids = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=False,
-            pad_token_id=processor.tokenizer.pad_token_id,
-        )
-
-    # Strip input tokens, decode only generated portion
-    generated_ids = output_ids[0, inputs["input_ids"].shape[1]:]
-    markdown = processor.tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
-    return markdown
 
 
 # ---------------------------------------------------------------------------
@@ -770,8 +676,9 @@ def main():
     # Generation phase
     if not args.score_only:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        model, processor, model_name, commit_hash = load_model_and_processor(
-            model_id=args.model, checkpoint_path=args.checkpoint, device=device
+        engine = InferenceEngine.load(
+            model_id=args.model, checkpoint_path=args.checkpoint,
+            model_type="vlm", device=device,
         )
 
         # Load existing metadata on resume, or create fresh
@@ -782,8 +689,8 @@ def main():
         else:
             metadata = {
                 "model_id": args.model or f"local:{args.checkpoint}",
-                "model_name": model_name,
-                "commit_hash": commit_hash,
+                "model_name": engine.model_name,
+                "commit_hash": engine.commit_hash,
                 "generation_params": {
                     "max_new_tokens": args.max_new_tokens,
                     "do_sample": False,
@@ -827,16 +734,13 @@ def main():
             md_name = pdf_to_md_name(pdf_rel, page_num)
             md_path = os.path.join(markdowns_dir, md_name)
 
-            # Graceful shutdown on SIGTERM (SLURM time limit)
             if _shutdown_requested:
                 logger.info(f"Shutting down gracefully. Generated {generated} this session.")
                 break
 
-            # Skip if already generated (resume support)
             if os.path.exists(md_path):
                 continue
 
-            # Resolve PDF path: test["pdf"] is relative to bench_data/pdfs/
             pdf_abs = os.path.join(pdf_base_dir, pdf_rel)
             if not os.path.exists(pdf_abs):
                 logger.warning(f"PDF not found: {pdf_abs}")
@@ -847,9 +751,11 @@ def main():
 
             try:
                 image = render_pdf_page(pdf_abs, page_num, dpi=args.dpi)
-                markdown = generate_markdown(model, processor, image, device, args.max_new_tokens)
+                results = engine.generate(
+                    [(image, OCR_PROMPT)], max_new_tokens=args.max_new_tokens
+                )
+                markdown = results[0]
 
-                # Atomic write: temp file + rename so partial writes don't look complete on resume
                 tmp_path = md_path + ".tmp"
                 with open(tmp_path, "w") as f:
                     f.write(markdown)
@@ -867,6 +773,7 @@ def main():
             pbar.update(1)
 
         pbar.close()
+
         logger.info(f"Generation complete: {generated} generated, {already_done} skipped, {errors} errors")
 
         # Clean up any .tmp files left from this session (e.g. interrupted write)

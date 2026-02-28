@@ -16,6 +16,27 @@ from src.tasks import is_translation_task, is_ocr_task
 logger = logging.getLogger(__name__)
 
 
+def _detect_attn_implementation(eager_attention: bool, device: str):
+    """Select best attention implementation.
+
+    Args:
+        eager_attention: If True, force eager (needed for attention distillation).
+        device: Device string.
+
+    Returns:
+        "eager", "flash_attention_2", or None (let transformers choose).
+    """
+    if eager_attention:
+        return "eager"
+    if device == "cuda":
+        try:
+            import flash_attn  # noqa: F401
+            return "flash_attention_2"
+        except ImportError:
+            pass
+    return None
+
+
 # =============================================================================
 # Primitives: load a single model
 # =============================================================================
@@ -65,10 +86,12 @@ def _load_causal_lm(name: str, init: str, device: str, tokenizer: PreTrainedToke
     """
     dtype = torch.float16 if device == "cuda" else torch.float32
 
+    attn_impl = _detect_attn_implementation(eager_attention, device)
+
     if init == "fresh":
         model_config = AutoConfig.from_pretrained(name)
-        if eager_attention:
-            model_config._attn_implementation = "eager"
+        if attn_impl:
+            model_config._attn_implementation = attn_impl
         model = AutoModelForCausalLM.from_config(model_config).to(dtype)
         if device == "cuda":
             model = model.to(device)
@@ -77,7 +100,7 @@ def _load_causal_lm(name: str, init: str, device: str, tokenizer: PreTrainedToke
             name,
             torch_dtype=dtype,
             device_map=device if device == "cuda" else None,
-            attn_implementation="eager" if eager_attention else None,
+            attn_implementation=attn_impl,
         )
 
     # Resize embeddings if tokenizer has custom tokens
@@ -106,13 +129,15 @@ def _load_vlm(name: str, init: str, device: str, eager_attention: bool = False):
 
     dtype = torch.bfloat16 if device == "cuda" else torch.float32
 
+    attn_impl = _detect_attn_implementation(eager_attention, device)
+
     kwargs = {
         "torch_dtype": dtype,
         "device_map": "auto" if device == "cuda" else None,
     }
 
-    if eager_attention:
-        kwargs["attn_implementation"] = "eager"
+    if attn_impl:
+        kwargs["attn_implementation"] = attn_impl
 
     if init == "fresh":
         logger.warning("Fresh init not recommended for VLMs, using pretrained")

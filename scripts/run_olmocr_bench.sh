@@ -6,7 +6,7 @@
 #SBATCH --time=08:00:00
 #SBATCH --mem=64G
 #SBATCH --output=logs/bench_%j.out
-#SBATCH --signal=SIGUSR1@120
+#SBATCH --signal=B:SIGUSR1@120
 
 # olmOCR-Bench evaluation on SLURM
 #
@@ -60,7 +60,13 @@ if [ "$SIGUSR1_RECEIVED" = "1" ]; then
     echo ""
     echo "SIGUSR1 received — stopping Python for auto-resubmit"
     kill $PYTHON_PID 2>/dev/null
+    # Force kill after 60s if Python doesn't exit (model.generate() is a C
+    # extension that blocks for minutes and can't respond to SIGTERM)
+    ( sleep 60 && kill -9 $PYTHON_PID 2>/dev/null ) &
+    TIMER_PID=$!
     wait $PYTHON_PID 2>/dev/null
+    kill $TIMER_PID 2>/dev/null
+    wait $TIMER_PID 2>/dev/null
     EXIT_CODE=0
 fi
 

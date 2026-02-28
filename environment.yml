@@ -46,6 +46,9 @@ dependencies:
       - syntok>=1.4.0
       - playwright>=1.40.0     # KaTeX math rendering for bench scoring
 
+      # GPU optimization (CUDA-only, install separately via scripts/env/init.sh):
+      #   pip install flash-attn --no-build-isolation
+
       # Development tools (optional)
       - pytest>=7.4.0
       - pytest-cov>=4.1.0

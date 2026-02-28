@@ -115,7 +115,7 @@ DistilKit has built-in SLURM integration for long-running jobs:
 
 **Checkpointing:** `save_steps: 500` saves model + optimizer + scheduler state. `save_total_limit: 3` keeps only the 3 most recent.
 
-**SLURM signal handling:** When the job approaches its time limit, SLURM sends SIGUSR1 (configured via `#SBATCH --signal=SIGUSR1@120`). DistilKit's `SLURMSignalCallback` catches this and saves a checkpoint before the job is killed.
+**SLURM signal handling:** When the job approaches its time limit, SLURM sends SIGUSR1 (configured via `#SBATCH --signal=B:SIGUSR1@120`). DistilKit's `SLURMSignalCallback` catches this and saves a checkpoint before the job is killed.
 
 **Auto-resubmission:** `scripts/run_training.sh` reads `training_state.json` after each job. If training isn't complete, it resubmits with `resume_from_checkpoint` pointing to the latest checkpoint. This chains jobs across SLURM's time limits.
 
@@ -275,7 +275,7 @@ If your QOS limits you to 1 GPU per job, contact the HPC team or your advisor to
 #SBATCH --gres=gpu:h200:8
 #SBATCH --cpus-per-task=64
 #SBATCH --time=08:00:00
-#SBATCH --signal=SIGUSR1@120
+#SBATCH --signal=B:SIGUSR1@120
 
 source ~/.zshrc && conda activate distillation
 
@@ -382,7 +382,7 @@ With a `ds_config.json`:
 #SBATCH --gpus-per-node=8
 #SBATCH --cpus-per-task=64
 #SBATCH --time=24:00:00
-#SBATCH --signal=SIGUSR1@120
+#SBATCH --signal=B:SIGUSR1@120
 
 source ~/.zshrc && conda activate distillation
 

@@ -16,7 +16,7 @@ class SLURMSignalCallback(TrainerCallback):
     Handle SLURM signals for graceful job termination.
 
     SLURM sends SIGUSR1 before the job time limit is reached (configured with
-    --signal=SIGUSR1@120 for 2 minutes before), giving us time to save state.
+    --signal=B:SIGUSR1@120 for 2 minutes before), giving us time to save state.
     This callback catches the signal and triggers checkpoint saving.
 
     Critical for handling 8-hour job limits on Explorer HPC cluster.
@@ -288,8 +288,7 @@ class TranslationMetricsCallback(TrainerCallback):
         return control
 
     def _generate_translations(self, model, sources):
-        """
-        Generate translations for source texts.
+        """Generate translations for source texts.
 
         Args:
             model: Model to use for generation
@@ -298,9 +297,10 @@ class TranslationMetricsCallback(TrainerCallback):
         Returns:
             List of translated texts
         """
+        from src.inference import InferenceEngine
+
         model.eval()
-        device = next(model.parameters()).device
-        predictions = []
+        engine = InferenceEngine.from_model(model, tokenizer=self.tokenizer)
 
         # Language names for prompt
         lang_names = {
@@ -312,68 +312,23 @@ class TranslationMetricsCallback(TrainerCallback):
 
         system_message = f"You are a professional translator. Translate the provided text from {source_lang_name} to {target_lang_name}, remaining true to the source text. Do not add any additional commentary or conversational elements to your response."
 
-        for i in range(0, len(sources), self.batch_size):
-            batch_sources = sources[i:i + self.batch_size]
+        # Format prompts with chat template
+        if hasattr(self.tokenizer, 'chat_template') and self.tokenizer.chat_template:
+            prompts = []
+            for source in sources:
+                messages = [
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": source}
+                ]
+                prompts.append(self.tokenizer.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=True
+                ))
+        else:
+            prompts = [f"{system_message}\n\n{source}\n\n" for source in sources]
 
-            # Format with chat template if available
-            if hasattr(self.tokenizer, 'chat_template') and self.tokenizer.chat_template:
-                prompts = []
-                for source in batch_sources:
-                    messages = [
-                        {"role": "system", "content": system_message},
-                        {"role": "user", "content": source}
-                    ]
-                    prompt = self.tokenizer.apply_chat_template(
-                        messages,
-                        tokenize=False,
-                        add_generation_prompt=True
-                    )
-                    prompts.append(prompt)
-            else:
-                prompts = [f"{system_message}\n\n{source}\n\n" for source in batch_sources]
-
-            # Tokenize
-            inputs = self.tokenizer(
-                prompts,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=256
-            ).to(device)
-
-            # Generate
-            with torch.no_grad():
-                outputs = model.generate(
-                    **inputs,
-                    max_new_tokens=self.max_new_tokens,
-                    do_sample=False,
-                    pad_token_id=self.tokenizer.pad_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id,
-                )
-
-            # Decode and extract translation
-            for output in outputs:
-                full_text = self.tokenizer.decode(output, skip_special_tokens=False)
-
-                # Extract response after assistant header
-                if "<|end_header_id|>" in full_text:
-                    parts = full_text.split("<|end_header_id|>")
-                    if len(parts) > 3:
-                        translation = parts[3].split("<|eot_id|>")[0].strip()
-                    else:
-                        translation = ""
-                else:
-                    # Fallback: take text after prompt
-                    translation = self.tokenizer.decode(output, skip_special_tokens=True)
-                    # Remove prompt if still present
-                    for prompt in prompts:
-                        if translation.startswith(prompt):
-                            translation = translation[len(prompt):].strip()
-                            break
-
-                predictions.append(translation)
-
-        return predictions
+        return engine.generate(
+            prompts, max_new_tokens=self.max_new_tokens, batch_size=self.batch_size
+        )
 
 
 class PeakMetricsCallback(TrainerCallback):

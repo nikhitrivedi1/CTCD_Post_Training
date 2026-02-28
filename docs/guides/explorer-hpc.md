@@ -173,7 +173,7 @@ SLURM (Simple Linux Utility for Resource Management) is the job scheduler.
 #SBATCH --cpus-per-task=8
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
-#SBATCH --signal=SIGUSR1@120
+#SBATCH --signal=B:SIGUSR1@120
 
 # Print job info
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -385,7 +385,7 @@ batch_size = batch_size // 2
 ```bash
 # Request more time or implement checkpointing
 #SBATCH --time=12:00:00
-#SBATCH --signal=SIGUSR1@120
+#SBATCH --signal=B:SIGUSR1@120
 ```
 
 ### SSH into Running Job

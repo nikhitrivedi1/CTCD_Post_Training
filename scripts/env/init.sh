@@ -1,6 +1,6 @@
 #!/bin/bash
 # One-time setup: install conda hooks so `conda activate distillation`
-# automatically configures PATH, LD_LIBRARY_PATH, and HF_HOME.
+# automatically configures PATH, LD_PRELOAD, and HF_HOME.
 #
 # Run this once after creating the conda environment:
 #   conda env create -f environment.yml
@@ -14,13 +14,13 @@
 
 if [ -z "$CONDA_PREFIX" ]; then
     echo "ERROR: No conda environment active. Run 'conda activate distillation' first." >&2
-    exit 1
+    return 1
 fi
 
 ENV_NAME=$(basename "$CONDA_PREFIX")
 if [ "$ENV_NAME" != "distillation" ]; then
     echo "ERROR: Expected 'distillation' env, got '$ENV_NAME'." >&2
-    exit 1
+    return 1
 fi
 
 ACTIVATE_DIR="$CONDA_PREFIX/etc/conda/activate.d"
@@ -36,7 +36,7 @@ HOOK
 
 cat > "$DEACTIVATE_DIR/distillation.sh" << 'HOOK'
 unset HF_HOME
-unset LD_LIBRARY_PATH
+unset LD_PRELOAD
 HOOK
 
 echo "Conda hooks installed for '$ENV_NAME' environment."
@@ -47,3 +47,17 @@ echo "  $DEACTIVATE_DIR/distillation.sh"
 conda deactivate
 conda activate distillation
 echo "Environment ready."
+
+# GPU-only packages (require CUDA at build time)
+if python -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
+    echo ""
+    echo "CUDA GPU detected — installing GPU-only packages..."
+    pip install ninja                          # Parallel CUDA kernel compilation
+    export MAX_JOBS=$(($(nproc) / 2))          # Use half the cores (avoids OOM)
+    export FLASH_ATTN_CUDA_ARCHS="80;90"          # A100 + H200 (V100/T4 not supported by flash-attn)
+    pip install flash-attn --no-build-isolation
+    echo "GPU packages installed."
+else
+    echo ""
+    echo "NOTE: No CUDA GPU detected. GPU packages (flash-attn) skipped."
+fi
