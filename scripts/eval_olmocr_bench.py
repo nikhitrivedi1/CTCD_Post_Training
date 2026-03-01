@@ -730,6 +730,7 @@ def main():
         errors = 0
 
         pbar = tqdm(total=len(unique_pages), desc="Generating", unit="pg", initial=already_done)
+        first_generate = True
         for pdf_rel, page_num in unique_pages:
             md_name = pdf_to_md_name(pdf_rel, page_num)
             md_path = os.path.join(markdowns_dir, md_name)
@@ -751,9 +752,15 @@ def main():
 
             try:
                 image = render_pdf_page(pdf_abs, page_num, dpi=args.dpi)
+                if first_generate:
+                    # Pause tqdm so transformers warnings don't clobber the bar
+                    pbar.clear()
                 results = engine.generate(
                     [(image, OCR_PROMPT)], max_new_tokens=args.max_new_tokens
                 )
+                if first_generate:
+                    first_generate = False
+                    pbar.refresh()
                 markdown = results[0]
 
                 tmp_path = md_path + ".tmp"
