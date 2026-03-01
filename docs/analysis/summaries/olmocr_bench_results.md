@@ -6,10 +6,14 @@ Evaluation on [olmOCR-Bench](https://huggingface.co/datasets/allenai/olmOCR-benc
 
 | Model | Role | Size | Base VLM | Source |
 |-------|------|------|----------|--------|
-| olmOCR-2-7B-1025-FP8 | Baseline | 7B (FP8) | Qwen2.5-VL-7B | `allenai/olmOCR-2-7B-1025-FP8` |
-| Nanonets-OCR2-3B | Baseline | 3B | Qwen2.5-VL-3B (likely) | `Nanonets/Nanonets-OCR-2-3B` |
-| ablations_00 (CE-only) | Fine-tuned (CE loss only) | 2B | Qwen3-VL-2B | Fine-tuned, 5K samples (of 260K) |
+| Qwen2.5-VL-3B-Instruct | Base model | 3B | Qwen2.5-VL-3B | `Qwen/Qwen2.5-VL-3B-Instruct` |
+| Nanonets-OCR2-3B | Fine-tuned | 3B | Qwen2.5-VL-3B | `Nanonets/Nanonets-OCR-2-3B` |
+| Qwen2.5-VL-7B-Instruct | Base model | 7B | Qwen2.5-VL-7B | `Qwen/Qwen2.5-VL-7B-Instruct` |
+| olmOCR-2-7B-1025-FP8 | Fine-tuned | 7B (FP8) | Qwen2.5-VL-7B | `allenai/olmOCR-2-7B-1025-FP8` |
 | Qwen3-VL-2B-Instruct | Base model (pre-fine-tune) | 2B | Qwen3-VL-2B | `Qwen/Qwen3-VL-2B-Instruct` |
+| ablations_00 (CE-only) | Fine-tuned (CE loss only) | 2B | Qwen3-VL-2B | Fine-tuned, 5K samples (of 260K) |
+| Qwen3-VL-4B-Instruct | Base model | 4B | Qwen3-VL-4B | `Qwen/Qwen3-VL-4B-Instruct` |
+| Qwen3-VL-8B-Instruct | Base model | 8B | Qwen3-VL-8B | `Qwen/Qwen3-VL-8B-Instruct` |
 
 ## ablations_00 Fine-Tuning Config
 
@@ -48,18 +52,18 @@ Scoring uses `olmocr.bench.tests` from the [olmocr](https://github.com/allenai/o
 
 ## Results by Category
 
-| Category | Tests | olmOCR-7B | Nanonets-3B | ablations_00 | Qwen3-VL-2B (base) |
-|----------|:-----:|:---------:|:-----------:|:------------:|:--------------------:|
-| arxiv_math | 2,927 | 0.0% | 0.0% | 0.0% | 0.0% |
-| headers_footers | 760 | **92.6%** | 21.3% | 79.6% | 46.3% |
-| long_tiny_text | 442 | **69.7%** | 65.6% | 59.3% | 49.5% |
-| multi_column | 884 | **82.6%** | 80.2% | 76.4% | 70.1% |
-| old_scans | 526 | **48.1%** | 38.0% | 39.2% | 38.0% |
-| old_scans_math | 458 | 0.0% | 0.0% | 0.0% | 0.0% |
-| table_tests | 1,022 | **83.5%** | 82.5% | 72.2% | 61.5% |
-| **Aggregate (all)** | 7,019 | **40.6%** | 31.4% | 35.4% | 28.8% |
-| **Per-JSONL Average (all)** | 7 | **53.8%** | 41.1% | 46.7% | 37.9% |
-| **Per-JSONL Average (non-math)** | 5 | **75.3%** | 57.5% | 65.3% | 53.1% |
+| Category | Tests | Qwen2.5-VL-3B | Nanonets-3B | Qwen2.5-VL-7B | olmOCR-7B | Qwen3-VL-2B | ablations_00 | Qwen3-VL-4B | Qwen3-VL-8B |
+|----------|:-----:|:-------------:|:-----------:|:-------------:|:---------:|:-----------:|:------------:|:-----------:|:-----------:|
+| arxiv_math | 2,927 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
+| headers_footers | 760 | 65.5% | 21.3% | 52.9% | **92.6%** | 46.3% | 79.6% | 37.5% | 39.5% |
+| long_tiny_text | 442 | 46.8% | 65.6% | 65.8% | **69.7%** | 49.5% | 59.3% | 52.7% | 59.3% |
+| multi_column | 884 | 62.9% | 80.2% | 75.5% | **82.6%** | 70.1% | 76.4% | 74.5% | 78.6% |
+| old_scans | 526 | 35.6% | 38.0% | 44.9% | **48.1%** | 38.0% | 39.2% | 38.6% | 45.2% |
+| old_scans_math | 458 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
+| table_tests | 1,022 | 69.7% | 82.5% | 77.1% | **83.5%** | 61.5% | 72.2% | 80.5% | 80.0% |
+| **Aggregate (all)** | 7,019 | 30.8% | 31.4% | 34.0% | **40.6%** | 28.8% | 35.4% | 31.4% | 33.0% |
+| **Per-JSONL Average (all)** | 7 | 40.1% | 41.1% | 45.2% | **53.8%** | 37.9% | 46.7% | 40.5% | 43.2% |
+| **Per-JSONL Average (non-math)** | 5 | 56.1% | 57.5% | 63.2% | **75.3%** | 53.1% | 65.3% | 56.8% | 60.5% |
 
 ## Per-Category Analysis
 
@@ -74,6 +78,56 @@ Scoring uses `olmocr.bench.tests` from the [olmocr](https://github.com/allenai/o
 **long_tiny_text (69.7% olmOCR vs 49.5% base):** `present` tests checking exact text extraction from small-font or long passages. Larger model + OCR-specific training helps. ablations_00 (59.3%) improved +9.8pp over base.
 
 **old_scans (48.1% olmOCR vs 38.0% base):** Mixed test types on degraded/noisy scans. Low scores across the board. OCR-specific training provides the biggest advantage here.
+
+## Scaling Analysis
+
+Per-category scaling reveals that different capabilities respond differently to model size and architecture.
+
+### Per-category scaling by architecture
+
+| Category | Q2.5-VL 3B→7B | Delta | Q3-VL 2B→4B→8B | 2B→4B | 4B→8B |
+|----------|:------------:|:-----:|:--------------:|:-----:|:-----:|
+| headers_footers | 65.5%→52.9% | **-12.6pp** | 46.3%→37.5%→39.5% | **-8.8pp** | +2.0pp |
+| long_tiny_text | 46.8%→65.8% | +19.0pp | 49.5%→52.7%→59.3% | +3.2pp | +6.6pp |
+| multi_column | 62.9%→75.5% | +12.6pp | 70.1%→74.5%→78.6% | +4.4pp | +4.1pp |
+| old_scans | 35.6%→44.9% | +9.3pp | 38.0%→38.6%→45.2% | +0.6pp | **+6.6pp** |
+| table_tests | 69.7%→77.1% | +7.4pp | 61.5%→80.5%→80.0% | **+19.0pp** | -0.5pp |
+| **Non-math avg** | 56.1%→63.2% | +7.1pp | 53.1%→56.8%→60.5% | +3.7pp | +3.7pp |
+
+### Key patterns
+
+**Inverse scaling on headers_footers.** Both architecture families show the same pattern: larger base models score *worse*. These are `absent` tests, so passing means NOT including header/footer text. Larger models extract more thoroughly, capturing metadata that the benchmark penalizes. Q3-VL drops from 46.3% (2B) to 37.5% (4B), then partially recovers to 39.5% (8B) but never reaches 2B levels. Fine-tuning reverses this completely (olmOCR-7B: 92.6%, ablations_00: 79.6%). This category measures a learned convention, not raw capability.
+
+**table_tests saturates at 4B.** 80.5% at 4B, 80.0% at 8B - essentially flat. The Qwen3-VL architecture reaches near-olmOCR (83.5%) table understanding at 4B without any fine-tuning. Additional parameters don't help, suggesting the remaining gap requires task-specific training rather than scale.
+
+**old_scans has delayed scaling.** Near-zero gain from 2B→4B (+0.6pp), then a large jump from 4B→8B (+6.6pp). Degraded document understanding appears to need a threshold amount of capacity before it kicks in. At 8B (45.2%), Q3-VL finally approaches Q2.5-VL-7B levels (44.9%).
+
+**long_tiny_text also shows delayed scaling.** Only +3.2pp from 2B→4B, then +6.6pp from 4B→8B. At 59.3%, the 8B matches ablations_00's score exactly, achieving through scale what fine-tuning achieved through 5K training samples.
+
+**Linear non-math average scaling.** Q3-VL gains exactly +3.7pp per step (2B→4B and 4B→8B), reaching 60.5%. Still below Q2.5-VL-7B (63.2%) despite having more params. ablations_00 (2B, 65.3%) beats Q3-VL-8B by 4.8pp, showing that 5K training samples on the smallest model outperforms 4x the params untrained.
+
+**Qwen3-VL-2B has better baseline reading order.** 70.1% multi_column vs Q2.5-VL-3B's 62.9% despite fewer params. The newer architecture handles spatial/column layout better out of the box. This scales steadily to 78.6% at 8B.
+
+## Extraction-Only Comparison (excluding headers_footers)
+
+headers_footers measures a convention (strip metadata), not extraction capability. It inverse-scales with size and is trivially learnable from data. Excluding it reveals the true extraction picture:
+
+| Model | long_tiny | multi_col | old_scans | table | 4-cat avg |
+|-------|:---------:|:---------:|:---------:|:-----:|:---------:|
+| Qwen2.5-VL-3B | 46.8% | 62.9% | 35.6% | 69.7% | 53.8% |
+| Nanonets-3B | 65.6% | 80.2% | 38.0% | 82.5% | **66.6%** |
+| Qwen2.5-VL-7B | 65.8% | 75.5% | 44.9% | 77.1% | 65.8% |
+| olmOCR-7B | 69.7% | 82.6% | 48.1% | 83.5% | **71.0%** |
+| Qwen3-VL-2B | 49.5% | 70.1% | 38.0% | 61.5% | 54.8% |
+| ablations_00 | 59.3% | 76.4% | 39.2% | 72.2% | 61.8% |
+| Qwen3-VL-4B | 52.7% | 74.5% | 38.6% | 80.5% | 61.6% |
+| Qwen3-VL-8B | 59.3% | 78.6% | 45.2% | 80.0% | **65.8%** |
+
+**Q3-VL-8B (65.8%) exactly ties Q2.5-VL-7B (65.8%)** on pure extraction. The 2.7pp gap in non-math average (60.5% vs 63.2%) comes entirely from headers_footers convention differences. The two architectures have equivalent raw document understanding at comparable scale.
+
+**Nanonets (66.6%) beats every untrained model** including Q3-VL-8B and Q2.5-VL-7B. Its non-math average (57.5%) is misleading because it's dragged down by a design choice (verbatim extraction), not a deficiency.
+
+**ablations_00 (61.8%) roughly matches Q3-VL-4B (61.6%)** on extraction. Most of its non-math average advantage (+8.5pp over 4B) comes from the headers_footers convention it learned. The actual extraction capability boost from 5K CE training is +7.0pp over base (54.8% to 61.8%).
 
 ## Gap Analysis: CE-only Recovery vs KD Opportunity
 
@@ -103,6 +157,24 @@ How much of the base-to-olmOCR gap did CE-only fine-tuning close, and how much r
 
 Overall, CE-only recovered 55% of the base-to-7B gap. The remaining 10pp is the target for KD.
 
+### Two components of the gap
+
+The 10pp gap between ablations_00 and olmOCR has two distinct components:
+
+1. **Convention gap (~3pp from headers_footers)** - headers_footers contributes 13.0pp/5 = 2.6pp to the non-math avg gap. Learnable from data, CE handles this well (72% recovery already)
+2. **Extraction gap (~7pp from 4 content categories)** - the remaining 7.4pp across long_tiny_text, multi_column, old_scans, table_tests. Harder, this is where KD should help most
+
+### KD targets by category
+
+| Category | CE-only | Realistic KD target | Rationale |
+|----------|:-------:|:-------------------:|-----------|
+| old_scans | 39.2% | 42-44% | Strongest KD case. CE gave +1.2pp, soft labels should transfer degraded-image representations |
+| table_tests | 72.2% | 76-78% | Structured output benefits from distribution-level guidance |
+| long_tiny_text | 59.3% | 61-63% | Fine-grained text recognition, diminishing returns |
+| multi_column | 76.4% | 77-78% | Already high, small margin |
+| headers_footers | 79.6% | 82-85% | Convention mostly learned, slight refinement |
+| **Non-math avg** | **65.3%** | **68-70%** | +3-5pp over CE-only |
+
 ## Experimental Axes
 
 Four axes define the comparison space:
@@ -110,7 +182,7 @@ Four axes define the comparison space:
 | Axis | Values | Coverage |
 |------|--------|----------|
 | **1. Base VLM** | Qwen2.5-VL, Qwen3-VL | Architecture generation |
-| **2. Param count** | 2B, 3B, 7B | Model capacity |
+| **2. Param count** | 2B, 3B, 4B, 7B, 8B | Model capacity |
 | **3. Dataset size** | 0, 5K, full (~260K) | Data scaling |
 | **4. Training method** | None, CE (SFT), CE + KD | Distillation signal |
 
@@ -118,23 +190,24 @@ Four axes define the comparison space:
 
 | Experiment | Base | Params | Data | Method | Non-math Avg |
 |------------|------|:------:|:----:|--------|:------------:|
+| Qwen2.5-VL-3B (base) | Qwen2.5-VL | 3B | 0 | None | 56.1% |
+| Nanonets-3B | Qwen2.5-VL | 3B | ? | CE | 57.5%\* |
+| Qwen2.5-VL-7B (base) | Qwen2.5-VL | 7B | 0 | None | 63.2% |
+| olmOCR-7B | Qwen2.5-VL | 7B | full | CE + RL | 75.3% |
 | Qwen3-VL-2B (base) | Qwen3-VL | 2B | 0 | None | 53.1% |
 | ablations_00 | Qwen3-VL | 2B | 5K | CE | 65.3% |
-| Qwen2.5-VL-3B (base) | Qwen2.5-VL | 3B | 0 | None | *pending* |
-| Nanonets-3B | Qwen2.5-VL | 3B | ? | CE | 57.5%\* |
-| Qwen2.5-VL-7B (base) | Qwen2.5-VL | 7B | 0 | None | *pending* |
-| olmOCR-7B | Qwen2.5-VL | 7B | full | CE + RL | 75.3% |
+| Qwen3-VL-4B (base) | Qwen3-VL | 4B | 0 | None | 56.8% |
+| Qwen3-VL-8B (base) | Qwen3-VL | 8B | 0 | None | 60.5% |
 
 \* Nanonets non-math average is deflated by headers_footers (21.3%) due to different design goal (verbatim extraction).
 
-### What the pending baselines will isolate
+### What the baselines isolate
 
-Once Qwen2.5-VL-3B and 7B base results come in:
-
-- **Base VLM effect** (axis 1): Qwen3-VL-2B base vs Qwen2.5-VL-3B base. Is Qwen3-VL's 2B competitive with Qwen2.5-VL's 3B despite fewer params?
-- **Param count effect** (axis 2): Qwen2.5-VL-3B base vs Qwen2.5-VL-7B base. How much does 3B→7B gain without any OCR training?
-- **Training effect** (axis 4): Qwen2.5-VL-7B base vs olmOCR-7B. How much of olmOCR's score comes from the base VLM vs OCR-specific training?
-- **Nanonets decomposition**: Qwen2.5-VL-3B base vs Nanonets-3B. Nanonets' training gain, isolated from the base model.
+- **Base VLM effect** (axis 1): Qwen3-VL-2B (53.1%) vs Qwen2.5-VL-3B (56.1%). The older 3B beats the newer 2B by 3.0pp — architecture upgrade doesn't fully compensate for fewer params. Similarly, Qwen3-VL-4B (56.8%) barely edges Qwen2.5-VL-3B (56.1%) despite 33% more params.
+- **Param count effect** (axis 2): Qwen2.5-VL-3B (56.1%) vs Qwen2.5-VL-7B (63.2%). 3B→7B gains +7.1pp from scale alone. Within Qwen3-VL: 2B (53.1%) → 4B (56.8%) → 8B (60.5%), linear +3.7pp per step.
+- **Training effect** (axis 4): Qwen2.5-VL-7B base (63.2%) vs olmOCR-7B (75.3%). OCR-specific training adds +12.1pp on top of the base.
+- **Nanonets decomposition**: Qwen2.5-VL-3B base (56.1%) vs Nanonets-3B (57.5%). Only +1.4pp, but deflated by headers_footers design choice.
+- **CE fine-tuning vs scale**: ablations_00 (2B, 5K CE, 65.3%) beats Qwen3-VL-8B base (60.5%) by +4.8pp and Qwen2.5-VL-7B base (63.2%) by +2.1pp. 5K samples of task-specific training on the smallest model outperforms untrained models with 4x the params. At Q3-VL's linear scaling rate (+3.7pp per doubling), matching 65.3% untrained would need 12.2pp/3.7pp = 3.3 doublings from 2B, or ~20B parameters. **5K training samples on 2B replaces roughly 10x the parameters.**
 
 ### Planned experiments
 
@@ -156,6 +229,12 @@ Once Qwen2.5-VL-3B and 7B base results come in:
 
 5. **Base VLM lineage**: olmOCR-7B and Nanonets-3B are both built on Qwen2.5-VL. Our ablations_00 uses the newer Qwen3-VL-2B, making cross-architecture comparison informative.
 
+6. **headers_footers distorts non-math average**: Excluding it, Q3-VL-8B (65.8%) exactly ties Q2.5-VL-7B (65.8%) on pure extraction. Nanonets (66.6%) beats every untrained model. ablations_00's advantage over Q3-VL-4B shrinks from +8.5pp to +0.2pp. See extraction-only comparison above.
+
+7. **Parameter efficiency**: 5K training samples on Q3-VL-2B replaces ~10x the parameters. At Q3-VL's +3.7pp/doubling scaling rate, matching ablations_00 (65.3%) without training would require ~20B params.
+
+8. **Category difficulty tiers**: multi_column and table_tests are approachable (78-84% at scale), long_tiny_text is medium difficulty (59-70%), old_scans is hard (45-48% even for the best models).
+
 ## References
 
 - [olmOCR GitHub](https://github.com/allenai/olmocr) - toolkit, scoring code, benchmark definitions
@@ -167,5 +246,4 @@ Once Qwen2.5-VL-3B and 7B base results come in:
 ## Next Steps
 
 - Run KD-trained model (with distillation loss from olmOCR-7B) and compare against ablations_00 (CE-only)
-- Benchmark Qwen2.5-VL-3B and Qwen2.5-VL-7B as additional baselines (in progress, 4 shards each)
-- Add Qwen2.5-VL results to this document once scoring completes
+- Update gap analysis with new baselines
