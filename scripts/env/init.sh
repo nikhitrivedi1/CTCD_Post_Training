@@ -47,14 +47,3 @@ echo "  $DEACTIVATE_DIR/distillation.sh"
 conda deactivate
 conda activate distillation
 echo "Environment ready."
-
-# GPU-only packages (require CUDA at build time)
-if python -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
-    echo ""
-    echo "CUDA GPU detected — installing GPU-only packages..."
-    pip install ninja                          # Parallel CUDA kernel compilation
-    echo "GPU packages installed."
-else
-    echo ""
-    echo "NOTE: No CUDA GPU detected. GPU packages skipped."
-fi
