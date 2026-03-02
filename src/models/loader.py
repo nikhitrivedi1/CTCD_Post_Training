@@ -24,16 +24,12 @@ def _detect_attn_implementation(eager_attention: bool, device: str):
         device: Device string.
 
     Returns:
-        "eager", "flash_attention_2", or None (let transformers choose).
+        "eager", "sdpa", or None (let transformers choose).
     """
     if eager_attention:
         return "eager"
     if device == "cuda":
-        try:
-            import flash_attn  # noqa: F401
-            return "flash_attention_2"
-        except ImportError:
-            pass
+        return "sdpa"
     return None
 
 

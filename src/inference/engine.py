@@ -1,10 +1,10 @@
-"""Unified inference engine with auto flash attention.
+"""Unified inference engine with SDPA attention.
 
 Centralizes model loading and text generation across tasks (OCR, translation).
-Auto-enables flash attention when available for faster inference.
+Uses PyTorch SDPA on CUDA for optimal attention performance.
 
 Usage:
-    # Load for inference (auto flash attention)
+    # Load for inference (auto SDPA on CUDA)
     engine = InferenceEngine.load(model_id="allenai/olmOCR-2-7B-1025-FP8", model_type="vlm")
 
     # Wrap existing model (e.g., from training callback)
@@ -31,21 +31,19 @@ def _is_cuda(device):
     return str(device).startswith("cuda")
 
 
-def _detect_flash_attn():
-    """Check if flash-attn is installed.
+def _detect_attn_impl():
+    """Select best attention implementation for inference.
 
     Returns:
-        "flash_attention_2" if available, None otherwise (lets transformers choose).
+        "sdpa" on CUDA, None otherwise (lets transformers choose).
     """
-    try:
-        import flash_attn  # noqa: F401
-        return "flash_attention_2"
-    except ImportError:
-        return None
+    if torch.cuda.is_available():
+        return "sdpa"
+    return None
 
 
 class InferenceEngine:
-    """Unified inference engine with auto flash attention.
+    """Unified inference engine with auto SDPA attention.
 
     Supports two model types:
     - "vlm": Vision-Language Models (Qwen2-VL, olmOCR) — image + text → text
@@ -72,7 +70,7 @@ class InferenceEngine:
              device="cuda"):
         """Load a model for inference with optimal attention settings.
 
-        Auto-enables flash attention when available. Supports LoRA checkpoint
+        Uses SDPA on CUDA for best performance. Supports LoRA checkpoint
         loading (merges adapter into base model).
 
         Args:
@@ -179,13 +177,13 @@ class InferenceEngine:
 
     @classmethod
     def _load_hf_vlm(cls, model_id, checkpoint_path, device):
-        """Load HF VLM with auto flash attention and optional LoRA merge."""
+        """Load HF VLM with auto SDPA and optional LoRA merge."""
         from transformers import AutoModelForImageTextToText, AutoProcessor
         from peft import PeftModel
 
         is_cuda = _is_cuda(device)
         dtype = torch.bfloat16 if is_cuda else (torch.float16 if device == "mps" else torch.float32)
-        attn_impl = _detect_flash_attn() if is_cuda else None
+        attn_impl = _detect_attn_impl() if is_cuda else None
 
         load_kwargs = {"torch_dtype": dtype}
         if is_cuda:
@@ -239,12 +237,12 @@ class InferenceEngine:
 
     @classmethod
     def _load_hf_causal(cls, model_id, checkpoint_path, device):
-        """Load HF causal LM with auto flash attention."""
+        """Load HF causal LM with auto SDPA."""
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
         is_cuda = _is_cuda(device)
         dtype = torch.float16 if (is_cuda or device == "mps") else torch.float32
-        attn_impl = _detect_flash_attn() if is_cuda else None
+        attn_impl = _detect_attn_impl() if is_cuda else None
 
         load_kwargs = {"torch_dtype": dtype}
         if is_cuda:

@@ -53,11 +53,8 @@ if python -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
     echo ""
     echo "CUDA GPU detected — installing GPU-only packages..."
     pip install ninja                          # Parallel CUDA kernel compilation
-    export MAX_JOBS=$(($(nproc) / 2))          # Use half the cores (avoids OOM)
-    export FLASH_ATTN_CUDA_ARCHS="80;90"          # A100 + H200 (V100/T4 not supported by flash-attn)
-    pip install flash-attn --no-build-isolation
     echo "GPU packages installed."
 else
     echo ""
-    echo "NOTE: No CUDA GPU detected. GPU packages (flash-attn) skipped."
+    echo "NOTE: No CUDA GPU detected. GPU packages skipped."
 fi
