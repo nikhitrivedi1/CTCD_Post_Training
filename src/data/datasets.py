@@ -207,7 +207,14 @@ def load_europarl(
 {{source_text}}"""
 
     def format_translation(example):
-        """Format with chat template (if available) or simple prompt."""
+        """Format with chat template (if available) or simple prompt.
+
+        Applies prompt masking: labels are set to -100 for all tokens before
+        the assistant's response (system prompt, source text, chat template
+        boilerplate). Only the target translation tokens contribute to the
+        CE loss. Note: KL distillation loss operates on all logit positions
+        regardless of label masking — this fix scopes the task loss only.
+        """
         source_text = example["translation"][source_lang]
         target_text = example["translation"][target_lang]
 
@@ -224,11 +231,26 @@ def load_europarl(
                 tokenize=False,
                 add_generation_prompt=False
             )
+
+            # Also format the prompt-only portion (without target text) to find
+            # where the assistant's content begins in the token sequence.
+            # add_generation_prompt=True appends the assistant header so the
+            # boundary sits right before the target translation tokens.
+            prompt_messages = [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": source_text},
+            ]
+            prompt_text = tokenizer.apply_chat_template(
+                prompt_messages,
+                tokenize=False,
+                add_generation_prompt=True
+            )
         else:
             # Fallback to simple prompt for models without chat template
-            formatted_text = prompt_template.format(
+            prompt_text = prompt_template.format(
                 source_text=source_text
-            ) + "\n" + target_text
+            ) + "\n"
+            formatted_text = prompt_text + target_text
 
         # Tokenize without padding (DataCollator will handle padding dynamically)
         model_inputs = tokenizer(
@@ -238,9 +260,35 @@ def load_europarl(
             return_tensors=None
         )
 
-        # For causal LM, labels are same as input_ids (model predicts next token)
-        # DataCollatorForSeq2Seq will automatically mask padding with -100
-        model_inputs["labels"] = model_inputs["input_ids"].copy()
+        # Tokenize the prompt portion so we can find its boundary in the full
+        # sequence. We take the length of the longest common prefix between
+        # prompt_ids and input_ids so that only tokens we are certain belong
+        # to the prompt are masked.
+        # This handles BPE prefix inconsistency in both directions:
+        # over-tokenization (prompt_ids longer) and under-tokenization
+        # (prompt_ids shorter due to cross-boundary merges).
+        prompt_ids = tokenizer(
+            prompt_text,
+            max_length=max_length,
+            truncation=True,
+            return_tensors=None,
+        )["input_ids"]
+        input_ids = model_inputs["input_ids"]
+        max_prefix = min(len(prompt_ids), len(input_ids))
+        prompt_len = 0
+        for i in range(max_prefix):
+            if prompt_ids[i] == input_ids[i]:
+                prompt_len += 1
+            else:
+                break
+
+        # Create labels with prompt masking:
+        # - tokens 0..prompt_len-1 → -100 (system prompt, source text, headers)
+        # - tokens prompt_len..end → input_ids (target translation + EOS)
+        # DataCollatorForSeq2Seq will additionally mask padding with -100
+        labels = input_ids.copy()
+        labels[:prompt_len] = [-100] * prompt_len
+        model_inputs["labels"] = labels
 
         return model_inputs
 
