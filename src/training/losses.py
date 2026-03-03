@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from functools import partial
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
@@ -13,11 +14,13 @@ def compute_kl_divergence(
     teacher: torch.Tensor,
     temperature: float,
     input_is_probs: bool = False,
+    reverse: bool = False
 ) -> torch.Tensor:
     """
     Compute KL divergence with temperature scaling (Hinton 2015).
 
-    KL(teacher || student) - student learns to match teacher.
+    When reverse=False (default): KL(teacher || student) — student learns to match teacher (Hinton et al. 2015).
+    When reverse=True: KL(student || teacher) — reverse KL for mode-seeking behavior (Gu et al., MiniLLM, ICLR 2024).
 
     Args:
         student: Student logits or probabilities
@@ -25,6 +28,7 @@ def compute_kl_divergence(
         temperature: Temperature for softening distributions
         input_is_probs: If True, inputs are probabilities (e.g., attention weights)
                        and need log conversion before temperature scaling
+        reverse: If True, compute reverse KL(student || teacher) instead of KL(teacher || student).
 
     Returns:
         KL divergence scaled by T² to maintain gradient magnitude
@@ -32,21 +36,23 @@ def compute_kl_divergence(
     # Compute in fp32 to avoid underflow with high temperature (e.g., T=15)
     # fp16 softmax(logits/T) can underflow when T is large
     original_dtype = student.dtype
-    student = student.float()
-    teacher = teacher.float()
+
+    if reverse:
+        input, target = teacher.float(), student.float()
+    else:
+        input, target = student.float(), teacher.float()
 
     if input_is_probs:
         # Convert probabilities to logits first
         eps = 1e-10
-        student = torch.log(student + eps)
-        teacher = torch.log(teacher + eps)
+        input = torch.log(input + eps)
+        target = torch.log(target + eps)
 
-    student_log = F.log_softmax(student / temperature, dim=-1)
-    teacher_soft = F.softmax(teacher / temperature, dim=-1)
-
+    input_log = F.log_softmax(input / temperature, dim=-1)
+    target_soft = F.softmax(target / temperature, dim=-1)
     kl = F.kl_div(
-        student_log,
-        teacher_soft,
+        input_log,
+        target_soft,
         reduction='batchmean'
     ) * (temperature ** 2)
 
@@ -121,13 +127,14 @@ class KLDistillationLoss(DistillationLossStrategy):
     from teacher to student by matching softened probability distributions.
     """
 
-    def __init__(self, temperature: float = 2.0, alpha: float = 0.5):
+    def __init__(self, temperature: float = 2.0, alpha: float = 0.5, reverse: bool = False):
         self.temperature = temperature
         self.alpha = alpha
+        self.reverse = reverse
 
     @property
     def name(self) -> str:
-        return "response_kl"
+        return "response_reverse-kl" if self.reverse else "response_kl"
 
     def compute(
         self,
@@ -141,7 +148,7 @@ class KLDistillationLoss(DistillationLossStrategy):
     ) -> LossOutput:
         # Always compute KL divergence for monitoring (even when alpha=0)
         kl_raw = compute_kl_divergence(
-            student_logits, teacher_logits, self.temperature, input_is_probs=False
+            student_logits, teacher_logits, self.temperature, input_is_probs=False, reverse=self.reverse
         )
 
         # Weighted contributions
@@ -151,14 +158,18 @@ class KLDistillationLoss(DistillationLossStrategy):
         # Combined loss
         total_loss = ce_weighted + kl_weighted
 
+        # Use distinct component names for reverse KL so logs/W&B distinguish forward vs reverse runs
+        raw_key = "reverse-kl_raw" if self.reverse else "kl_raw"
+        weighted_key = "reverse-kl_weighted" if self.reverse else "kl_weighted"
+
         return LossOutput(
             total_loss=total_loss,
             components={
                 "ce_weighted": ce_weighted,
-                "kl_weighted": kl_weighted,
+                weighted_key: kl_weighted,
                 "alpha": torch.tensor(self.alpha),
                 "ce_raw": ce_loss,
-                "kl_raw": kl_raw,
+                raw_key: kl_raw,
             }
         )
 
@@ -173,8 +184,7 @@ class MSEDistillationLoss(DistillationLossStrategy):
     raw logits. Can be more stable in some cases.
     """
 
-    def __init__(self, alpha: float = 0.5, normalize: bool = True, **kwargs):
-        # kwargs captures unused parameters like temperature for compatibility
+    def __init__(self, alpha: float = 0.5, normalize: bool = True):
         self.alpha = alpha
         self.normalize = normalize
 
@@ -227,8 +237,7 @@ class CosineDistillationLoss(DistillationLossStrategy):
     their magnitude. Useful when scale differences are problematic.
     """
 
-    def __init__(self, alpha: float = 0.5, **kwargs):
-        # kwargs captures unused parameters like temperature for compatibility
+    def __init__(self, alpha: float = 0.5):
         self.alpha = alpha
 
     @property
@@ -411,7 +420,6 @@ class FeatureLossStrategy(DistillationLossStrategy):
         layer_mapping: Optional[List[Tuple[int, int]]] = None,
         projector: Optional[Any] = None,
         normalize: bool = True,
-        **kwargs,
     ):
         """
         Initialize feature distillation loss.
@@ -421,7 +429,6 @@ class FeatureLossStrategy(DistillationLossStrategy):
             layer_mapping: List of (teacher_idx, student_idx) pairs
             projector: Optional projection module for dimension alignment
             normalize: Whether to normalize hidden states before comparison
-            **kwargs: Unused, for compatibility
         """
         self.alpha = alpha
         self.layer_mapping = layer_mapping or []
@@ -524,7 +531,6 @@ class CosineFeatureLoss(DistillationLossStrategy):
         alpha: float = 0.5,
         layer_mapping: Optional[List[Tuple[int, int]]] = None,
         projector: Optional[Any] = None,
-        **kwargs,
     ):
         self.alpha = alpha
         self.layer_mapping = layer_mapping or []
@@ -615,7 +621,6 @@ class AttentionLossStrategy(DistillationLossStrategy):
         alpha: float = 0.5,
         layer_mapping: Optional[List[Tuple[int, int]]] = None,
         temperature: float = 1.0,
-        **kwargs,
     ):
         """
         Initialize attention distillation loss.
@@ -624,7 +629,6 @@ class AttentionLossStrategy(DistillationLossStrategy):
             alpha: Weight for distillation loss vs CE loss
             layer_mapping: List of (teacher_idx, student_idx) pairs
             temperature: Temperature for softening attention distributions
-            **kwargs: Unused, for compatibility
         """
         self.alpha = alpha
         self.layer_mapping = layer_mapping or []
@@ -725,7 +729,6 @@ class StagedDistillationLoss(DistillationLossStrategy):
         stages: List[Dict[str, Any]],
         alpha: float = 0.5,
         temperature: float = 2.0,
-        **kwargs,
     ):
         """
         Initialize staged distillation loss.
@@ -736,7 +739,6 @@ class StagedDistillationLoss(DistillationLossStrategy):
                 - until_progress: float 0-1, training progress threshold
             alpha: Default alpha for strategies that need it
             temperature: Default temperature for strategies that need it
-            **kwargs: Additional args passed to sub-strategies
         """
         self.stages = []
         self.alpha = alpha
@@ -757,7 +759,6 @@ class StagedDistillationLoss(DistillationLossStrategy):
                     strategy_name,
                     alpha=stage_alpha,
                     temperature=stage_temp,
-                    **kwargs,
                 )
             else:
                 strategy = strategy_name  # Already an instance
@@ -836,6 +837,7 @@ class StagedDistillationLoss(DistillationLossStrategy):
 LOSS_REGISTRY = {
     # Response-based (output logits)
     "response_kl": KLDistillationLoss,
+    "response_reverse-kl": partial(KLDistillationLoss, reverse=True),
     "response_mse": MSEDistillationLoss,
     "response_cosine": CosineDistillationLoss,
     "response_ce": SoftTargetDistillationLoss,
@@ -875,4 +877,29 @@ def get_loss_strategy(name: str, **kwargs) -> DistillationLossStrategy:
     """
     if name not in LOSS_REGISTRY:
         raise ValueError(f"Unknown loss strategy: {name}. Available: {list(LOSS_REGISTRY.keys())}")
-    return LOSS_REGISTRY[name](**kwargs)
+
+    cls = LOSS_REGISTRY[name]
+
+    # Filter kwargs to only what each strategy accepts.
+    # Strategies that don't use temperature (MSE, cosine, feature) should not
+    # receive it. Update this mapping when extending strategy constructors.
+    ACCEPTED_PARAMS = {
+        KLDistillationLoss: {"temperature", "alpha", "reverse"},
+        MSEDistillationLoss: {"alpha", "normalize"},
+        CosineDistillationLoss: {"alpha"},
+        SoftTargetDistillationLoss: {"temperature", "alpha"},
+        FeatureLossStrategy: {"alpha", "layer_mapping", "projector", "normalize"},
+        CosineFeatureLoss: {"alpha", "layer_mapping", "projector"},
+        AttentionLossStrategy: {"alpha", "layer_mapping", "temperature"},
+        StagedDistillationLoss: {"stages", "alpha", "temperature"},
+    }
+
+    # For partials (e.g., reverse-kl), unwrap to find the base class
+    lookup_cls = getattr(cls, "func", cls)
+    accepted = ACCEPTED_PARAMS.get(lookup_cls)
+
+    if accepted is not None:
+        filtered = {k: v for k, v in kwargs.items() if k in accepted}
+        return cls(**filtered)
+
+    return cls(**kwargs)
