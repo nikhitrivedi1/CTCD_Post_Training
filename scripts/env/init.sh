@@ -23,11 +23,22 @@ if [ "$ENV_NAME" != "forge" ]; then
     return 1
 fi
 
+# Resolve script directory (works in both bash and zsh)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Install pip deps from lockfile (--no-deps since versions are pre-resolved by uv)
+REQUIREMENTS="$REPO_DIR/requirements.txt"
+if [ -f "$REQUIREMENTS" ]; then
+    echo "Installing pip dependencies from lockfile..."
+    pip install --no-deps -r "$REQUIREMENTS"
+fi
+
 ACTIVATE_DIR="$CONDA_PREFIX/etc/conda/activate.d"
 DEACTIVATE_DIR="$CONDA_PREFIX/etc/conda/deactivate.d"
 mkdir -p "$ACTIVATE_DIR" "$DEACTIVATE_DIR"
 
-ACTIVATE_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/activate.sh"
+ACTIVATE_SH="$SCRIPT_DIR/activate.sh"
 
 cat > "$ACTIVATE_DIR/forge.sh" << HOOK
 # Installed by scripts/env/init.sh — delegates to activate.sh

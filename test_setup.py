@@ -44,6 +44,19 @@ def check_pytorch_gpu() -> Tuple[bool, str]:
         return False, f"✗ PyTorch GPU check failed: {str(e)}"
 
 
+def check_qwen35_support() -> Tuple[bool, str]:
+    """Check if transformers supports Qwen3.5 architecture natively"""
+    try:
+        from transformers import AutoConfig
+
+        cfg = AutoConfig.from_pretrained("Qwen/Qwen3.5-0.8B", trust_remote_code=False)
+        return True, f"✓ Qwen3.5 (model_type={cfg.model_type})"
+    except KeyError:
+        return False, "✗ Qwen3.5: model_type not recognized (need transformers>=5.2.0)"
+    except Exception as e:
+        return False, f"✗ Qwen3.5: {str(e)}"
+
+
 def check_framework_imports() -> Tuple[bool, str]:
     """Test custom framework imports"""
     try:
@@ -76,7 +89,11 @@ def main():
         ("WandB", check_import("wandb")),
         ("PyYAML", check_import("yaml", "PyYAML")),
         ("NumPy", check_import("numpy")),
+        ("olmocr", check_import("olmocr")),
+        ("SacreBLEU", check_import("sacrebleu")),
+        ("Scikit-learn", check_import("sklearn", "scikit-learn")),
         ("PyTorch GPU", check_pytorch_gpu()),
+        ("Qwen3.5 Support", check_qwen35_support()),
         ("Framework Modules", check_framework_imports()),
     ]
 
@@ -99,9 +116,7 @@ def main():
         return 0
     else:
         print("✗ Some checks failed. Please install missing dependencies:")
-        print("  uv pip install -e .")
-        print("  or")
-        print("  pip install -r requirements.txt")
+        print("  pip install --no-deps -r requirements.txt")
         return 1
 
 
