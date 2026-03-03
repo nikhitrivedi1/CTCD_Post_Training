@@ -335,6 +335,6 @@ The student barely improves (+5.4% F1) despite having a 90.93% teacher. The over
 
 ## Data Sources
 
-- W&B Project: `karthik-ravi-1537-personal/Knowledge Distillation`
+- W&B Project: `karthik-ravi-1537-personal/Forge-Default`
 - Raw data: [classification_ablations_2026-02-07.json](../../analysis/data/classification_ablations_2026-02-07.json)
 - Analysis: [classification_ablations.md](../../analysis/summaries/classification_ablations.md)

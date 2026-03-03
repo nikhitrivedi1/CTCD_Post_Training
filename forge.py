@@ -454,7 +454,7 @@ def delete_wandb_run(run_id: str, project: str = None) -> bool:
     try:
         import wandb
         api = wandb.Api()
-        project = project or os.environ.get("WANDB_PROJECT", "Knowledge Distillation")
+        project = project or os.environ.get("WANDB_PROJECT", "Forge-Default")
         entity = os.environ.get("WANDB_ENTITY") or api.default_entity
         run_path = f"{entity}/{project}/{run_id}"
         run = api.run(run_path)
@@ -685,7 +685,7 @@ def _train(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Knowledge Distillation Training")
+    parser = argparse.ArgumentParser(description="Forge Training")
     parser.add_argument("--config", type=str, default=None,
                         help="Path to config file (required for new runs, ignored for resume)")
     parser.add_argument("--run_name", type=str, default=None,
@@ -915,7 +915,7 @@ def main():
     add_incomplete_job(run_name, output_dir)
 
     # Setup W&B
-    wandb_project = "Test" if args.debug else "Knowledge Distillation"
+    wandb_project = "Test" if args.debug else "Forge-Default"
     os.environ.setdefault("WANDB_PROJECT", wandb_project)
     os.environ["WANDB_RUN_ID"] = wandb_run_id
     if is_resume:

@@ -170,7 +170,7 @@ Output: this_is_a_very_long_name_exceeding_64_characters_significantl (64 chars)
 
 | Variable | Value | Purpose |
 |----------|-------|---------|
-| `WANDB_PROJECT` | `Knowledge Distillation` | Project name |
+| `WANDB_PROJECT` | `Forge-Default` | Project name |
 | `WANDB_RUN_ID` | `{wandb_run_id}` | Run identifier (≤64 chars) |
 | `WANDB_RESUME` | `allow` | Enable run resumption |
 

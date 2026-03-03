@@ -1,17 +1,18 @@
 [project]
-name = "knowledge-distillation"
+name = "forge"
 version = "1.0.0"
-description = "Universal knowledge distillation framework for compressing neural networks"
+description = "Config-driven framework for fine-tuning, knowledge distillation, and reinforcement learning"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
-    { name = "Knowledge Distillation Team" }
+    { name = "Forge Team" }
 ]
 keywords = [
+    "fine-tuning",
     "knowledge-distillation",
+    "reinforcement-learning",
     "model-compression",
-    "neural-networks",
     "transformers",
     "deep-learning",
 ]
@@ -28,13 +29,13 @@ classifiers = [
 # Dependencies managed via Conda (see environment.yml)
 
 [project.urls]
-Homepage = "https://github.com/YOUR_ORG/knowledge-distillation"
-Documentation = "https://github.com/YOUR_ORG/knowledge-distillation/blob/main/README.md"
-Repository = "https://github.com/YOUR_ORG/knowledge-distillation"
-Issues = "https://github.com/YOUR_ORG/knowledge-distillation/issues"
+Homepage = "https://github.com/NU-Deep-Learning/Forge"
+Documentation = "https://github.com/NU-Deep-Learning/Forge/blob/main/README.md"
+Repository = "https://github.com/NU-Deep-Learning/Forge"
+Issues = "https://github.com/NU-Deep-Learning/Forge/issues"
 
 [project.scripts]
-distill = "train:main"
+forge = "forge:main"
 
 [build-system]
 requires = ["hatchling"]

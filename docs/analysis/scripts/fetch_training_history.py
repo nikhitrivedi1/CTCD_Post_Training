@@ -7,6 +7,7 @@ Usage:
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -107,7 +108,7 @@ def main():
     )
     parser.add_argument(
         "--project",
-        default="Knowledge Distillation",
+        default=os.environ.get("WANDB_PROJECT", "Forge-Default"),
         help="W&B project name",
     )
     parser.add_argument(

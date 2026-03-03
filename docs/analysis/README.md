@@ -21,7 +21,7 @@ analysis/
 ### 1. Fetch Data from W&B
 
 ```bash
-python docs/analysis/scripts/fetch_wandb.py --project "Knowledge Distillation" --output docs/analysis/data/
+python docs/analysis/scripts/fetch_wandb.py --output docs/analysis/data/
 ```
 
 ### 2. Analyze in Notebooks
@@ -66,5 +66,5 @@ Export key findings to `summaries/` as markdown for paper integration.
 
 | Project | Entity | Description |
 |---------|--------|-------------|
-| Knowledge Distillation | karthik-ravi-1537-personal | Main experiments |
+| Forge-Default | karthik-ravi-1537-personal | Main experiments |
 | Test | karthik-ravi-1537-personal | Debug/test runs |

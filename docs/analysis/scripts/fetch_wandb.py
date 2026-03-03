@@ -2,12 +2,13 @@
 """Fetch experiment data from Weights & Biases.
 
 Usage:
-    python fetch_wandb.py --project "Knowledge Distillation" --output ../data/
-    python fetch_wandb.py --project "Knowledge Distillation" --tags ablation --output ../data/
+    python fetch_wandb.py --output ../data/
+    python fetch_wandb.py --tags ablation --output ../data/
 """
 
 import argparse
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -173,8 +174,8 @@ def main():
     )
     parser.add_argument(
         "--project",
-        default="Knowledge Distillation",
-        help="W&B project name",
+        default=os.environ.get("WANDB_PROJECT", "Forge-Default"),
+        help="W&B project name (default: WANDB_PROJECT env var or Forge-Default)",
     )
     parser.add_argument(
         "--tags",
