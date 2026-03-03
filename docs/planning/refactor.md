@@ -355,10 +355,56 @@ loop needs online generation (GRPO/PPO → RLTrainer) or stays supervised
 3. Write results to `outputs/.../run/eval/{hook_name}/`
 4. Update existing eval scripts to accept `--checkpoint` uniformly
 
-### Phase 5: Cleanup
-1. Rename `distill.py` → `train.py` (or keep for backward compat)
-2. Update README, docs
-3. Archive old flat outputs (leave as-is, won't match new convention)
+### Phase 5: Repo Split + Cleanup
+
+#### Repo Structure
+Two repos under [github.com/NU-Deep-Learning](https://github.com/NU-Deep-Learning):
+- **Forge** (public) — code, configs, scripts, public docs
+- **Forge-Docs** (private) — analysis, results, paper drafts, research notes
+
+Forge-Docs is a git submodule mounted at `docs/internal/`. Contributors with
+access to both repos get everything with a single clone:
+```bash
+git clone --recurse-submodules git@github.com:NU-Deep-Learning/Forge.git
+```
+Those without Forge-Docs access still clone Forge fine — `docs/internal/` is
+just an empty directory.
+
+#### Directory Layout (post-split)
+```
+Forge/
+  forge.py                    # entry point
+  src/
+  configs/
+  scripts/
+  docs/
+    README.md                 # public docs index
+    guides/                   # config params, metrics, run options, HPC
+    architecture/             # architecture docs
+    foundations/              # tasks-models-datasets, transformer architectures
+    planning/                 # refactor plan, roadmap
+    internal/                 # ← git submodule → Forge-Docs
+      analysis/               #   ablation data, summaries, scripts
+      paper/                  #   paper drafts
+      research/               #   research framing, findings, references
+      archive/                #   old docs
+      wip_docs/               #   work in progress
+```
+
+#### Steps
+1. Create `Forge` repo on GitHub, push current code
+2. Create `Forge-Docs` repo on GitHub (private)
+3. Move internal docs: `analysis/`, `paper/`, `research/`, `archive/`, `wip_docs/`,
+   `references/` into Forge-Docs
+4. Add Forge-Docs as submodule at `docs/internal/`
+   ```bash
+   git submodule add git@github.com:NU-Deep-Learning/Forge-Docs.git docs/internal
+   ```
+5. Add `docs/internal` to `.gitignore` fallback (so Forge works without the submodule)
+6. Rename entry point: `distill.py` → `forge.py`
+7. Update README, import paths, SLURM scripts
+8. Archive old flat outputs (leave as-is, won't match new convention)
+9. Update internal doc cross-references (`docs/analysis/` → `docs/internal/analysis/`, etc.)
 
 ## Phase 6: RL Integration
 
@@ -451,3 +497,5 @@ What needs a new trainer class (extends trl.GRPOTrainer):
 - Existing W&B runs keep their old group/tag structure
 - New runs use new naming — won't mix with old runs in W&B groups
 - All SLURM scripts need config path updates
+- Internal doc references (in code comments, CLAUDE.md, memory files) need `docs/X` → `docs/internal/X` updates
+- Forge-Docs submodule requires `--recurse-submodules` on clone (or `git submodule update --init` after)

@@ -46,9 +46,10 @@ Each test in olmOCR-Bench checks one of 4 test types against the model's markdow
 
 Scoring uses `olmocr.bench.tests` from the [olmocr](https://github.com/allenai/olmocr) library. Each test returns pass/fail with an explanation.
 
-**Two aggregate metrics:**
+**Three aggregate metrics:**
 - **Aggregate**: total passes / total tests (7,019). Penalized heavily by the 2 math categories (3,385 tests, all 0%).
-- **Per-JSONL Average**: average of per-category pass rates. Each category weighted equally regardless of test count.
+- **Per-JSONL Average (non-math)**: average of 5 non-math category pass rates. Fairer than Aggregate since all models score 0% on math (format mismatch).
+- **Extraction Avg. (w/o H/F)**: average of 4 extraction categories (long_tiny_text, multi_column, old_scans, table_tests), excluding headers_footers which measures a convention (strip metadata) rather than extraction capability.
 
 ## Results by Category
 
@@ -64,6 +65,7 @@ Scoring uses `olmocr.bench.tests` from the [olmocr](https://github.com/allenai/o
 | **Aggregate (all)** | 7,019 | 30.8% | 31.4% | 34.0% | **40.6%** | 28.8% | 35.4% | 31.4% | 33.0% |
 | **Per-JSONL Average (all)** | 7 | 40.1% | 41.1% | 45.2% | **53.8%** | 37.9% | 46.7% | 40.5% | 43.2% |
 | **Per-JSONL Average (non-math)** | 5 | 56.1% | 57.5% | 63.2% | **75.3%** | 53.1% | 65.3% | 56.8% | 60.5% |
+| **Extraction Avg. (w/o H/F)** | 4 | 53.8% | **66.6%** | 65.8% | **71.0%** | 54.8% | 61.8% | 61.6% | 65.8% |
 
 ## Per-Category Analysis
 
@@ -93,6 +95,7 @@ Per-category scaling reveals that different capabilities respond differently to 
 | old_scans | 35.6%→44.9% | +9.3pp | 38.0%→38.6%→45.2% | +0.6pp | **+6.6pp** |
 | table_tests | 69.7%→77.1% | +7.4pp | 61.5%→80.5%→80.0% | **+19.0pp** | -0.5pp |
 | **Non-math avg** | 56.1%→63.2% | +7.1pp | 53.1%→56.8%→60.5% | +3.7pp | +3.7pp |
+| **Extraction Avg.** | 53.8%→65.8% | +12.0pp | 54.8%→61.6%→65.8% | +6.8pp | +4.2pp |
 
 ### Key patterns
 
@@ -108,26 +111,17 @@ Per-category scaling reveals that different capabilities respond differently to 
 
 **Qwen3-VL-2B has better baseline reading order.** 70.1% multi_column vs Q2.5-VL-3B's 62.9% despite fewer params. The newer architecture handles spatial/column layout better out of the box. This scales steadily to 78.6% at 8B.
 
-## Extraction-Only Comparison (excluding headers_footers)
+## Extraction Avg. Analysis
 
-headers_footers measures a convention (strip metadata), not extraction capability. It inverse-scales with size and is trivially learnable from data. Excluding it reveals the true extraction picture:
-
-| Model | long_tiny | multi_col | old_scans | table | 4-cat avg |
-|-------|:---------:|:---------:|:---------:|:-----:|:---------:|
-| Qwen2.5-VL-3B | 46.8% | 62.9% | 35.6% | 69.7% | 53.8% |
-| Nanonets-3B | 65.6% | 80.2% | 38.0% | 82.5% | **66.6%** |
-| Qwen2.5-VL-7B | 65.8% | 75.5% | 44.9% | 77.1% | 65.8% |
-| olmOCR-7B | 69.7% | 82.6% | 48.1% | 83.5% | **71.0%** |
-| Qwen3-VL-2B | 49.5% | 70.1% | 38.0% | 61.5% | 54.8% |
-| ablations_00 | 59.3% | 76.4% | 39.2% | 72.2% | 61.8% |
-| Qwen3-VL-4B | 52.7% | 74.5% | 38.6% | 80.5% | 61.6% |
-| Qwen3-VL-8B | 59.3% | 78.6% | 45.2% | 80.0% | **65.8%** |
+The Extraction Avg. (w/o H/F) strips out the headers_footers convention noise and reveals the true extraction picture.
 
 **Q3-VL-8B (65.8%) exactly ties Q2.5-VL-7B (65.8%)** on pure extraction. The 2.7pp gap in non-math average (60.5% vs 63.2%) comes entirely from headers_footers convention differences. The two architectures have equivalent raw document understanding at comparable scale.
 
 **Nanonets (66.6%) beats every untrained model** including Q3-VL-8B and Q2.5-VL-7B. Its non-math average (57.5%) is misleading because it's dragged down by a design choice (verbatim extraction), not a deficiency.
 
 **ablations_00 (61.8%) roughly matches Q3-VL-4B (61.6%)** on extraction. Most of its non-math average advantage (+8.5pp over 4B) comes from the headers_footers convention it learned. The actual extraction capability boost from 5K CE training is +7.0pp over base (54.8% to 61.8%).
+
+**Extraction Avg. scaling is front-loaded for Q3-VL.** +6.8pp from 2B→4B vs +4.2pp from 4B→8B. This is the opposite of the non-math avg pattern (+3.7pp both steps), because headers_footers drags down the non-math average at 4B (37.5%) while extraction categories like table_tests jump sharply (+19.0pp at 4B).
 
 ## Gap Analysis: CE-only Recovery vs KD Opportunity
 
@@ -141,6 +135,7 @@ How much of the base-to-olmOCR gap did CE-only fine-tuning close, and how much r
 | multi_column | 70.1% | 76.4% | 82.6% | +6.3pp | 6.2pp | 50.4% |
 | old_scans | 38.0% | 39.2% | 48.1% | +1.2pp | 8.9pp | 11.9% |
 | **Non-math avg** | 53.1% | 65.3% | 75.3% | +12.2pp | 10.0pp | 55.0% |
+| **Extraction Avg.** | 54.8% | 61.8% | 71.0% | +7.0pp | 9.2pp | 43.2% |
 
 **Recovery** = CE Gain / (olmOCR-7B - Base). How much of the 7B's advantage CE-only training already captured.
 
@@ -174,6 +169,7 @@ The 10pp gap between ablations_00 and olmOCR has two distinct components:
 | multi_column | 76.4% | 77-78% | Already high, small margin |
 | headers_footers | 79.6% | 82-85% | Convention mostly learned, slight refinement |
 | **Non-math avg** | **65.3%** | **68-70%** | +3-5pp over CE-only |
+| **Extraction Avg.** | **61.8%** | **64-66%** | +2-4pp over CE-only |
 
 ## Experimental Axes
 
@@ -188,16 +184,16 @@ Four axes define the comparison space:
 
 ### Current data points
 
-| Experiment | Base | Params | Data | Method | Non-math Avg |
-|------------|------|:------:|:----:|--------|:------------:|
-| Qwen2.5-VL-3B (base) | Qwen2.5-VL | 3B | 0 | None | 56.1% |
-| Nanonets-3B | Qwen2.5-VL | 3B | ? | CE | 57.5%\* |
-| Qwen2.5-VL-7B (base) | Qwen2.5-VL | 7B | 0 | None | 63.2% |
-| olmOCR-7B | Qwen2.5-VL | 7B | full | CE + RL | 75.3% |
-| Qwen3-VL-2B (base) | Qwen3-VL | 2B | 0 | None | 53.1% |
-| ablations_00 | Qwen3-VL | 2B | 5K | CE | 65.3% |
-| Qwen3-VL-4B (base) | Qwen3-VL | 4B | 0 | None | 56.8% |
-| Qwen3-VL-8B (base) | Qwen3-VL | 8B | 0 | None | 60.5% |
+| Experiment | Base | Params | Data | Method | Non-math Avg | Extraction Avg. |
+|------------|------|:------:|:----:|--------|:------------:|:---------------:|
+| Qwen2.5-VL-3B (base) | Qwen2.5-VL | 3B | 0 | None | 56.1% | 53.8% |
+| Nanonets-3B | Qwen2.5-VL | 3B | ? | CE | 57.5%\* | **66.6%** |
+| Qwen2.5-VL-7B (base) | Qwen2.5-VL | 7B | 0 | None | 63.2% | 65.8% |
+| olmOCR-7B | Qwen2.5-VL | 7B | full | CE + RL | 75.3% | **71.0%** |
+| Qwen3-VL-2B (base) | Qwen3-VL | 2B | 0 | None | 53.1% | 54.8% |
+| ablations_00 | Qwen3-VL | 2B | 5K | CE | 65.3% | 61.8% |
+| Qwen3-VL-4B (base) | Qwen3-VL | 4B | 0 | None | 56.8% | 61.6% |
+| Qwen3-VL-8B (base) | Qwen3-VL | 8B | 0 | None | 60.5% | 65.8% |
 
 \* Nanonets non-math average is deflated by headers_footers (21.3%) due to different design goal (verbatim extraction).
 
