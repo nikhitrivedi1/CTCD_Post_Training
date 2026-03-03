@@ -6,7 +6,7 @@ Post-hoc analysis tools and experiments for understanding distillation results.
 
 ```bash
 # Activate environment
-source ~/.zshrc && conda activate distillation
+source ~/.zshrc && conda activate forge
 
 # Linear probing (teacher only)
 python workbench/analyze.py --teacher bert-base-uncased --task mnli --test probe

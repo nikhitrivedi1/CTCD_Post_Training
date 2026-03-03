@@ -100,7 +100,7 @@ module load anaconda3/2024.06
 conda env create -f environment.yml
 
 # Activate the environment
-conda activate distillation
+conda activate forge
 ```
 
 ### Directory Structure
@@ -176,8 +176,8 @@ conda env create -f environment.yml
 conda env create -f environment.yml -n my_env_name
 
 # Activate environment (two equivalent methods)
-conda activate distillation     # Preferred
-source activate distillation    # Works in scripts (more reliable in SLURM)
+conda activate forge             # Preferred
+source activate forge            # Works in scripts (more reliable in SLURM)
 
 # Deactivate current environment
 conda deactivate
@@ -512,7 +512,7 @@ mkdir -p logs outputs
 cd /scratch/$USER/Distillation
 
 # Run training
-python distill.py \
+python forge.py \
     --config "$CONFIG" \
     --output_dir "./outputs/$RUN_NAME" \
     --seed "$SEED"
@@ -583,7 +583,7 @@ srun \
 nvidia-smi                      # Check GPU
 module load cuda/12.1 anaconda3/2024.06
 source activate distillation
-python distill.py --max_steps 100  # Test your code
+python forge.py --max_steps 100  # Test your code
 exit                            # End session (releases resources)
 ```
 
@@ -595,7 +595,7 @@ srun --partition=gpu --gres=gpu:1 nvidia-smi
 
 # Run Python script
 srun --partition=gpu --gres=gpu:1 --time=00:30:00 \
-    python distill.py --config config.yaml --max_steps 100
+    python forge.py --config config.yaml --max_steps 100
 
 # Multiple commands with bash -c
 srun --partition=gpu --gres=gpu:1 \
@@ -1087,7 +1087,7 @@ SEED=$((42 + SLURM_ARRAY_TASK_ID))
 
 echo "Job $SLURM_JOB_ID, Task $SLURM_ARRAY_TASK_ID: LR=$LR, Seed=$SEED"
 
-python distill.py --lr $LR --seed $SEED --output_dir "$OUTPUT_DIR"
+python forge.py --lr $LR --seed $SEED --output_dir "$OUTPUT_DIR"
 ```
 
 ---
@@ -1268,10 +1268,10 @@ module load cuda/12.1 anaconda3/2024.06
 source activate distillation
 
 # Run script manually to see full errors
-python distill.py --config config.yaml
+python forge.py --config config.yaml
 
 # Or use debugger
-python -m pdb distill.py --config config.yaml
+python -m pdb forge.py --config config.yaml
 # Commands: n (next), s (step), c (continue), q (quit), p variable (print)
 
 # Or use IPython for interactive debugging
@@ -1298,7 +1298,7 @@ nvidia-smi --query-gpu=memory.used,memory.total --format=csv -l 1
 
 # Python memory profiling
 pip install memory_profiler
-python -m memory_profiler distill.py
+python -m memory_profiler forge.py
 ```
 
 ---
@@ -1445,7 +1445,7 @@ __pycache__/
 srun --partition=gpu --gres=gpu:1 --time=00:30:00 --pty bash
 
 # Inside interactive session
-python distill.py --config config.yaml --max_steps 100
+python forge.py --config config.yaml --max_steps 100
 # Check for errors, memory usage, output format
 
 # Then submit full job

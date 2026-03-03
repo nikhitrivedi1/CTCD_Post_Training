@@ -1,6 +1,6 @@
 # Run Options & CLI Reference
 
-Complete reference for `distill.py` command-line options and run management.
+Complete reference for `forge.py` command-line options and run management.
 
 ---
 
@@ -21,19 +21,19 @@ Complete reference for `distill.py` command-line options and run management.
 
 ```bash
 # New run (auto-named with timestamp)
-python distill.py --config configs/classification/mnli/.../00.yaml
+python forge.py --config configs/classification/mnli/.../00.yaml
 
 # New run (custom name, no timestamp)
-python distill.py --run_name mnli_00 --config configs/classification/mnli/.../00.yaml
+python forge.py --run_name mnli_00 --config configs/classification/mnli/.../00.yaml
 
 # New run (custom name + timestamp = unique each time)
-python distill.py --run_name mnli_00 --timestamp --config configs/classification/mnli/.../00.yaml
+python forge.py --run_name mnli_00 --timestamp --config configs/classification/mnli/.../00.yaml
 
 # Resume existing
-python distill.py --run_name mnli_00
+python forge.py --run_name mnli_00
 
 # Overwrite existing
-python distill.py --run_name mnli_00 --config configs/... --force
+python forge.py --run_name mnli_00 --config configs/... --force
 ```
 
 ---
@@ -43,7 +43,7 @@ python distill.py --run_name mnli_00 --config configs/... --force
 ### 1. Auto-generated name (no --run_name)
 
 ```bash
-python distill.py --config configs/classification/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+python forge.py --config configs/classification/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
 ```
 
 | Field | Value |
@@ -59,7 +59,7 @@ python distill.py --config configs/classification/mnli/bert_distilbert/ablations
 ### 2. Manual name (CREATE)
 
 ```bash
-python distill.py --run_name mnli_00 --config configs/...
+python forge.py --run_name mnli_00 --config configs/...
 ```
 
 | Field | Value |
@@ -73,7 +73,7 @@ python distill.py --run_name mnli_00 --config configs/...
 ### 3. Manual name (RESUME)
 
 ```bash
-python distill.py --run_name mnli_00
+python forge.py --run_name mnli_00
 ```
 
 | Field | Value |
@@ -93,7 +93,7 @@ Resuming existing run. Use --force to overwrite.
 ### 4. Manual name + --force (OVERWRITE)
 
 ```bash
-python distill.py --run_name mnli_00 --force --config configs/...
+python forge.py --run_name mnli_00 --force --config configs/...
 ```
 
 | Field | Value |
@@ -107,7 +107,7 @@ python distill.py --run_name mnli_00 --force --config configs/...
 ### 5. Manual name + --timestamp (UNIQUE RUN)
 
 ```bash
-python distill.py --run_name mnli_00 --timestamp --config configs/...
+python forge.py --run_name mnli_00 --timestamp --config configs/...
 ```
 
 | Field | Value |
@@ -123,7 +123,7 @@ Each run is unique (timestamp ensures no collision).
 ### 6. Manual name + --timestamp + --force (UNIQUE + OVERWRITE)
 
 ```bash
-python distill.py --run_name mnli_00 --timestamp --force --config configs/...
+python forge.py --run_name mnli_00 --timestamp --force --config configs/...
 ```
 
 | Field | Value |
@@ -188,64 +188,64 @@ Output: this_is_a_very_long_name_exceeding_64_characters_significantl (64 chars)
 
 ### E1: No run_name, no config
 ```bash
-python distill.py
+python forge.py
 ```
 ```
 Error: No --run_name or --config provided.
 
 Usage:
-  New run:    python distill.py --config CONFIG
-  Named run:  python distill.py --run_name NAME --config CONFIG
-  Resume:     python distill.py --run_name EXISTING_RUN
+  New run:    python forge.py --config CONFIG
+  Named run:  python forge.py --run_name NAME --config CONFIG
+  Resume:     python forge.py --run_name EXISTING_RUN
 ```
 
 ### E2: New run_name, no config
 ```bash
-python distill.py --run_name mnli_00
+python forge.py --run_name mnli_00
 ```
 ```
 Error: Run 'mnli_00' does not exist and --config not provided.
 
 Usage:
-  New run:    python distill.py --run_name mnli_00 --config CONFIG
-  Resume:     python distill.py --run_name EXISTING_RUN
-  Overwrite:  python distill.py --run_name NAME --config CONFIG --force
+  New run:    python forge.py --run_name mnli_00 --config CONFIG
+  Resume:     python forge.py --run_name EXISTING_RUN
+  Overwrite:  python forge.py --run_name NAME --config CONFIG --force
 ```
 
 ### E3: --force without config
 ```bash
-python distill.py --run_name mnli_00 --force   # when run exists
+python forge.py --run_name mnli_00 --force   # when run exists
 ```
 ```
 Error: --config is required for new runs.
 
 Usage:
-  python distill.py --run_name NAME --config CONFIG [--force]
+  python forge.py --run_name NAME --config CONFIG [--force]
 ```
 
 ### E4: Resume with --config provided
 ```bash
-python distill.py --run_name mnli_00 --config configs/...   # when run exists
+python forge.py --run_name mnli_00 --config configs/...   # when run exists
 ```
 ```
 Error: --config cannot be used when resuming.
 The stored config at ./outputs/mnli_00/config.yaml will be used.
 
 Usage:
-  Resume:     python distill.py --run_name mnli_00
-  Overwrite:  python distill.py --run_name mnli_00 --config CONFIG --force
+  Resume:     python forge.py --run_name mnli_00
+  Overwrite:  python forge.py --run_name mnli_00 --config CONFIG --force
 ```
 
 ### E5: Corrupted run (missing config.yaml)
 ```bash
-python distill.py --run_name mnli_00   # run dir exists but no config.yaml
+python forge.py --run_name mnli_00   # run dir exists but no config.yaml
 ```
 ```
 Error: No stored config found at ./outputs/mnli_00/config.yaml
 The run directory exists but appears corrupted.
 
 Options:
-  Delete and restart:  python distill.py --run_name mnli_00 --config CONFIG --force
+  Delete and restart:  python forge.py --run_name mnli_00 --config CONFIG --force
   Or manually delete:  rm -rf ./outputs/mnli_00
 ```
 
@@ -255,8 +255,8 @@ Options:
 
 | Command | Warning |
 |---------|---------|
-| `python distill.py --force --config ...` | --force without --run_name is redundant |
-| `python distill.py --timestamp --config ...` | --timestamp without --run_name is redundant |
+| `python forge.py --force --config ...` | --force without --run_name is redundant |
+| `python forge.py --timestamp --config ...` | --timestamp without --run_name is redundant |
 
 ---
 
@@ -313,9 +313,9 @@ job_key = os.environ.get("SLURM_JOB_ID") or f"local_{os.getpid()}"
 ### Mode 1: Direct Local Run
 
 ```bash
-python distill.py --config configs/.../config.yaml
-python distill.py --run_name my_run --config configs/.../config.yaml
-python distill.py --run_name my_run --timestamp --config configs/.../config.yaml
+python forge.py --config configs/.../config.yaml
+python forge.py --run_name my_run --config configs/.../config.yaml
+python forge.py --run_name my_run --timestamp --config configs/.../config.yaml
 ```
 
 | Event | Action |
@@ -329,7 +329,7 @@ python distill.py --run_name my_run --timestamp --config configs/.../config.yaml
 ### Mode 2: Direct Local Resume
 
 ```bash
-python distill.py --run_name existing_run_20260201-1200Z
+python forge.py --run_name existing_run_20260201-1200Z
 ```
 
 | Event | Action |
@@ -342,7 +342,7 @@ python distill.py --run_name existing_run_20260201-1200Z
 ### Mode 3: srun (Interactive SLURM)
 
 ```bash
-srun --gres=gpu:1 python distill.py --run_name my_run --config ...
+srun --gres=gpu:1 python forge.py --run_name my_run --config ...
 ```
 
 | Event | Action |

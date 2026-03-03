@@ -1,10 +1,10 @@
 #!/bin/bash
-# One-time setup: install conda hooks so `conda activate distillation`
+# One-time setup: install conda hooks so `conda activate forge`
 # automatically configures PATH, LD_PRELOAD, and HF_HOME.
 #
 # Run this once after creating the conda environment:
 #   conda env create -f environment.yml
-#   conda activate distillation
+#   conda activate forge
 #   source scripts/env/init.sh
 #
 # What it does:
@@ -13,13 +13,13 @@
 #   These hooks are local to your conda env and not shared via git.
 
 if [ -z "$CONDA_PREFIX" ]; then
-    echo "ERROR: No conda environment active. Run 'conda activate distillation' first." >&2
+    echo "ERROR: No conda environment active. Run 'conda activate forge' first." >&2
     return 1
 fi
 
 ENV_NAME=$(basename "$CONDA_PREFIX")
-if [ "$ENV_NAME" != "distillation" ]; then
-    echo "ERROR: Expected 'distillation' env, got '$ENV_NAME'." >&2
+if [ "$ENV_NAME" != "forge" ]; then
+    echo "ERROR: Expected 'forge' env, got '$ENV_NAME'." >&2
     return 1
 fi
 
@@ -29,21 +29,21 @@ mkdir -p "$ACTIVATE_DIR" "$DEACTIVATE_DIR"
 
 ACTIVATE_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/activate.sh"
 
-cat > "$ACTIVATE_DIR/distillation.sh" << HOOK
+cat > "$ACTIVATE_DIR/forge.sh" << HOOK
 # Installed by scripts/env/init.sh — delegates to activate.sh
 source "$ACTIVATE_SH"
 HOOK
 
-cat > "$DEACTIVATE_DIR/distillation.sh" << 'HOOK'
+cat > "$DEACTIVATE_DIR/forge.sh" << 'HOOK'
 unset HF_HOME
 unset LD_PRELOAD
 HOOK
 
 echo "Conda hooks installed for '$ENV_NAME' environment."
-echo "  $ACTIVATE_DIR/distillation.sh"
-echo "  $DEACTIVATE_DIR/distillation.sh"
+echo "  $ACTIVATE_DIR/forge.sh"
+echo "  $DEACTIVATE_DIR/forge.sh"
 
 # Re-activate to apply hooks immediately
 conda deactivate
-conda activate distillation
+conda activate forge
 echo "Environment ready."

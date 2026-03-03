@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=distillation
+#SBATCH --job-name=forge
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:h200:1
 #SBATCH --time=08:00:00
@@ -9,7 +9,7 @@
 #SBATCH --error=logs/%j.err
 #SBATCH --signal=B:SIGUSR1@120
 
-# SLURM script for knowledge distillation on Explorer HPC
+# SLURM script for training on Explorer HPC
 # Handles job time limits by automatically resubmitting incomplete jobs
 #
 # Auto-resubmission: When training is incomplete after 8 hours, the script
@@ -51,7 +51,7 @@
 #   ssh login.explorer.northeastern.edu
 #   module load anaconda3/2024.06
 #   conda env create -f environment.yml
-#   conda activate distillation
+#   conda activate forge
 
 set -e  # Exit on error
 
@@ -180,9 +180,9 @@ if [ -n "$RUN_NAME" ]; then
     # (TIMESTAMP creates a new dir, so always needs --config)
     if [ -d "$OUTPUT_DIR" ] && [ -z "$FORCE" ] && [ -z "$TIMESTAMP" ]; then
         # Resume existing run (no --config needed)
-        CMD="python distill.py --run_name \"$RUN_NAME\" $ARGS"
+        CMD="python forge.py --run_name \"$RUN_NAME\" $ARGS"
         echo "CMD: $CMD"
-        python distill.py --run_name "$RUN_NAME" $ARGS || EXIT_CODE=$?
+        python forge.py --run_name "$RUN_NAME" $ARGS || EXIT_CODE=$?
     else
         # Create new run (--config required)
         if [ -z "$CONFIG" ]; then
@@ -190,15 +190,15 @@ if [ -n "$RUN_NAME" ]; then
             echo "Usage: sbatch scripts/run_training.sh $RUN_NAME <config.yaml>"
             exit 1
         fi
-        CMD="python distill.py --run_name \"$RUN_NAME\" --config \"$CONFIG\" $ARGS"
+        CMD="python forge.py --run_name \"$RUN_NAME\" --config \"$CONFIG\" $ARGS"
         echo "CMD: $CMD"
-        python distill.py --run_name "$RUN_NAME" --config "$CONFIG" $ARGS || EXIT_CODE=$?
+        python forge.py --run_name "$RUN_NAME" --config "$CONFIG" $ARGS || EXIT_CODE=$?
     fi
 else
     # Auto-named run: always start fresh
-    CMD="python distill.py --config \"$CONFIG\" $ARGS"
+    CMD="python forge.py --config \"$CONFIG\" $ARGS"
     echo "CMD: $CMD"
-    python distill.py --config "$CONFIG" $ARGS || EXIT_CODE=$?
+    python forge.py --config "$CONFIG" $ARGS || EXIT_CODE=$?
 fi
 
 EXIT_CODE=${EXIT_CODE:-0}

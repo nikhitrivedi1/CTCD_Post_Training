@@ -9,14 +9,14 @@ Items identified during code review that need attention.
 ## Fixed (2026-02-03)
 
 ### ~~1. Silent W&B Error Swallowing~~ FIXED
-**File:** [distill.py:770-773](distill.py#L770-L773)
+**File:** [forge.py:770-773](forge.py#L770-L773)
 
 Now catches `ImportError` separately and logs other exceptions with `logger.debug()`.
 
 ---
 
 ### ~~2. Device Placement Bug~~ FIXED
-**File:** [distill.py:283-284](distill.py#L283-L284)
+**File:** [forge.py:283-284](forge.py#L283-L284)
 
 Changed from `.cuda()` to `.to(device)` for cross-platform support (CUDA, MPS, CPU).
 
@@ -30,7 +30,7 @@ Now catches `ImportError` for metrics loading and `(ValueError, RuntimeError)` f
 ---
 
 ### ~~4. Layer Mapping Factory Missing Validation~~ FIXED
-**File:** [distill.py:264-268](distill.py#L264-L268)
+**File:** [forge.py:264-268](forge.py#L264-L268)
 
 Added `mapper.validate()` call before `mapper.map()` with descriptive error message.
 
@@ -53,7 +53,7 @@ Now catches `(ImportError, FileNotFoundError)` instead of broad `Exception`.
 ## Remaining Items
 
 ### 5. Projector Device Handling Incomplete
-**Files:** [distill.py](distill.py), [src/training/losses.py](src/training/losses.py)
+**Files:** [forge.py](forge.py), [src/training/losses.py](src/training/losses.py)
 
 Projector created on GPU but device handling during eval or with different device configs is inconsistent. FeatureLossStrategy.compute() assumes projector and tensors are on same device.
 
@@ -62,7 +62,7 @@ Projector created on GPU but device handling during eval or with different devic
 ---
 
 ### 8. Magic Number: W&B Run ID Truncation
-**File:** [distill.py](distill.py)
+**File:** [forge.py](forge.py)
 
 64-character limit for W&B run names not documented. Add constant with comment explaining HuggingFace's limitation.
 
@@ -94,7 +94,7 @@ Generates full translations at every eval step, which is expensive with large mo
 | Config inheritance tests | Missing | Verify circular reference handling |
 | Dataset loader tests | Missing | Test MNLI/QQP/Europarl loading |
 | Trainer unit tests | Missing | Test `compute_loss`, resume logic |
-| Layer mapping validation | ~~Partial~~ Fixed | Now validated at use time in distill.py |
+| Layer mapping validation | ~~Partial~~ Fixed | Now validated at use time in forge.py |
 
 ---
 

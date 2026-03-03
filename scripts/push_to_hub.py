@@ -240,7 +240,7 @@ def _build_model_card(metadata, repo_id, is_adapter=False):
     Returns:
         Model card string.
     """
-    tags = ["- knowledge-distillation", "- cs-7150"]
+    tags = ["- knowledge-distillation", "- forge"]
     if is_adapter:
         tags.append("- peft")
         tags.append("- lora")
@@ -254,7 +254,7 @@ def _build_model_card(metadata, repo_id, is_adapter=False):
         "",
         f"# {repo_id.split('/')[-1]}",
         "",
-        f"{'LoRA adapter' if is_adapter else 'Model'} produced by knowledge distillation (CS-7150).",
+        f"{'LoRA adapter' if is_adapter else 'Model'} produced by [Forge](https://github.com/NU-Deep-Learning/Forge).",
         "",
     ]
 

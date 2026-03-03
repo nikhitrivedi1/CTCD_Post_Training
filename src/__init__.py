@@ -1,5 +1,5 @@
 """
-Knowledge Distillation Framework
+Forge
 
 A universal, config-driven framework for compressing neural networks
 through knowledge distillation.

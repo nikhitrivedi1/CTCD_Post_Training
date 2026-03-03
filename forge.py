@@ -728,7 +728,7 @@ def main():
                     sys.exit(
                         "\nError: --config is required for new runs.\n\n"
                         "Usage:\n"
-                        "  python distill.py --run_name NAME --config CONFIG [--force]\n"
+                        "  python forge.py --run_name NAME --config CONFIG [--force]\n"
                     )
                 is_resume = False
                 logger.info(f"Starting fresh run: {run_name}")
@@ -743,9 +743,9 @@ def main():
                 sys.exit(
                     f"\nError: Run '{args.run_name}' does not exist and --config not provided.\n\n"
                     f"Usage:\n"
-                    f"  New run:    python distill.py --run_name {args.run_name} --config CONFIG\n"
-                    f"  Resume:     python distill.py --run_name EXISTING_RUN\n"
-                    f"  Overwrite:  python distill.py --run_name NAME --config CONFIG --force\n"
+                    f"  New run:    python forge.py --run_name {args.run_name} --config CONFIG\n"
+                    f"  Resume:     python forge.py --run_name EXISTING_RUN\n"
+                    f"  Overwrite:  python forge.py --run_name NAME --config CONFIG --force\n"
                 )
             is_resume = False
             logger.info(f"Starting new run: {run_name}")
@@ -755,9 +755,9 @@ def main():
             sys.exit(
                 "\nError: No --run_name or --config provided.\n\n"
                 "Usage:\n"
-                "  New run:    python distill.py --config CONFIG\n"
-                "  Named run:  python distill.py --run_name NAME --config CONFIG\n"
-                "  Resume:     python distill.py --run_name EXISTING_RUN\n"
+                "  New run:    python forge.py --config CONFIG\n"
+                "  Named run:  python forge.py --run_name NAME --config CONFIG\n"
+                "  Resume:     python forge.py --run_name EXISTING_RUN\n"
             )
         if args.force:
             logger.warning("--force without --run_name is redundant (auto-generated names are always unique)")
@@ -784,8 +784,8 @@ def main():
                 f"\nError: --config cannot be used when resuming.\n"
                 f"The stored config at {output_dir / 'config.yaml'} will be used.\n\n"
                 f"Usage:\n"
-                f"  Resume:     python distill.py --run_name {run_name}\n"
-                f"  Overwrite:  python distill.py --run_name {run_name} --config CONFIG --force\n"
+                f"  Resume:     python forge.py --run_name {run_name}\n"
+                f"  Overwrite:  python forge.py --run_name {run_name} --config CONFIG --force\n"
             )
         config = load_config_snapshot(output_dir)
         if config is None:
@@ -793,7 +793,7 @@ def main():
                 f"\nError: No stored config found at {output_dir / 'config.yaml'}\n"
                 f"The run directory exists but appears corrupted.\n\n"
                 f"Options:\n"
-                f"  Delete and restart:  python distill.py --run_name {run_name} --config CONFIG --force\n"
+                f"  Delete and restart:  python forge.py --run_name {run_name} --config CONFIG --force\n"
                 f"  Or manually delete:  rm -rf {output_dir}\n"
             )
         logger.info(f"Loaded stored config from: {output_dir / 'config.yaml'}")

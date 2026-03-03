@@ -1,12 +1,12 @@
 # RL Integration: Post-Training with TRL
 
-A planning doc for adding reinforcement learning as a first-class training mode in DistilKit.
+A planning doc for adding reinforcement learning as a first-class training mode in Forge.
 
 ---
 
 ## Background
 
-DistilKit currently supports knowledge distillation (KD) via `DistillationTrainer`. This doc covers expanding the codebase to support RL-based post-training — both standalone and (eventually) combined with KD.
+Forge currently supports knowledge distillation (KD) via `DistillationTrainer`. This doc covers expanding the codebase to support RL-based post-training — both standalone and (eventually) combined with KD.
 
 **Training modes the framework should support:**
 
@@ -236,7 +236,7 @@ Three-layer design:
 └─────────────────────────────────────────────┘
 ```
 
-**Entry point dispatch** in `distill.py`:
+**Entry point dispatch** in `forge.py`:
 
 ```python
 mode = config["training"].get("mode", "kd")

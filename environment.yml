@@ -1,4 +1,4 @@
-name: distillation
+name: forge
 channels:
   - conda-forge
   - defaults

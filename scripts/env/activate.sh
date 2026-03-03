@@ -1,5 +1,5 @@
 #!/bin/bash
-# Environment setup for the distillation project on HPC.
+# Environment setup for the Forge project on HPC.
 #
 # Activates the conda environment and sets all required environment variables.
 # Single entry point for SLURM jobs and interactive (OOD/SSH) sessions.
@@ -16,9 +16,9 @@
 #   HF_HOME          — Redirects HuggingFace cache to /scratch (avoids home quota)
 
 # Activate conda environment if not already active
-if [ -z "$CONDA_PREFIX" ] || [ "$(basename "$CONDA_PREFIX")" != "distillation" ]; then
+if [ -z "$CONDA_PREFIX" ] || [ "$(basename "$CONDA_PREFIX")" != "forge" ]; then
     eval "$(conda shell.bash hook)"
-    conda activate distillation
+    conda activate forge
 fi
 
 # Conda executables before system (git, python, etc.)

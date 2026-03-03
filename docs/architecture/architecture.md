@@ -1,4 +1,4 @@
-# DistilKit Architecture
+# Forge Architecture
 
 Framework for knowledge distillation research across modalities.
 
@@ -70,12 +70,12 @@ See [rl-integration.md](../planning/rl-integration.md) for full design.
 
 ## 2. Module Reference
 
-### 2.1 Entry Point (`distill.py`)
+### 2.1 Entry Point (`forge.py`)
 
 Orchestrates the full pipeline: CLI parsing → config loading → data → models → training → evaluation.
 
 ```
-distill.py
+forge.py
   ├── Parse CLI (--run_name, --config, --seed, --max_steps, --epochs, --force, --timestamp, --debug)
   ├── Load config with inheritance
   ├── Load data (src/data/)
@@ -231,9 +231,9 @@ evaluation:
 ### 4.1 Local
 
 ```bash
-python distill.py --config configs/.../ablation.yaml
-python distill.py --run_name my_run --config configs/.../ablation.yaml
-python distill.py --run_name my_run  # resume
+python forge.py --config configs/.../ablation.yaml
+python forge.py --run_name my_run --config configs/.../ablation.yaml
+python forge.py --run_name my_run  # resume
 ```
 
 ### 4.2 SLURM (Explorer HPC)
@@ -337,7 +337,7 @@ When run outside SLURM (local, interactive), the `slurm_jobs` tracking is simply
 ```bash
 module load cuda/12.1
 module load anaconda3/2024.06
-conda activate distillation
+conda activate forge
 export HF_HOME=/scratch/$USER/.cache/huggingface  # Avoid home dir quota
 ```
 
@@ -471,7 +471,7 @@ Runs any VLM against the olmOCR-Bench benchmark (7,010 tests, 1,403 PDFs). Categ
 ## 9. Project Structure
 
 ```
-distill.py                          # Entry point
+forge.py                          # Entry point
 src/
   data/datasets.py, collators.py    # Data loading
   models/loader.py                  # Model loading

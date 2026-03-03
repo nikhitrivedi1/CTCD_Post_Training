@@ -1,6 +1,6 @@
 # Documentation
 
-Documentation and reference materials for the Knowledge Distillation project.
+Documentation and reference materials for Forge.
 
 ---
 

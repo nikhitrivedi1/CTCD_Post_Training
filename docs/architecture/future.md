@@ -2,7 +2,7 @@
 
 ## Current State
 
-`distill.py` serves as the entry point for knowledge distillation training. It works well for its purpose but is tightly coupled to distillation-specific workflows.
+`forge.py` serves as the entry point for knowledge distillation training. It works well for its purpose but is tightly coupled to distillation-specific workflows.
 
 ## Proposed Restructure
 
@@ -10,14 +10,14 @@
 
 ```
 Current:
-  distill.py → distillation training
+  forge.py → distillation training
 
 Proposed:
-  distill.py → distillation training (renamed from distill.py)
-  distill.py   → general training platform (new)
+  forge.py → distillation training (renamed from forge.py)
+  forge.py   → general training platform (new)
 ```
 
-### New `distill.py` Capabilities
+### New `forge.py` Capabilities
 
 A unified training platform supporting multiple modes:
 
@@ -32,18 +32,18 @@ A unified training platform supporting multiple modes:
 
 ```bash
 # Supervised fine-tuning
-python distill.py --mode sft --model bert-base-uncased --task mnli
+python forge.py --mode sft --model bert-base-uncased --task mnli
 
 # Head-only fine-tuning (post-distillation)
-python distill.py --mode head-only --model outputs/ablation_04/checkpoint --task mnli
+python forge.py --mode head-only --model outputs/ablation_04/checkpoint --task mnli
 
 # Full fine-tuning
-python distill.py --mode full --model distilbert-base-uncased --task mnli
+python forge.py --mode full --model distilbert-base-uncased --task mnli
 ```
 
 ### Shared Infrastructure
 
-Both `distill.py` and `distill.py` would share:
+Both `forge.py` and `forge.py` would share:
 
 - `src/training/base_trainer.py` - Common training loop, logging, checkpointing
 - `src/data/` - Data loading and preprocessing
@@ -54,16 +54,16 @@ Both `distill.py` and `distill.py` would share:
 
 ```
 BaseTrainer
-├── DistillationTrainer (distill.py)
+├── DistillationTrainer (forge.py)
 │   └── Handles teacher-student training, loss computation
-└── StandardTrainer (distill.py)
+└── StandardTrainer (forge.py)
     └── Handles SFT, head-only, full fine-tuning modes
 ```
 
 ## Why Deferred
 
-1. **Scope**: This is a coursework project with limited timeline
-2. **Working System**: Current `distill.py` works well for distillation experiments
+1. **Scope**: Limited timeline for initial development
+2. **Working System**: Current `forge.py` works well for distillation experiments
 3. **Risk**: Refactoring introduces bugs; don't fix what isn't broken
 4. **Workaround**: Quick scripts in `workbench/` suffice for immediate experiments
 
@@ -82,12 +82,12 @@ This avoids architectural changes while enabling the experiment.
 
 ## Future Work
 
-If this project extends beyond coursework:
+Future steps:
 
 1. Extract `BaseTrainer` from `DistillationTrainer`
 2. Implement `StandardTrainer` with mode support
-3. Rename `distill.py` → `distill.py`
-4. Create new `distill.py` using `StandardTrainer`
+3. Rename `forge.py` → `forge.py`
+4. Create new `forge.py` using `StandardTrainer`
 5. Update configs to support both entry points
 
 ---

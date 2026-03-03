@@ -75,7 +75,7 @@ signal.signal(signal.SIGTERM, _handle_sigterm)
 
 
 # ---------------------------------------------------------------------------
-# Incomplete jobs registry (shared .incomplete_jobs file, same as distill.py)
+# Incomplete jobs registry (shared .incomplete_jobs file, same as forge.py)
 # ---------------------------------------------------------------------------
 _INCOMPLETE_JOBS = Path(".incomplete_jobs")
 

@@ -102,20 +102,20 @@ configs/mnli/distilbert/bert-base/ablations/02_frozen_sft.yaml
 
 ### Current
 ```bash
-python distill.py --config configs/classification/mnli/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml
-python distill.py --run_name mnli_ablations_02_frozen_sft-teacher_kl_20260225-1234Z
+python forge.py --config configs/classification/mnli/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml
+python forge.py --run_name mnli_ablations_02_frozen_sft-teacher_kl_20260225-1234Z
 ```
 
 ### New
 ```bash
 # New run: --config is stem relative to configs/
-python train.py --config mnli/distilbert/bert-base/ablations/02_frozen_sft
+python forge.py --config mnli/distilbert/bert-base/ablations/02_frozen_sft
 
 # Named run:
-python train.py --config mnli/distilbert/bert-base/ablations/02_frozen_sft --run_name seed42
+python forge.py --config mnli/distilbert/bert-base/ablations/02_frozen_sft --run_name seed42
 
 # Resume: full path relative to outputs/
-python train.py --resume mnli/distilbert/bert-base/ablations/02_frozen_sft/20260225-1234Z
+python forge.py --resume mnli/distilbert/bert-base/ablations/02_frozen_sft/20260225-1234Z
 ```
 
 ### Resolution Rules
@@ -401,7 +401,7 @@ Forge/
    git submodule add git@github.com:NU-Deep-Learning/Forge-Docs.git docs/internal
    ```
 5. Add `docs/internal` to `.gitignore` fallback (so Forge works without the submodule)
-6. Rename entry point: `distill.py` → `forge.py`
+6. ~~Rename entry point: `distill.py` → `forge.py`~~ (done)
 7. Update README, import paths, SLURM scripts
 8. Archive old flat outputs (leave as-is, won't match new convention)
 9. Update internal doc cross-references (`docs/analysis/` → `docs/internal/analysis/`, etc.)

@@ -74,7 +74,7 @@ module load anaconda3/2024.06
 conda env create -f environment.yml
 
 # Activate the environment
-conda activate distillation
+conda activate forge
 ```
 
 ### Directory Structure
@@ -120,7 +120,7 @@ module purge
 conda env create -f environment.yml
 
 # Activate environment
-conda activate distillation
+conda activate forge
 
 # Update environment from modified yml file
 conda env update -f environment.yml --prune
@@ -192,7 +192,7 @@ CONFIG=${1:-configs/default.yaml}
 RUN_NAME=${2:-slurm_run}
 
 # Run training
-python distill.py \
+python forge.py \
     --config "$CONFIG" \
     --output_dir "./outputs/$RUN_NAME"
 ```
@@ -233,7 +233,7 @@ srun \
 nvidia-smi                      # Check GPU
 module load cuda/12.1 anaconda3/2024.06
 source activate distillation
-python distill.py --max_steps 100  # Test your code
+python forge.py --max_steps 100  # Test your code
 exit                            # End session
 ```
 
@@ -430,7 +430,7 @@ rsync -avz --progress folder/ username@login.explorer.northeastern.edu:/scratch/
 ### 2. Always Test First
 ```bash
 srun --partition=gpu --gres=gpu:1 --time=00:30:00 --pty bash
-python distill.py --config config.yaml --max_steps 100
+python forge.py --config config.yaml --max_steps 100
 # Then submit full job
 sbatch scripts/run_training.sh
 ```

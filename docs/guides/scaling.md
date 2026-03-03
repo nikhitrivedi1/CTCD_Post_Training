@@ -1,4 +1,4 @@
-# Scaling DistilKit: From 1 GPU to 100,000
+# Scaling Forge: From 1 GPU to 100,000
 
 How to scale training from a single GPU debug run to a frontier-scale distributed system — what changes at each level, what stays the same, and why.
 
@@ -14,13 +14,13 @@ How to scale training from a single GPU debug run to a frontier-scale distribute
 6. [Tier 4: Large Cluster](#tier-4-large-cluster)
 7. [Tier 5: Frontier Scale](#tier-5-frontier-scale)
 8. [Cross-Cutting Concerns](#cross-cutting-concerns)
-9. [DistilKit Support Matrix](#distilkit-support-matrix)
+9. [Forge Support Matrix](#forge-support-matrix)
 
 ---
 
 ## Scale Spectrum
 
-| Tier | GPUs | CPUs | Duration | Strategy | DistilKit Support |
+| Tier | GPUs | CPUs | Duration | Strategy | Forge Support |
 |------|------|------|----------|----------|-------------------|
 | **0** Dev/Debug | 1 | 1 | Minutes | Single process | Fully supported |
 | **1** Single GPU | 1 | 8 | Hours | Single process, multi-worker data loading | Fully supported |
@@ -38,7 +38,7 @@ How to scale training from a single GPU debug run to a frontier-scale distribute
 **Resources:** 1 CPU, 1 GPU, minutes
 
 ```bash
-python distill.py --config configs/ocr/olmocr-mix/qwen3vl-2b/ablations/00_no-teacher_ce-only.yaml --debug
+python forge.py --config configs/ocr/olmocr-mix/qwen3vl-2b/ablations/00_no-teacher_ce-only.yaml --debug
 ```
 
 **What's happening:**
@@ -55,10 +55,10 @@ python distill.py --config configs/ocr/olmocr-mix/qwen3vl-2b/ablations/00_no-tea
 **Resources:** 8 CPUs, 1 GPU (H200 140GB), hours
 
 ```bash
-python distill.py --config configs/ocr/olmocr-mix/qwen3vl-2b/ablations/00_no-teacher_ce-only.yaml
+python forge.py --config configs/ocr/olmocr-mix/qwen3vl-2b/ablations/00_no-teacher_ce-only.yaml
 ```
 
-**This is the current DistilKit default.** Everything runs in a single process.
+**This is the current Forge default.** Everything runs in a single process.
 
 ### CPU Utilization
 
@@ -91,7 +91,7 @@ PDF rendering is CPU-bound. The `--workers` flag uses `ProcessPoolExecutor` for 
 
 All of these work within a single GPU:
 
-| Technique | What it does | DistilKit config |
+| Technique | What it does | Forge config |
 |-----------|-------------|-----------------|
 | **LoRA** | Train only ~1% of parameters | `training.use_lora: true` |
 | **BF16** | Half-precision weights and activations | `training.fp16: false` + model loaded in bf16 |
@@ -111,11 +111,11 @@ Total:                    ~25-45 GB of 140 GB
 
 ### Fault Tolerance
 
-DistilKit has built-in SLURM integration for long-running jobs:
+Forge has built-in SLURM integration for long-running jobs:
 
 **Checkpointing:** `save_steps: 500` saves model + optimizer + scheduler state. `save_total_limit: 3` keeps only the 3 most recent.
 
-**SLURM signal handling:** When the job approaches its time limit, SLURM sends SIGUSR1 (configured via `#SBATCH --signal=B:SIGUSR1@120`). DistilKit's `SLURMSignalCallback` catches this and saves a checkpoint before the job is killed.
+**SLURM signal handling:** When the job approaches its time limit, SLURM sends SIGUSR1 (configured via `#SBATCH --signal=B:SIGUSR1@120`). Forge's `SLURMSignalCallback` catches this and saves a checkpoint before the job is killed.
 
 **Auto-resubmission:** `scripts/run_training.sh` reads `training_state.json` after each job. If training isn't complete, it resubmits with `resume_from_checkpoint` pointing to the latest checkpoint. This chains jobs across SLURM's time limits.
 
@@ -133,10 +133,10 @@ Job 3 (8 hrs) → resume from step 9600 → training complete → done
 
 ```bash
 # Instead of:
-python distill.py --config ...
+python forge.py --config ...
 
 # Use:
-torchrun --nproc_per_node=8 distill.py --config ...
+torchrun --nproc_per_node=8 forge.py --config ...
 ```
 
 **Zero code changes.** Here's why:
@@ -236,7 +236,7 @@ Time per step increases slightly due to gradient sync overhead, but steps per ep
 
 Your code must satisfy one rule: **the data collator must not hardcode device placement.** If the collator calls `.to("cuda:0")`, processes on GPUs 1–7 will crash. Return CPU tensors from the collator — Trainer moves them to the correct device.
 
-DistilKit's `VLMDataCollator` already follows this rule (verified: no `.to("cuda")` calls).
+Forge's `VLMDataCollator` already follows this rule (verified: no `.to("cuda")` calls).
 
 ### Checking SLURM Multi-GPU Access
 
@@ -267,7 +267,7 @@ If your QOS limits you to 1 GPU per job, contact the HPC team or your advisor to
 
 ```bash
 #!/bin/bash
-#SBATCH --job-name=distilkit-ddp
+#SBATCH --job-name=forge-ddp
 #SBATCH --partition=gpu
 #SBATCH --qos=multigpu            # Requires multigpu QOS access
 #SBATCH --nodes=1
@@ -277,13 +277,13 @@ If your QOS limits you to 1 GPU per job, contact the HPC team or your advisor to
 #SBATCH --time=08:00:00
 #SBATCH --signal=B:SIGUSR1@120
 
-source ~/.zshrc && conda activate distillation
+source ~/.zshrc && conda activate forge
 
 # Detect number of GPUs allocated by SLURM
 NGPUS=$(nvidia-smi -L | wc -l)
 
 torchrun --nproc_per_node=$NGPUS \
-    distill.py --config configs/ocr/olmocr-mix/qwen3vl-2b/ablations/00_no-teacher_ce-only.yaml
+    forge.py --config configs/ocr/olmocr-mix/qwen3vl-2b/ablations/00_no-teacher_ce-only.yaml
 ```
 
 Note: `--ntasks-per-node=1` because `torchrun` handles process spawning — SLURM just launches the one `torchrun` process.
@@ -302,7 +302,7 @@ torchrun \
     --nproc_per_node=8 \
     --master_addr=$MASTER_ADDR \
     --master_port=29500 \
-    distill.py --config ...
+    forge.py --config ...
 ```
 
 ### What Changes from Tier 2
@@ -346,14 +346,14 @@ DDP replicates the full model on every GPU. If the model doesn't fit on a single
 accelerate launch \
     --config_file fsdp_config.yaml \
     --num_processes 32 \
-    distill.py --config ...
+    forge.py --config ...
 ```
 
 **DeepSpeed ZeRO-2/3:** Similar sharding, config-only change:
 
 ```bash
 torchrun --nproc_per_node=8 --nnodes=4 \
-    distill.py --config ... --deepspeed ds_config.json
+    forge.py --config ... --deepspeed ds_config.json
 ```
 
 With a `ds_config.json`:
@@ -376,7 +376,7 @@ With a `ds_config.json`:
 
 ```bash
 #!/bin/bash
-#SBATCH --job-name=distilkit-multinode
+#SBATCH --job-name=forge-multinode
 #SBATCH --nodes=4
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=8
@@ -384,7 +384,7 @@ With a `ds_config.json`:
 #SBATCH --time=24:00:00
 #SBATCH --signal=B:SIGUSR1@120
 
-source ~/.zshrc && conda activate distillation
+source ~/.zshrc && conda activate forge
 
 # SLURM provides these
 export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n1)
@@ -396,7 +396,7 @@ srun torchrun \
     --nproc_per_node=8 \
     --master_addr=$MASTER_ADDR \
     --master_port=$MASTER_PORT \
-    distill.py --config ...
+    forge.py --config ...
 ```
 
 ### Time Estimates (260K samples, Qwen3-VL-2B + LoRA)
@@ -475,9 +475,9 @@ With 1K GPUs each consuming data, the data pipeline becomes a bottleneck:
 - **WebDataset**: Tar-based format designed for distributed training, sequential reads
 - **Distributed file system**: Lustre, GPFS — parallel reads from shared storage
 
-### DistilKit at This Scale
+### Forge at This Scale
 
-DistilKit's HF Trainer backbone supports FSDP and DeepSpeed out of the box, but you'd need:
+Forge's HF Trainer backbone supports FSDP and DeepSpeed out of the box, but you'd need:
 
 1. **DeepSpeed ZeRO-3 config** for parameter sharding (config file only, no code changes)
 2. **Tensor parallelism** via Megatron-DeepSpeed or HF's `device_map` with manual shard placement
@@ -489,7 +489,7 @@ DistilKit's HF Trainer backbone supports FSDP and DeepSpeed out of the box, but 
 
 **Resources:** 10K–100K GPUs, 100K+ CPUs, months
 
-This is where Google trains Gemini, Meta trains Llama, and Anthropic trains Claude. Included here for conceptual completeness — this is far beyond DistilKit's scope.
+This is where Google trains Gemini, Meta trains Llama, and Anthropic trains Claude. Included here for conceptual completeness — this is far beyond Forge's scope.
 
 ### 3D Parallelism
 
@@ -566,7 +566,7 @@ At this scale, teams typically use specialized frameworks:
 
 Checkpointing serves two purposes: **fault tolerance** (resume after crash) and **model selection** (pick best checkpoint).
 
-**DistilKit config:**
+**Forge config:**
 ```yaml
 checkpointing:
   save_steps: 500        # Save every 500 optimizer steps
@@ -593,8 +593,8 @@ Full fine-tuning would be ~4 GB per checkpoint (full model weights + gradients +
 
 **Resume from checkpoint:**
 ```bash
-# Automatic: DistilKit checks for checkpoints in output_dir
-python distill.py --config ... --resume_from_checkpoint outputs/run_name/checkpoint-500
+# Automatic: Forge checks for checkpoints in output_dir
+python forge.py --config ... --resume_from_checkpoint outputs/run_name/checkpoint-500
 ```
 
 ### Gradient Checkpointing (Activation Recomputation)
@@ -619,7 +619,7 @@ Enable via TrainingArguments: `gradient_checkpointing=True`. Particularly useful
 
 ### Mixed Precision
 
-| Format | Bits | Range | DistilKit Usage |
+| Format | Bits | Range | Forge Usage |
 |--------|------|-------|-----------------|
 | **FP32** | 32 | Full | Optimizer states (Adam), loss computation |
 | **BF16** | 16 | Wide range, lower precision | Model weights, forward/backward pass |
@@ -632,7 +632,7 @@ Enable via TrainingArguments: `gradient_checkpointing=True`. Particularly useful
 
 ### CPU Scaling Summary
 
-| What | How CPUs help | DistilKit config |
+| What | How CPUs help | Forge config |
 |------|--------------|-----------------|
 | **Data loading** | Workers prefetch batches while GPU trains | `training.dataloader_num_workers: 4` |
 | **Data prep** | Parallel PDF rendering | `scripts/prepare_ocr_data.py --workers N` |
@@ -643,7 +643,7 @@ Rule of thumb: **4–8 CPUs per GPU** for data loading. More CPUs help with data
 
 ---
 
-## DistilKit Support Matrix
+## Forge Support Matrix
 
 | Feature | Status | What's needed |
 |---------|--------|--------------|
@@ -662,15 +662,15 @@ Rule of thumb: **4–8 CPUs per GPU** for data loading. More CPUs help with data
 | Tensor parallelism | **Not supported** | Requires Megatron-LM or manual model sharding |
 | Pipeline parallelism | **Not supported** | Requires Megatron-LM or DeepSpeed pipeline |
 | 3D parallelism | **Not supported** | Frontier-scale frameworks (Megatron, Megascale) |
-| Elastic training | **Partial** | `torchrun` supports it; DistilKit hasn't been tested |
+| Elastic training | **Partial** | `torchrun` supports it; Forge hasn't been tested |
 
 ### Decision Tree
 
 ```
 Can your model fit on 1 GPU (with LoRA + bf16)?
 ├── Yes → How many GPUs do you have?
-│         ├── 1    → python distill.py (Tier 1)
-│         ├── 2-8  → torchrun --nproc_per_node=N distill.py (Tier 2)
+│         ├── 1    → python forge.py (Tier 1)
+│         ├── 2-8  → torchrun --nproc_per_node=N forge.py (Tier 2)
 │         └── 9+   → torchrun --nnodes=N (Tier 3)
 │
 └── No  → How big is the model?

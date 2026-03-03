@@ -1,45 +1,48 @@
-# Knowledge Distillation Framework
+# Forge
 
-A universal, config-driven knowledge distillation framework for compressing any teacher-student model pair across
-classification and translation tasks.
+A universal, config-driven framework for fine-tuning, knowledge distillation, and reinforcement learning across any HuggingFace model pair.
 
 ## Overview
 
-This framework implements knowledge distillation using KL divergence + task loss to transfer knowledge from large "
-teacher" models to smaller, faster "student" models. **Designed to be completely generic and extensible** - works with
-any HuggingFace model pair.
+Forge unifies three training paradigms under a single config-driven interface:
+
+- **Fine-tuning (SFT)**: Standard supervised training with cross-entropy loss
+- **Knowledge Distillation (KD)**: Transfer knowledge from a teacher to a smaller student via KL divergence, feature matching, and attention transfer
+- **Reinforcement Learning (RL)**: Post-training with GRPO, DPO, and other policy optimization methods
+
+Every experiment is a YAML config change, not a code change. The framework handles model loading, training loops, checkpointing, SLURM job chaining, and W&B logging. You bring the config.
 
 ### Key Features
 
-- **Universal**: Works with any HuggingFace model pair (BERT, Llama, etc.)
-- **Multi-task**: Classification, translation, or custom tasks
+- **Universal**: Any HuggingFace model pair - encoders (BERT), decoders (Llama), VLMs (Qwen-VL)
+- **Multi-task**: Classification, translation, OCR, or custom tasks
+- **Three training modes**: SFT, KD (frozen/co-trained teacher), RL (GRPO/DPO)
+- **Config-driven**: YAML configs with inheritance, no code changes between experiments
 - **Production-ready**: SLURM integration, automatic job chaining, W&B tracking
 - **Cross-platform**: Local (Apple Silicon MPS/CPU), Google Colab, HPC clusters
-- **Config-driven**: Everything controlled via YAML configs
 
 ### Two Complementary Tools
 
-| | **Distillation Framework** | **Workbench** |
+| | **Forge** | **Workbench** |
 |---|---|---|
-| **Purpose** | Train distilled models | Analyze trained models |
-| **Entry point** | `distill.py` | `workbench/analyze.py` |
+| **Purpose** | Train models | Analyze trained models |
+| **Entry point** | `forge.py` | `workbench/analyze.py` |
 | **Runtime** | Hours to days | Minutes |
 | **Resources** | GPU cluster, full datasets | Local CPU, sampled data |
 
-**Distillation Framework** (`distill.py`) is the heavy machine - it runs large-scale training experiments on GPU clusters, handles checkpointing, SLURM job chaining, and W&B logging. You point it at a config and let it run for hours.
+**Forge** is the training engine - it runs large-scale experiments on GPU clusters with checkpointing, SLURM job chaining, and W&B logging. You point it at a config and let it run.
 
-**Workbench** (`workbench/analyze.py`) is the quick experimentation bench - after the heavy machine produces trained models, you use the workbench for rapid post-hoc analysis: linear probing, attention entropy, prediction disagreement, CKA similarity. These run in minutes on CPU with sampled data, letting you iterate quickly on understanding what the models learned.
+**Workbench** is the analysis bench - after training, use it for rapid post-hoc analysis: linear probing, attention entropy, prediction disagreement, CKA similarity. Runs in minutes on CPU with sampled data.
 
 ```bash
-# Heavy machine: train a model (hours)
-python distill.py --config configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
+# Train a model (hours)
+python forge.py --config configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
 
-# Workbench: analyze the result (minutes)
+# Analyze the result (minutes)
 python workbench/analyze.py --test probe --teacher textattack/bert-base-uncased-MNLI --student outputs/mnli_00 --task mnli
-python workbench/analyze.py --test disagreement --teacher ... --student outputs/mnli_00 --task mnli
 ```
 
-See also: [DistilKit vs Unsloth](docs/distilkit-vs-unsloth.md)
+See also: [Forge vs Unsloth](docs/forge-vs-unsloth.md)
 
 ## Quick Start
 
@@ -47,18 +50,14 @@ See also: [DistilKit vs Unsloth](docs/distilkit-vs-unsloth.md)
 
 ```bash
 conda env create -f environment.yml
-conda activate distillation
+conda activate forge
 source scripts/env/init.sh
 ```
 
 `init.sh` installs conda hooks that automatically set `PATH`, `LD_LIBRARY_PATH`,
-and `HF_HOME` on every `conda activate distillation`. Run it whenever the
+and `HF_HOME` on every `conda activate forge`. Run it whenever the
 environment is created or recreated. See [scripts/README.md](scripts/README.md)
 for details.
-
-If you hit library issues in an interactive session, source the fallback
-manually: `source scripts/env/activate.sh`. SLURM scripts source this
-automatically for safety.
 
 ### Verify Installation
 
@@ -70,113 +69,85 @@ python test_setup.py
 
 ```bash
 # New run (auto-named with timestamp)
-python distill.py --config configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
+python forge.py --config configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
 
 # New run with custom name
-python distill.py --run_name mnli_00 --config configs/classification/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+python forge.py --run_name mnli_00 --config configs/classification/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
 
 # Resume existing run
-python distill.py --run_name mnli_00
+python forge.py --run_name mnli_00
 
 # Overwrite existing run
-python distill.py --run_name mnli_00 --config configs/... --force
+python forge.py --run_name mnli_00 --config configs/... --force
 
 # Local testing (10 steps)
-python distill.py --config configs/... --max_steps 10
+python forge.py --config configs/... --max_steps 10
 
 # SLURM (with auto-requeue)
 sbatch scripts/run_training.sh configs/your_config.yaml
 ```
 
-### Logging
-
-All logs use UTC timestamps for consistency across machines and clusters:
-
-```
-2026-02-09 19:30:00,123Z - INFO - Loading model...
-```
-
-Use `--debug` for verbose logging with module names:
-
-```
-2026-02-09 19:30:00,123Z - src.training.trainer - DEBUG - ...
-```
-
-Logs are written to both stdout and `outputs/<run_name>/output.log`. On SLURM, they also appear in `logs/<jobid>.out`.
-
 See [docs/guides/run-options.md](docs/guides/run-options.md) for complete CLI reference.
 
-## Using with Your Own Models
+## Training Modes
 
-The framework is **completely generic**. Here's how to adapt it for your use case:
+### Fine-Tuning (SFT)
 
-### 1. Create a Config File
+Standard supervised training. The baseline for all experiments.
 
 ```yaml
-# configs/my_custom_distillation.yaml
-inherit: base.yaml
-
 model:
-  teacher: your-org/your-teacher-model  # Any HuggingFace model
-  student: your-org/your-student-model  # Any HuggingFace model
-  student_init: fresh  # or 'pretrained'
+  name: distilbert-base-uncased
+# No teacher, no RL - just CE loss
+```
 
-data:
-  task: your_task  # Define custom task
-  # Add task-specific parameters
+### Knowledge Distillation (KD)
 
-training:
-  num_epochs: 3
-  batch_size: 16
-  learning_rate: 2e-5
+Transfer knowledge from a larger teacher to a smaller student. Supports frozen or co-trained teachers, with three distillation signal types that can be combined:
+
+- **Response (R)**: KL divergence on output logits
+- **Feature (F)**: Hidden state alignment via MSE or cosine similarity
+- **Attention (A)**: Attention weight transfer via KL divergence
+
+```yaml
+model:
+  name: distilbert-base-uncased
+  teacher:
+    name: bert-base-uncased
+    freeze: true          # frozen or co-trained
 
 distillation:
   temperature: 2.0
-  alpha: 0.5  # Balance between KL and CE loss
+  alpha: 0.5              # balance between KL and CE loss
+  feature_weight: 0.1     # optional feature matching
+  attention_weight: 0.1   # optional attention transfer
 ```
 
-### 2. Add Custom Dataset Loader (if needed)
+### Reinforcement Learning (RL)
 
-If your task isn't classification or translation, add a loader to `src/data/datasets.py`:
+Post-training with policy optimization. Supports multiple algorithms and reward sources.
 
-```python
-def load_your_task(tokenizer, **kwargs):
-    """Load your custom dataset."""
-    dataset = load_dataset("your_dataset")
-
-    def preprocess(examples):
-        return tokenizer(examples["input"], ...)
-
-    tokenized = dataset.map(preprocess, batched=True)
-    return tokenized["train"], tokenized["validation"], tokenizer
+```yaml
+model:
+  name: qwen3vl-2b
+rl:
+  algorithm: grpo          # grpo | dpo | kto
+  reward: verifiable       # verifiable | teacher | judge
+  reference: self          # KL anchor: self | teacher | path
+  num_generations: 8
 ```
 
-Then update `load_dataset_for_task()` to handle your task type.
+## Supported Tasks
 
-### 3. Add Custom Metrics (optional)
-
-If you need custom evaluation metrics, extend `src/evaluation/metrics.py`:
-
-```python
-def compute_metrics_your_task(eval_pred):
-    """Compute metrics for your task."""
-    predictions, labels = eval_pred
-    # Your metric computation
-    return {"your_metric": score}
-```
-
-## Supported Model Types
-
-### Auto-detected
-
-- **Sequence Classification**: BERT, RoBERTa, DistilBERT, ALBERT, etc.
-- **Causal LM**: Llama, Mistral, etc.
-
-The framework automatically detects model architecture from HuggingFace model names.
+| Task | Models | Fine-tuning | Eval Metric |
+|------|--------|-------------|-------------|
+| **Classification** (MNLI, QQP, SST-2, CoLA) | Encoder (BERT, DistilBERT) | Full params (66M-110M) | Accuracy / F1 / MCC |
+| **Translation** (Europarl EN-FR) | Decoder (Llama 3.2) | LoRA (1B-3B) | BLEU |
+| **OCR** (olmocr-mix) | VLM (Qwen3-VL) | LoRA (2B-7B) | Edit similarity |
 
 ### LoRA Support
 
-For large causal LM models (e.g., Llama translation), enable LoRA in config:
+For large models (1B+ parameters), LoRA keeps memory usage manageable:
 
 ```yaml
 training:
@@ -185,114 +156,72 @@ training:
     r: 16
     alpha: 16
     dropout: 0.05
-    target_modules: [ "q_proj", "v_proj" ]  # Model-specific
-```
-
-## Example Use Cases
-
-### Included Examples
-
-1. **BERT → DistilBERT on MNLI**: Sentence entailment classification
-2. **BERT → DistilBERT on QQP**: Question pair similarity
-3. **BERT → DistilBERT on SST-2**: Sentiment analysis
-4. **BERT → DistilBERT on CoLA**: Linguistic acceptability
-5. **Llama 3.2 3B → 1B on EN-FR**: Neural machine translation (Europarl)
-
-### Custom Domain Example
-
-```yaml
-model:
-  teacher: your-finetuned-bert
-  student: distilbert-base-uncased
-data:
-  task: your_classification_task
-  dataset: your_dataset
+    target_modules: ["q_proj", "v_proj"]
 ```
 
 ## Architecture
 
 ```
-distillation/
-├── configs/              # YAML configurations
+forge/
+├── configs/              # YAML configurations with inheritance
 │   ├── base.yaml         # Shared defaults
 │   ├── classification/   # MNLI, QQP, SST-2, CoLA configs
-│   └── translation/      # Europarl EN-FR configs
+│   ├── translation/      # Europarl EN-FR configs
+│   └── ocr/              # olmocr-mix configs
 ├── src/
-│   ├── data/            # Dataset loaders
-│   ├── models/          # Model loading (generic)
-│   ├── training/        # DistillationTrainer
-│   ├── evaluation/      # Metrics
-│   └── utils/           # Config, checkpointing, environment
-├── workbench/           # Post-hoc analysis (the "quick bench")
-│   ├── analyze.py       # CLI: --test probe|cka|attention-entropy|disagreement|all
-│   ├── probing.py       # Linear probing per layer
-│   ├── cka.py           # CKA similarity between layers
-│   ├── attention.py     # Attention entropy analysis
-│   ├── disagreement.py  # Teacher-student prediction differences
-│   └── results/         # Analysis outputs (.json + .log)
-├── utils/               # Shared utilities
-│   └── logging.py       # TeeWriter for clean progress bar logging
-├── scripts/             # Execution scripts
+│   ├── data/             # Dataset loaders
+│   ├── models/           # Model loading (generic)
+│   ├── training/         # Trainer classes
+│   │   ├── trainer.py    # FinetuningTrainer, DistillationTrainer
+│   │   ├── rl_trainer.py # RLTrainer (extends trl.GRPOTrainer)
+│   │   └── losses.py     # KL, feature, attention losses
+│   ├── evaluation/       # Metrics
+│   └── utils/            # Config, checkpointing, environment
+├── workbench/            # Post-hoc analysis
+│   ├── analyze.py        # CLI: --test probe|cka|attention-entropy|disagreement|all
+│   ├── probing.py        # Linear probing per layer
+│   ├── cka.py            # CKA similarity between layers
+│   ├── attention.py      # Attention entropy analysis
+│   └── disagreement.py   # Teacher-student prediction differences
+├── scripts/              # Execution scripts
 │   ├── run_local.sh
-│   └── run_training.sh
-├── test_setup.py        # Environment verification
-└── distill.py           # Main entry point
+│   └── run_training.sh   # SLURM with auto-requeue
+├── test_setup.py         # Environment verification
+└── forge.py            # Entry point
 ```
 
 ## Key Components
 
-### DistillationTrainer
+### Trainer Hierarchy
 
-Extends HuggingFace `Trainer` with:
+```
+HuggingFace Trainer
+  ├── FinetuningTrainer            # SFT: LoRA, VLM collation, eval, checkpointing
+  │     └── DistillationTrainer    # + teacher, KL/feature/attention loss
+  └── trl.GRPOTrainer
+        └── RLTrainer              # + reward dispatch, teacher-as-reward-model
+```
 
-- **FAR distillation signals**: Feature (MSE/Cosine), Attention (KL), Response (KL/MSE/Cosine)
-- **Training modes**: Frozen teacher, co-trained teacher, CE-only baseline (no teacher)
-- **Staged distillation**: Sequential signal phases (e.g., Feature → Attention → Response)
-- Temperature-scaled distributions
-- Automatic loss component logging to W&B
+Config determines which trainer is used. No code changes needed.
 
 ### Config System
 
-- YAML-based with inheritance
+- YAML-based with inheritance (`inherit: base.yaml`)
 - Environment-specific overrides
 - All hyperparameters in one place
 
 ### SLURM Integration
 
-- Automatic job chaining for >8hr runs
-- Signal handling (SIGUSR1)
+- Automatic job chaining for runs exceeding time limits
+- Signal handling (SIGUSR1) for clean checkpointing
 - W&B run continuation across restarts
-
-## Extending the Framework
-
-### Adding New Task Types
-
-1. **Dataset loader**: Add to `src/data/datasets.py`
-2. **Metrics**: Add to `src/evaluation/metrics.py`
-3. **Config**: Create new config inheriting from `base.yaml`
-
-### Modifying Distillation Loss
-
-The core loss is in `src/training/trainer.py` (`compute_loss` method). Response, feature, and attention distillation are already implemented. You can:
-
-- Change temperature scaling strategy
-- Add new loss functions
-- Modify alpha weighting dynamically
-
-### Multi-GPU Support
-
-Currently single-GPU. To add multi-GPU:
-
-1. Use HuggingFace `accelerate`
-2. Update `TrainingArguments` with distributed settings
-3. Ensure teacher model is properly replicated
 
 ## Environment-Specific Notes
 
 ### Local (M2/MPS/CPU)
 
 - Suitable for BERT-size models
-- Apple Silicon (M1/M2/M3) automatically uses MPS GPU acceleration
+- Apple Silicon automatically uses MPS GPU acceleration
 - Use `batch_size=8` for memory constraints
 - Test with `--max_steps 10` first
 
@@ -300,115 +229,46 @@ Currently single-GPU. To add multi-GPU:
 
 - Full BERT experiments: ~3 hours
 - Llama with LoRA: ~6-8 hours
-- Run training scripts directly or adapt for notebook usage
 
 ### HPC/SLURM (H200/A100)
 
-- **Recommended:** Use conda for HPC environments
-- Production runs for Llama models
-- Auto-requeue handles 8-hour limits
+- Production runs for large models
+- Auto-requeue handles time limits
 - Configure in `scripts/run_training.sh`
 
 ```bash
-# Named run (new)
+# Named run
 sbatch scripts/run_training.sh mnli_00 configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
-# -> outputs/mnli_00/
 
 # Resume existing run
 sbatch scripts/run_training.sh mnli_00
-# -> outputs/mnli_00/ (continues from checkpoint)
 
-# Auto-named run (includes timestamp)
-sbatch scripts/run_training.sh configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
-# -> outputs/mnli_default_2026-01-31_03-15Z/
-
-# Named run with timestamp (unique each submission)
-TIMESTAMP=1 sbatch scripts/run_training.sh mnli_00 configs/...
-# -> outputs/mnli_00_2026-01-31_03-15Z/
-
-# Force overwrite existing run
+# Force overwrite
 FORCE=1 sbatch scripts/run_training.sh mnli_00 configs/...
 
-# Testing on cluster (10 steps only)
+# Testing on cluster (10 steps)
 MAX_STEPS=10 sbatch scripts/run_training.sh configs/...
-
-# Custom seed
-SEED=123 sbatch scripts/run_training.sh mnli_00 configs/...
-```
-
-## Running Included Examples
-
-```bash
-# BERT → DistilBERT on MNLI (sentence entailment)
-python distill.py --run_name mnli_baseline --config configs/classification/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
-
-# BERT → DistilBERT on QQP (question pairs)
-python distill.py --run_name qqp_baseline --config configs/classification/qqp/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
-
-# Auto-named runs (includes timestamp)
-python distill.py --config configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
-# Creates: outputs/mnli_default_2026-01-31_12-00Z/
-
-# Resume a run
-python distill.py --run_name mnli_baseline
 ```
 
 ## Development
 
 ### Code Quality
 
-This project uses pre-commit hooks for code quality:
-
 ```bash
 # Install hooks (one-time setup)
 pre-commit install
 
-# Hooks will run automatically on git commit
-# To run manually:
+# Run manually
 pre-commit run --all-files
-```
-
-### Testing
-
-```bash
-# Verify environment
-python test_setup.py
-
-# Run tests (when implemented)
-pytest tests/
 ```
 
 ## License
 
 MIT License - see LICENSE file
 
-## Contributing
-
-Contributions welcome! Please:
-
-1. Fork the repository
-2. Install development dependencies: `conda env create -f environment.yml`
-3. Set up pre-commit hooks: `pre-commit install`
-4. Create a feature branch
-5. Make your changes
-6. Run tests and linting: `pytest tests/` and `pre-commit run --all-files`
-7. Submit a pull request
-
-Areas for improvement:
-
-- Multi-GPU support
-- Seq2Seq model support (T5, BART, mBART)
-- More evaluation metrics
-- Additional dataset loaders
-
 ## References
-
-This framework implements standard knowledge distillation techniques:
 
 - Hinton et al. (2015): "Distilling the Knowledge in a Neural Network"
 - Sanh et al. (2019): "DistilBERT, a distilled version of BERT"
-
-Example configs demonstrate results from:
-
-- Yue & Venkatesan (2024): "Less is More: Achieving Smaller, Faster Models for Edge Computing with Knowledge
-  Distillation"
+- Shao et al. (2024): "DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models" (GRPO)
+- Rafailov et al. (2023): "Direct Preference Optimization: Your Language Model is Secretly a Reward Model"

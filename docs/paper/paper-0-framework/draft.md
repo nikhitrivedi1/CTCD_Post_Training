@@ -157,7 +157,7 @@ wandb_tags: ["mnli", "far", "r-only", "frozen"]
 
 ```bash
 # Reproduce any run
-python distill.py --config outputs/run_name/config.yaml --seed 42
+python forge.py --config outputs/run_name/config.yaml --seed 42
 ```
 
 ---
@@ -223,13 +223,13 @@ class DistillationTrainer(Trainer):
 ### Basic Training
 
 ```bash
-python distill.py --config configs/classification/mnli/bert_distilbert/far/03_r-only.yaml
+python forge.py --config configs/classification/mnli/bert_distilbert/far/03_r-only.yaml
 ```
 
 ### Debug Mode
 
 ```bash
-python distill.py --config ... --debug --max_steps 10
+python forge.py --config ... --debug --max_steps 10
 ```
 
 ### Batch Experiments
@@ -237,7 +237,7 @@ python distill.py --config ... --debug --max_steps 10
 ```bash
 # Run all FAR combinations
 for config in configs/classification/mnli/bert_distilbert/far/*.yaml; do
-    python distill.py --config $config --timestamp
+    python forge.py --config $config --timestamp
 done
 ```
 

@@ -1,6 +1,6 @@
-# Knowledge Distillation Framework Architecture
+# Forge Architecture
 
-Complete reference for the knowledge distillation framework, covering all modules, extension points, and implementation details.
+Complete reference for Forge, covering all modules, extension points, and implementation details.
 
 ---
 
@@ -26,7 +26,7 @@ Complete reference for the knowledge distillation framework, covering all module
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              distill.py (Entry Point)                         │
+│                              forge.py (Entry Point)                         │
 │  - Parses CLI arguments                                                     │
 │  - Loads config with inheritance                                            │
 │  - Orchestrates training pipeline                                           │
@@ -719,26 +719,26 @@ evaluation:
 
 ```bash
 # New run (auto-named with timestamp)
-python distill.py --config configs/mnli/bert_distilbert/ablations/00.yaml
+python forge.py --config configs/mnli/bert_distilbert/ablations/00.yaml
 
 # Named run
-python distill.py --run_name my_experiment --config configs/...
+python forge.py --run_name my_experiment --config configs/...
 
 # With timestamp suffix
-python distill.py --run_name exp --config configs/... --timestamp
+python forge.py --run_name exp --config configs/... --timestamp
 # Creates: exp_2026-01-31_12-00Z
 
 # Resume existing run
-python distill.py --run_name existing_run
+python forge.py --run_name existing_run
 
 # Force overwrite existing run
-python distill.py --run_name old_run --config configs/... --force
+python forge.py --run_name old_run --config configs/... --force
 
 # Limit training steps (for testing)
-python distill.py --config configs/... --max_steps 100
+python forge.py --config configs/... --max_steps 100
 
 # Set random seed
-python distill.py --config configs/... --seed 123
+python forge.py --config configs/... --seed 123
 ```
 
 ---
@@ -832,7 +832,7 @@ Planned:  Multi-stage compression
 1. **Dataset** — Add loader in `src/data/datasets.py`, register in `load_dataset_for_task()`
 2. **Metrics** — Add compute function in `src/evaluation/metrics.py`, register in `get_compute_metrics()`
 3. **Config** — Create `configs/{task}/...yaml` with task-specific settings
-4. **Labels** — Set `num_labels` in `distill.py` main function if classification
+4. **Labels** — Set `num_labels` in `forge.py` main function if classification
 
 ---
 

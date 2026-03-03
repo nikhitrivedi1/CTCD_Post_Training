@@ -1,8 +1,8 @@
-# DistilKit vs Unsloth
+# Forge vs Unsloth
 
-DistilKit and [Unsloth](https://github.com/unslothai/unsloth) solve different problems in the model compression pipeline.
+Forge and [Unsloth](https://github.com/unslothai/unsloth) solve different problems in the model compression pipeline.
 
-| | **DistilKit** | **Unsloth** |
+| | **Forge** | **Unsloth** |
 |---|---|---|
 | **Goal** | Produce a smaller model that learns from a larger one | Make fine-tuning the same model faster |
 | **Method** | Knowledge distillation (teacher-student training) | Optimized CUDA kernels + memory tricks |
@@ -13,7 +13,7 @@ DistilKit and [Unsloth](https://github.com/unslothai/unsloth) solve different pr
 | **Analysis tooling** | Workbench: CKA, probing, disagreement, attention entropy | N/A |
 | **Training mode** | Full fine-tune or LoRA, frozen or co-trained teacher | LoRA/QLoRA with fused kernels |
 
-**When to use DistilKit:**
+**When to use Forge:**
 - You need a structurally smaller model (fewer layers, smaller hidden dim) for deployment
 - You want to study *which* distillation signals matter (FAR factorial design)
 - You're compressing across architectures (e.g., Llama-3B teaching a custom 500M model)
@@ -24,4 +24,4 @@ DistilKit and [Unsloth](https://github.com/unslothai/unsloth) solve different pr
 - You're doing LoRA/QLoRA adaptation and want 2-5x speedups
 - You don't need a smaller architecture, just adapted weights
 
-**Using them together:** Unsloth can accelerate the student's training loop inside DistilKit. Load the student via `FastLanguageModel`, apply LoRA, and pass it to `DistillationTrainer` — you get Unsloth's speed optimizations with DistilKit's knowledge transfer signals. This is most useful for LLM-scale distillation (e.g., Llama-70B → Llama-3B).
+**Using them together:** Unsloth can accelerate the student's training loop inside Forge. Load the student via `FastLanguageModel`, apply LoRA, and pass it to `DistillationTrainer` — you get Unsloth's speed optimizations with Forge's knowledge transfer signals. This is most useful for LLM-scale distillation (e.g., Llama-70B → Llama-3B).

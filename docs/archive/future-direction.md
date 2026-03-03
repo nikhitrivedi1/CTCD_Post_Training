@@ -1,4 +1,4 @@
-# Future Direction: Multi-Axis Distillation Framework
+# Future Direction: Multi-Axis Forge Framework
 
 A systematic exploration of the knowledge distillation design space across multiple axes.
 

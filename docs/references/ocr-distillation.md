@@ -1,6 +1,6 @@
 # OCR Distillation: Datasets
 
-Planning doc for OCR as a new task bucket in DistilKit.
+Planning doc for OCR as a new task bucket in Forge.
 
 ---
 
@@ -15,7 +15,7 @@ Planning doc for OCR as a new task bucket in DistilKit.
 - **Attention (A):** Cross-attention maps between vision and text tokens (spatial grounding)
 - **Feature (F):** Hidden state alignment with projection (optional, lower priority)
 
-**LoRA in DistilKit:** For generation tasks, LMs are fine-tuned with LoRA (PEFT) as the preferred method — models at 1B+ parameters need parameter-efficient tuning to fit on a single GPU. The framework is modular: the distillation loss follows Hinton et al. (2015) as `(1-α)·CE + α·KL`, and SFT is simply the degenerate case where α=0 (no teacher). Classification models (66M–110M params) are small enough for full fine-tuning without LoRA.
+**LoRA in Forge:** For generation tasks, LMs are fine-tuned with LoRA (PEFT) as the preferred method — models at 1B+ parameters need parameter-efficient tuning to fit on a single GPU. The framework is modular: the distillation loss follows Hinton et al. (2015) as `(1-α)·CE + α·KL`, and SFT is simply the degenerate case where α=0 (no teacher). Classification models (66M–110M params) are small enough for full fine-tuning without LoRA.
 
 ---
 

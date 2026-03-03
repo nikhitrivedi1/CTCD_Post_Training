@@ -300,6 +300,6 @@ else:
 
 | Phase | Technical | Knowledge | Output |
 |-------|-----------|-----------|--------|
-| **Current** | Run translation FAR | Explain signal importance | Course report |
+| **Current** | Run translation FAR | Explain signal importance | Technical report |
 | **Next** | Implement seq-level KD | Predict co-train vs frozen | Workshop paper |
 | **Future** | Novel adaptive method | Theoretical grounding | Conference paper |

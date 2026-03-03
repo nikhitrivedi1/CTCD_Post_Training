@@ -1,4 +1,4 @@
-# Claude Rules for Distillation Project
+# Claude Rules for Forge
 
 ## Communication Style
 - Be concise. Short answers are preferred over verbose explanations.
@@ -19,8 +19,8 @@
 - **DCP**: When the user says "DCP", do: **D**ouble-check the code, **C**ommit, **P**ush.
 
 ## Project Context
-- This is a knowledge distillation research project for CS-7150 Deep Learning.
-- Main components: distill.py (entry point), src/training/trainer.py (DistillationTrainer).
+- This is an open training framework (FT + KD + RL).
+- Main components: forge.py (entry point), src/training/trainer.py (DistillationTrainer).
 - Configs in configs/ use YAML with inheritance (inherit: base.yaml).
 - FAR factorial study: 8 combinations of Feature/Attention/Response distillation signals.
 - Runs output to outputs/{run_name}/ with config.yaml, run_metadata.json, output.log.
@@ -28,9 +28,9 @@
 ## Python Environment
 - Always activate conda environment before running Python commands:
   ```bash
-  source ~/.zshrc && conda activate distillation
+  source ~/.zshrc && conda activate forge
   ```
-- Environment: distillation (Python 3.11)
+- Environment: forge (Python 3.11)
 - Dependencies in environment.yml
 - **Never install packages directly** via `pip install` or `conda install`. Always:
   1. Add the dependency to `environment.yml`

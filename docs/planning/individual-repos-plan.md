@@ -3,8 +3,8 @@
 ## Goal
 
 Separate the codebase into two repos with different access levels:
-- **DistilKit** (code) — wider access (public or larger team)
-- **DistilKit-docs** (docs) — restricted access (core team only)
+- **Forge** (code) — wider access (public or larger team)
+- **Forge-docs** (docs) — restricted access (core team only)
 
 ---
 
@@ -15,12 +15,12 @@ The docs repo is linked as a submodule inside the code repo. Locally they appear
 ### Local view (after clone with submodules)
 
 ```
-DistilKit/
+Forge/
 ├── src/
 ├── configs/
-├── distill.py
+├── forge.py
 ├── .gitmodules          ← tells git where to find submodules
-└── docs/                ← submodule → DistilKit-docs repo
+└── docs/                ← submodule → Forge-docs repo
     ├── planning/
     ├── analysis/
     ├── paper/
@@ -30,11 +30,11 @@ DistilKit/
 ### GitHub view
 
 ```
-DistilKit/
+Forge/
 ├── src/              ← normal folder
 ├── configs/          ← normal folder
-├── distill.py        ← normal file
-└── docs @ a3f8b2c    ← link to DistilKit-docs repo at specific commit
+├── forge.py        ← normal file
+└── docs @ a3f8b2c    ← link to Forge-docs repo at specific commit
 ```
 
 ---
@@ -46,7 +46,7 @@ DistilKit/
 ```ini
 [submodule "docs"]
     path = docs
-    url = git@github.com:CS-7150-DL/DistilKit-docs.git
+    url = git@github.com:NU-Deep-Learning/Forge-docs.git
 ```
 
 Git reads this file to know which submodules exist, where they go, and where to fetch them from.
@@ -55,15 +55,15 @@ Git reads this file to know which submodules exist, where they go, and where to 
 
 ```bash
 # Option A: all at once
-git clone --recurse-submodules git@github.com:CS-7150-DL/DistilKit.git
+git clone --recurse-submodules git@github.com:NU-Deep-Learning/Forge.git
 
 # Option B: two steps
-git clone git@github.com:CS-7150-DL/DistilKit.git
-cd DistilKit
+git clone git@github.com:NU-Deep-Learning/Forge.git
+cd Forge
 git submodule update --init
 
 # Option C: docs repo directly (no code)
-git clone git@github.com:CS-7150-DL/DistilKit-docs.git
+git clone git@github.com:NU-Deep-Learning/Forge-docs.git
 ```
 
 ### Access scenarios
@@ -80,38 +80,38 @@ git clone git@github.com:CS-7150-DL/DistilKit-docs.git
 
 ### 1. Create the docs repo on GitHub
 
-- Create `CS-7150-DL/DistilKit-docs` as a **private** repo
+- Create `NU-Deep-Learning/Forge-docs` as a **private** repo
 - Add only core team members as collaborators
 
 ### 2. Move docs to the new repo
 
 ```bash
-# From the DistilKit root
-cd /path/to/DistilKit
+# From the Forge root
+cd /path/to/Forge
 
 # Copy docs to a temp location
-cp -r docs /tmp/distilkit-docs
+cp -r docs /tmp/forge-docs
 
 # Initialize docs as its own repo
-cd /tmp/distilkit-docs
+cd /tmp/forge-docs
 git init
 git add .
-git commit -m "Initial docs migration from DistilKit"
-git remote add origin git@github.com:CS-7150-DL/DistilKit-docs.git
+git commit -m "Initial docs migration from Forge"
+git remote add origin git@github.com:NU-Deep-Learning/Forge-docs.git
 git push -u origin main
 ```
 
 ### 3. Replace docs/ with submodule in the code repo
 
 ```bash
-cd /path/to/DistilKit
+cd /path/to/Forge
 
 # Remove docs from git tracking (keeps local files until submodule replaces them)
 git rm -r docs
 git commit -m "Remove docs/ in preparation for submodule"
 
 # Add docs back as a submodule
-git submodule add git@github.com:CS-7150-DL/DistilKit-docs.git docs
+git submodule add git@github.com:NU-Deep-Learning/Forge-docs.git docs
 git commit -m "Add docs as submodule (separate private repo)"
 git push
 ```
@@ -137,7 +137,7 @@ git status
 
 ```bash
 cd docs/
-# You're now in the DistilKit-docs repo
+# You're now in the Forge-docs repo
 git add .
 git commit -m "Update analysis docs"
 git push
@@ -167,8 +167,8 @@ If submodule friction is too annoying, just keep them completely independent:
 
 ```
 ~/Projects/
-├── DistilKit/           ← code repo
-└── DistilKit-docs/      ← docs repo
+├── Forge/           ← code repo
+└── Forge-docs/      ← docs repo
 ```
 
 - Simpler git workflow (no submodule commands)

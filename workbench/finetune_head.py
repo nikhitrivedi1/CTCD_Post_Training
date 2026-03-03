@@ -243,7 +243,7 @@ def run_head_finetune(config: HeadFinetuneConfig):
 
 def resolve_output_dir(args) -> Path:
     """
-    Resolve output directory following distill.py conventions.
+    Resolve output directory following forge.py conventions.
 
     Args:
         args: Parsed arguments

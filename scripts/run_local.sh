@@ -1,5 +1,5 @@
 #!/bin/bash
-# Local testing script for knowledge distillation
+# Local testing script
 # Use this for quick testing on M2 or local machines
 
 set -e  # Exit on error
@@ -15,8 +15,8 @@ echo "Config: $CONFIG"
 echo "Max steps: $MAX_STEPS"
 echo "========================================="
 
-# Run distillation (distill.py creates output directory from config)
-python distill.py \
+# Run training (forge.py creates output directory from config)
+python forge.py \
     --config "$CONFIG" \
     --max_steps "$MAX_STEPS"
 
