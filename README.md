@@ -59,6 +59,18 @@ and `HF_HOME` on every `conda activate forge`. Run it whenever the
 environment is created or recreated. See [scripts/README.md](scripts/README.md)
 for details.
 
+### Environment Variables
+
+Copy `.env.example` to `.env` and fill in your values:
+
+```bash
+cp .env.example .env
+```
+
+The `.env` file is sourced automatically on `conda activate forge` and provides
+`HF_TOKEN`, `WANDB_API_KEY`, and other secrets. It is gitignored, so each
+machine needs its own copy.
+
 ### Verify Installation
 
 ```bash

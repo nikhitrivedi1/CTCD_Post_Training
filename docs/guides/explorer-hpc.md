@@ -165,7 +165,7 @@ SLURM (Simple Linux Utility for Resource Management) is the job scheduler.
 
 ```bash
 #!/bin/bash
-#SBATCH --job-name=distill
+#SBATCH --job-name=forge
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:h200:1
 #SBATCH --time=08:00:00
@@ -185,7 +185,7 @@ module load cuda/12.1
 module load anaconda3/2024.06
 
 # Activate conda environment
-source activate distillation
+conda activate forge
 
 # Parse command line arguments
 CONFIG=${1:-configs/default.yaml}
@@ -232,7 +232,7 @@ srun \
 ```bash
 nvidia-smi                      # Check GPU
 module load cuda/12.1 anaconda3/2024.06
-source activate distillation
+conda activate forge
 python forge.py --max_steps 100  # Test your code
 exit                            # End session
 ```
@@ -247,8 +247,14 @@ exit                            # End session
 # Your jobs
 squeue -u $USER
 
-# Custom format
-squeue -u $USER -o "%.10i %.20j %.8T %.10M %.6D %R"
+# Custom format with account and GRES info
+squeue -u $USER -o "%10i %15a %8T %10M %20R %20b"
+
+# All GPU jobs (see who's using what)
+squeue -p gpu -o "%10i %15a %12u %8T %10M %20R %20b"
+
+# H200 usage per user
+squeue -p gpu -t RUNNING -o "%u %b" | grep h200 | awk '{print $1}' | sort | uniq -c | sort -rn
 
 # Watch queue (refresh every 5 seconds)
 watch -n 5 'squeue -u $USER'
@@ -326,6 +332,53 @@ scancel -u $USER --state=PENDING
 ```bash
 sinfo -p gpu -o "%20N %10G %10T %10c %10m"
 ```
+
+---
+
+## Accounts & Fairshare
+
+SLURM uses fairshare scheduling: accounts with less recent usage get higher priority. Picking the right account can mean the difference between running immediately and waiting hours.
+
+### Check Your Accounts
+
+```bash
+# List all accounts and your default
+sacctmgr show user $USER withassoc format=Account%30,DefaultAccount%30
+
+# View your fairshare scores (higher = better priority)
+sshare -u $USER -U
+```
+
+### Check Which Account Jobs Are Using
+
+```bash
+squeue -u $USER -o '%i %a %P %j %T %r'
+```
+
+### Switch Account for Pending Jobs
+
+```bash
+# Move pending jobs to a higher-fairshare account
+scontrol update JobId=<JOBID> Account=<account>
+
+# Or cancel and resubmit
+scancel <JOBID>
+sbatch --account=<account> script.sh
+```
+
+### Change Default Account
+
+```bash
+# Change default so all future sbatch submissions use it
+sacctmgr modify user $USER set DefaultAccount=<account>
+```
+
+### Tips
+
+- Accounts with zero `RawUsage` have infinite fairshare (best priority)
+- Old semester accounts (e.g. `202530`) may be expired even if they show up
+- Staff accounts (e.g. `cs6140.202630-staff`) share fairshare with the parent
+- If jobs are stuck with `(Priority)`, try switching to a lower-usage account
 
 ---
 
@@ -461,5 +514,5 @@ sbatch scripts/run_training.sh
 
 ### Module Setup
 ```bash
-module load cuda/12.1 anaconda3/2024.06 && source activate distillation
+module load cuda/12.1 anaconda3/2024.06 && conda activate forge
 ```

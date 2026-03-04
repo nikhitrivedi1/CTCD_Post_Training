@@ -31,3 +31,13 @@ export LD_PRELOAD="$CONDA_PREFIX/lib/libstdc++.so.6${LD_PRELOAD:+:$LD_PRELOAD}"
 if [ -d "/scratch" ]; then
     export HF_HOME="/scratch/$USER/.cache/huggingface"
 fi
+
+# Source .env for HF_TOKEN, WANDB_API_KEY, etc.
+_ACTIVATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+_REPO_DIR="$(cd "$_ACTIVATE_DIR/../.." && pwd)"
+if [ -f "$_REPO_DIR/.env" ]; then
+    set -a
+    source "$_REPO_DIR/.env"
+    set +a
+fi
+unset _ACTIVATE_DIR _REPO_DIR

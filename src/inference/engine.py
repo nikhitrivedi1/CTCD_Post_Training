@@ -185,7 +185,7 @@ class InferenceEngine:
         dtype = torch.bfloat16 if is_cuda else (torch.float16 if device == "mps" else torch.float32)
         attn_impl = _detect_attn_impl() if is_cuda else None
 
-        load_kwargs = {"torch_dtype": dtype}
+        load_kwargs = {"dtype": dtype}
         if is_cuda:
             load_kwargs["device_map"] = "auto"
         if attn_impl:
@@ -244,7 +244,7 @@ class InferenceEngine:
         dtype = torch.float16 if (is_cuda or device == "mps") else torch.float32
         attn_impl = _detect_attn_impl() if is_cuda else None
 
-        load_kwargs = {"torch_dtype": dtype}
+        load_kwargs = {"dtype": dtype}
         if is_cuda:
             load_kwargs["device_map"] = "auto"
         if attn_impl:

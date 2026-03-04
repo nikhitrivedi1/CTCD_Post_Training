@@ -94,7 +94,7 @@ def _load_causal_lm(name: str, init: str, device: str, tokenizer: PreTrainedToke
     else:
         model = AutoModelForCausalLM.from_pretrained(
             name,
-            torch_dtype=dtype,
+            dtype=dtype,
             device_map=device if device == "cuda" else None,
             attn_implementation=attn_impl,
         )
@@ -128,7 +128,7 @@ def _load_vlm(name: str, init: str, device: str, eager_attention: bool = False):
     attn_impl = _detect_attn_implementation(eager_attention, device)
 
     kwargs = {
-        "torch_dtype": dtype,
+        "dtype": dtype,
         "device_map": "auto" if device == "cuda" else None,
     }
 
