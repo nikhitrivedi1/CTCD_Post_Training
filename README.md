@@ -36,7 +36,7 @@ Every experiment is a YAML config change, not a code change. The framework handl
 
 ```bash
 # Train a model (hours)
-python forge.py --config configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
+python forge.py --config configs/classification/mnli/distilbert/bert-base/ablations/01_kd_frozen-base.yaml
 
 # Analyze the result (minutes)
 python workbench/analyze.py --test probe --teacher textattack/bert-base-uncased-MNLI --student outputs/mnli_00 --task mnli
@@ -81,22 +81,22 @@ python test_setup.py
 
 ```bash
 # New run (auto-named with timestamp)
-python forge.py --config configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
+python forge.py --config configs/classification/mnli/distilbert/bert-base/ablations/01_kd_frozen-base.yaml
 
 # New run with custom name
-python forge.py --run_name mnli_00 --config configs/classification/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+python forge.py --run_name mnli_00 --config configs/classification/mnli/distilbert/00_sft.yaml
 
 # Resume existing run
-python forge.py --run_name mnli_00
+python forge.py --resume outputs/classification/mnli/distilbert/00_sft/20260304-1200Z
 
-# Overwrite existing run
+# Overwrite existing named run
 python forge.py --run_name mnli_00 --config configs/... --force
 
 # Local testing (10 steps)
 python forge.py --config configs/... --max_steps 10
 
 # SLURM (with auto-requeue)
-sbatch scripts/run_training.sh configs/your_config.yaml
+sbatch scripts/slurm/run_training.sh configs/your_config.yaml
 ```
 
 See [docs/guides/run-options.md](docs/guides/run-options.md) for complete CLI reference.
@@ -185,7 +185,7 @@ forge/
 │   ├── models/           # Model loading (generic)
 │   ├── training/         # Trainer classes
 │   │   ├── trainer.py    # FinetuningTrainer, DistillationTrainer
-│   │   ├── rl_trainer.py # RLTrainer (extends trl.GRPOTrainer)
+│   │   ├── rl_trainer.py # RLTrainer (planned, not yet implemented)
 │   │   └── losses.py     # KL, feature, attention losses
 │   ├── evaluation/       # Metrics
 │   └── utils/            # Config, checkpointing, environment
@@ -195,9 +195,11 @@ forge/
 │   ├── cka.py            # CKA similarity between layers
 │   ├── attention.py      # Attention entropy analysis
 │   └── disagreement.py   # Teacher-student prediction differences
-├── scripts/              # Execution scripts
-│   ├── run_local.sh
-│   └── run_training.sh   # SLURM with auto-requeue
+├── scripts/              # Execution & utility scripts
+│   ├── slurm/            # SLURM job scripts + shared utilities
+│   ├── eval/             # Evaluation scripts
+│   ├── data/             # Data preparation
+│   └── models/           # HF Hub push/pull
 ├── test_setup.py         # Environment verification
 └── forge.py            # Entry point
 ```
@@ -211,7 +213,7 @@ HuggingFace Trainer
   ├── FinetuningTrainer            # SFT: LoRA, VLM collation, eval, checkpointing
   │     └── DistillationTrainer    # + teacher, KL/feature/attention loss
   └── trl.GRPOTrainer
-        └── RLTrainer              # + reward dispatch, teacher-as-reward-model
+        └── RLTrainer              # planned: reward dispatch, teacher-as-reward-model
 ```
 
 Config determines which trainer is used. No code changes needed.
@@ -246,21 +248,24 @@ Config determines which trainer is used. No code changes needed.
 
 - Production runs for large models
 - Auto-requeue handles time limits
-- Configure in `scripts/run_training.sh`
+- Configure in `scripts/slurm/run_training.sh`
 
 ```bash
-# Named run
-sbatch scripts/run_training.sh mnli_00 configs/classification/mnli/bert_distilbert/ablations/01_frozen_base-teacher_kl.yaml
+# Auto-named run (hierarchical output dir)
+sbatch scripts/slurm/run_training.sh configs/classification/mnli/distilbert/bert-base/ablations/01_kd_frozen-base.yaml
 
-# Resume existing run
-sbatch scripts/run_training.sh mnli_00
+# Named run (flat output dir)
+sbatch scripts/slurm/run_training.sh mnli_00 configs/classification/mnli/distilbert/00_sft.yaml
 
 # Force overwrite
-FORCE=1 sbatch scripts/run_training.sh mnli_00 configs/...
+FORCE=1 sbatch scripts/slurm/run_training.sh mnli_00 configs/...
 
 # Testing on cluster (10 steps)
-MAX_STEPS=10 sbatch scripts/run_training.sh configs/...
+MAX_STEPS=10 sbatch scripts/slurm/run_training.sh configs/...
 ```
+
+Resume is automatic: if a job hits the SLURM time limit, it writes to
+`.incomplete_jobs` and the script auto-resubmits with `--resume`.
 
 ## Development
 

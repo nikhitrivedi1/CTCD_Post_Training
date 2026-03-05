@@ -63,7 +63,7 @@ def check_framework_imports() -> Tuple[bool, str]:
         from src.utils import detect_environment, load_config
         from src.data import load_dataset_for_task
         from src.models import load_models
-        from src.training import DistillationTrainer
+        from src.training import FinetuningTrainer, DistillationTrainer
 
         return True, "✓ Framework modules"
     except Exception as e:
@@ -112,11 +112,11 @@ def main():
         print()
         print("Next steps:")
         print("  1. Configure W&B: wandb login")
-        print("  2. Test training: python forge.py --config configs/bert_distilbert_mnli.yaml --max_steps 10")
+        print("  2. Test training: python forge.py --config configs/classification/mnli/distilbert/bert-base/00_sft.yaml --max_steps 10")
         return 0
     else:
         print("✗ Some checks failed. Please install missing dependencies:")
-        print("  pip install --no-deps -r requirements.txt")
+        print("  conda env update --file environment.yml")
         return 1
 
 

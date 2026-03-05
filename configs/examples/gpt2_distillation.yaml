@@ -4,10 +4,10 @@
 inherit: ../base.yaml
 
 model:
-  teacher: gpt2-medium      # 345M parameters
-  student: gpt2             # 117M parameters
-  student_init: pretrained
-
+  name: gpt2
+  init: pretrained
+  teacher:
+    name: gpt2-medium       # 345M parameters
 data:
   task: text_generation     # You'd need to implement this loader
   dataset: wikitext

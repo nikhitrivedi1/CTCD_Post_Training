@@ -1,2 +1,6 @@
-# MNLI task base - passthrough to classification defaults
+# MNLI dataset defaults
 inherit: ../base.yaml
+
+data:
+  task: mnli
+  max_length: 128

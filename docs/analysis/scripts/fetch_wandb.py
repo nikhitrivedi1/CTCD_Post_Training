@@ -16,6 +16,28 @@ import pandas as pd
 import wandb
 
 
+def _get_teacher_name(config: dict) -> str | None:
+    """Extract teacher name from config (handles old and new schema)."""
+    teacher = config.get("model", {}).get("teacher")
+    if isinstance(teacher, dict):
+        return teacher.get("name")
+    return teacher  # old schema: string or None
+
+
+def _get_model_name(config: dict) -> str | None:
+    """Extract primary model name from config (handles old and new schema)."""
+    model = config.get("model", {})
+    return model.get("name") or model.get("student")
+
+
+def _get_freeze_teacher(config: dict) -> bool | None:
+    """Extract freeze_teacher from config (handles old and new schema)."""
+    teacher = config.get("model", {}).get("teacher")
+    if isinstance(teacher, dict):
+        return teacher.get("freeze")
+    return config.get("distillation", {}).get("freeze_teacher")
+
+
 def fetch_runs(
     entity: str,
     project: str,
@@ -57,11 +79,11 @@ def fetch_runs(
             "url": run.url,
             # Config
             "task": run.config.get("data", {}).get("task"),
-            "teacher": run.config.get("model", {}).get("teacher"),
-            "student": run.config.get("model", {}).get("student"),
+            "teacher": _get_teacher_name(run.config),
+            "student": _get_model_name(run.config),
             "alpha": run.config.get("distillation", {}).get("alpha"),
             "temperature": run.config.get("distillation", {}).get("temperature"),
-            "freeze_teacher": run.config.get("distillation", {}).get("freeze_teacher"),
+            "freeze_teacher": _get_freeze_teacher(run.config),
             "loss_type": run.config.get("distillation", {}).get("loss_type"),
             "batch_size": run.config.get("training", {}).get("batch_size"),
             "learning_rate": run.config.get("training", {}).get("learning_rate"),

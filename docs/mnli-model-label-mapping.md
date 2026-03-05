@@ -94,9 +94,9 @@ Testing on first 5 GLUE validation examples:
 
 ## Files Affected
 
-- `configs/mnli/bert_distilbert/ablations/02_frozen_sft-teacher_kl.yaml`
-- `configs/mnli/bert_distilbert/ablations/04_cotrain_sft-teacher_kl.yaml`
-- `scripts/eval_baselines.py` (includes mapping logic)
+- `configs/classification/mnli/distilbert/bert-base/ablations/02_kd_frozen-sft.yaml`
+- `configs/classification/mnli/distilbert/bert-base/ablations/04_kd_cotrain-sft.yaml`
+- `utils/labels.py` (`LABEL_MAP_REGISTRY` for mapping logic)
 - `src/training/trainer.py` (applies mapping during distillation)
 
 ## Date Documented

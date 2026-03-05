@@ -1,0 +1,54 @@
+# Staged Distillation 01: Feature → Response
+# Tests hypothesis that F early + R late avoids gradient conflict
+# Motivated by: DistilBERT uses F during pre-training, R-only wins in fine-tuning
+
+inherit: ../base.yaml
+
+model:
+  name: distilbert-base-uncased
+  init: pretrained
+  teacher:
+    name: textattack/bert-base-uncased-MNLI   # SFT teacher
+    freeze: false
+data:
+  task: mnli
+  max_length: 128
+
+training:
+  num_epochs: 4  # 2 per stage (F: 2, R: 2)
+  batch_size: 64
+  gradient_accumulation_steps: 4      # Effective batch = 256
+  learning_rate: 0.00032
+  warmup_steps: 500
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: true
+  dataloader_num_workers: 4
+  dataloader_pin_memory: true
+
+distillation:
+  temperature: 2
+  alpha: 0.5
+  teacher_label_map: [1, 2, 0]  # TextAttack to HuggingFace label mapping
+
+  # Staged distillation: F then R (2 epochs each)
+  stages:
+  - strategy: feature_cosine
+    until_progress: 0.5             # Epochs 1-2: structural knowledge
+  - strategy: response_kl
+    until_progress: 1.0             # Epochs 3-4: task decisions
+
+  layer_mapping:
+    type: uniform  # Required for feature_mse stage
+
+checkpointing:
+  save_steps: 250
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 50
+
+evaluation:
+  eval_steps: 250
+  eval_strategy: steps

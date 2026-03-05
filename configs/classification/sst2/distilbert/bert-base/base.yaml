@@ -1,0 +1,6 @@
+# BERT-base teacher defaults
+inherit: ../base.yaml
+
+model:
+  teacher:
+    name: bert-base-uncased

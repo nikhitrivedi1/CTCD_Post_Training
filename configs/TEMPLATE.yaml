@@ -8,13 +8,15 @@ inherit: ../base.yaml  # Always inherit from parent directory's base.yaml
 # ====================================
 model:
   # Any HuggingFace model name or local path
-  teacher: your-org/your-teacher-model  # e.g., bert-large-uncased, gpt2-large, t5-base
-  student: your-org/your-student-model  # e.g., bert-base-uncased, gpt2, t5-small
+  name: your-org/your-student-model  # e.g., bert-base-uncased, gpt2, t5-small
+  teacher:
+    name: your-org/your-teacher-model  # e.g., bert-large-uncased, gpt2-large, t5-base
+    freeze: true  # false for co-training
 
-  # Student initialization:
-  #   - 'fresh': Random initialization from config (harder, but compresses better)
+  # Model initialization:
   #   - 'pretrained': Use pretrained weights (easier, faster convergence)
-  student_init: pretrained
+  #   - 'fresh': Random initialization from config (harder, but compresses better)
+  init: pretrained
 
 # ====================================
 # DATA CONFIGURATION

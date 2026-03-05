@@ -1,2 +1,6 @@
-# QQP task base - passthrough to classification defaults
+# QQP dataset defaults
 inherit: ../base.yaml
+
+data:
+  task: qqp
+  max_length: 128

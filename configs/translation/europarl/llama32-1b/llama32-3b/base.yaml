@@ -1,0 +1,10 @@
+# Llama 3.2 3B Instruct teacher defaults
+inherit: ../base.yaml
+
+model:
+  teacher:
+    name: meta-llama/Llama-3.2-3B-Instruct
+
+distillation:
+  temperature: 15.0
+  alpha: 0.2

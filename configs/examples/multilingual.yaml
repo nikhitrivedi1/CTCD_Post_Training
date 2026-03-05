@@ -4,14 +4,14 @@
 inherit: ../base.yaml
 
 model:
-  teacher: xlm-roberta-large       # 550M parameters, 100 languages
-  student: xlm-roberta-base        # 270M parameters, 100 languages
-  student_init: pretrained
-
+  name: xlm-roberta-base
+  init: pretrained
+  teacher:
+    name: xlm-roberta-large        # 550M parameters, 100 languages
 data:
   task: multilingual_classification
   dataset: xnli                     # Cross-lingual NLI
-  languages: [ en, fr, de, es ]       # Subset of languages
+  languages: [en, fr, de, es]         # Subset of languages
   max_length: 128
 
 training:

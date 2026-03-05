@@ -1,0 +1,26 @@
+# FAR 05: Response + Attention distillation
+# R=1, F=0, A=1
+# Combines soft label transfer with attention pattern matching
+
+inherit: ../base.yaml
+
+model:
+  name: meta-llama/Llama-3.2-1B-Instruct
+  init: pretrained
+  teacher:
+    name: meta-llama/Llama-3.2-3B-Instruct
+    freeze: false
+distillation:
+  # temperature and alpha inherited from base.yaml
+  loss_strategies:
+  - type: response_kl
+    weight: 1.0
+  - type: attention_kl
+    weight: 1.0
+  layer_mapping:
+    type: uniform
+  attention_mapping:
+    type: average
+
+logging:
+  wandb_tags: ["translation", "far", "ra", "response", "attention"]

@@ -17,6 +17,8 @@ import yaml
 import numpy as np
 import torch
 
+from src.utils.jobs import get_job_key, locked_incomplete_jobs
+
 # Module-level logger
 logger = logging.getLogger(__name__)
 
@@ -97,7 +99,7 @@ from src.models import load_models
 from src.training.callbacks import (
     SLURMSignalCallback, TeacherEvalCallback, TranslationMetricsCallback, PeakMetricsCallback,
 )
-from src.training.trainer import DistillationTrainer
+from src.training.trainer import FinetuningTrainer, DistillationTrainer
 from src.training.losses import (
     get_loss_strategy,
     CombinedDistillationLoss,
@@ -240,153 +242,131 @@ def create_loss_strategy_from_config(
     return loss_strategy, layer_mapping, projector
 
 
-def generate_config_id(config_path: str) -> str:
-    """Generate a config identifier from path.
+def resolve_config_path(config_arg: str) -> Path:
+    """Validate and resolve a config path.
 
-    Format: {task}_{experiment}_{config}
-
-    Examples:
-        configs/classification/mnli/bert_distilbert/staged/02_a-r.yaml → mnli_staged_02-a-r
-        configs/translation/europarl/llama3p2-3b_llama3p2-1b/far/07_far.yaml → europarl_far_07_far
-
-    Full config path is stored in run_metadata for searchability.
-    """
-    path = Path(config_path)
-    config_name = path.stem  # e.g., "02_a-r"
-    parts = path.parts
-
-    # Find 'configs' in path (handles absolute paths)
-    try:
-        configs_idx = parts.index("configs")
-        parts = parts[configs_idx:]
-    except ValueError:
-        return config_name
-
-    # configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml
-    if len(parts) >= 6:
-        task = parts[2]        # mnli, sst2, cola, qqp, europarl
-        experiment = parts[4]  # ablations, far, staged
-        return f"{task}_{experiment}_{config_name}"
-    elif len(parts) >= 3:
-        # Fallback: just task + config
-        task = parts[2] if len(parts) > 2 else parts[1]
-        return f"{task}_{config_name}"
-
-    return config_name
-
-
-def generate_wandb_group(config_path: str) -> str:
-    """Generate W&B group name from config path.
-
-    Format: {task}_{experiment}
-
-    Path structure: configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml
-
-    Examples:
-        configs/classification/mnli/bert_distilbert/staged/02_a-r.yaml → mnli_staged
-        configs/translation/europarl/llama3p2-3b_llama3p2-1b/far/07_far.yaml → europarl_far
-    """
-    path = Path(config_path)
-    parts = path.parts
-
-    # Find 'configs' in path (handles absolute paths)
-    try:
-        configs_idx = parts.index("configs")
-        parts = parts[configs_idx:]  # Slice from 'configs' onward
-    except ValueError:
-        return None
-
-    # configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml
-    if len(parts) >= 6:
-        task = parts[2]        # mnli, sst2, cola, qqp, europarl
-        experiment = parts[4]  # ablations, far, staged
-        return f"{task}_{experiment}"
-
-    return None
-
-
-def generate_wandb_tags(config_path: str) -> list:
-    """Generate W&B tags from config path.
-
-    Returns tags for: task, experiment, model_pair
-
-    Path structure: configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml
-
-    Examples:
-        configs/classification/mnli/bert_distilbert/staged/02_a-r.yaml
-        → ["mnli", "staged", "bert_distilbert"]
-    """
-    path = Path(config_path)
-    parts = path.parts
-
-    # Find 'configs' in path (handles absolute paths)
-    try:
-        configs_idx = parts.index("configs")
-        parts = parts[configs_idx:]  # Slice from 'configs' onward
-    except ValueError:
-        return []
-
-    # configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml
-    if len(parts) >= 6:
-        task = parts[2]        # mnli, sst2, cola, qqp, europarl
-        model_pair = parts[3]  # bert_distilbert, llama3p2-3b_llama3p2-1b
-        experiment = parts[4]  # ablations, far, staged
-        return [task, experiment, model_pair]
-
-    return []
-
-
-def truncate_for_wandb(run_id: str, max_length: int = 64) -> str:
-    """Truncate run_id for W&B's 64-char limit, preserving timestamp suffix.
-
-    Format: {task}_{experiment}_{config}_{timestamp}
-    Timestamp format: YYYYMMDD-HHMMZ (14 chars)
-
-    If truncation needed, shortens the prefix while keeping full timestamp.
-    """
-    if len(run_id) <= max_length:
-        return run_id
-
-    timestamp_len = 14  # YYYYMMDD-HHMMZ
-    if len(run_id) > timestamp_len + 1:
-        timestamp = run_id[-timestamp_len:]
-        config_name = run_id[:-(timestamp_len + 1)]
-        max_config_len = max_length - timestamp_len - 1
-        return f"{config_name[:max_config_len]}_{timestamp}"
-
-    return run_id[:max_length]
-
-
-def load_incomplete_jobs() -> dict:
-    """Load incomplete jobs registry.
-
-    Returns:
-        Dict mapping job_id to {"run_name": ..., "output_dir": ...}
-    """
-    path = Path(".incomplete_jobs")
-    if path.exists():
-        try:
-            return json.loads(path.read_text())
-        except json.JSONDecodeError:
-            return {}
-    return {}
-
-
-def save_incomplete_jobs(jobs: dict):
-    """Save incomplete jobs registry atomically.
+    Expects a full tab-completable path (e.g. configs/classification/mnli/...).
+    Falls back to adding configs/ prefix and/or .yaml suffix if the literal path
+    doesn't exist.
 
     Args:
-        jobs: Dict mapping job_id to {"run_name": ..., "output_dir": ...}
+        config_arg: Config path as provided by user.
+
+    Returns:
+        Resolved Path object.
     """
-    path = Path(".incomplete_jobs")
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(jobs, indent=2))
-    tmp.rename(path)
+    candidates = [
+        Path(config_arg),
+        Path(f"configs/{config_arg}"),
+        Path(f"{config_arg}.yaml"),
+        Path(f"configs/{config_arg}.yaml"),
+    ]
+    for path in candidates:
+        if path.is_file():
+            return path
+
+    sys.exit(
+        f"\nError: Config file not found: {config_arg}\n\n"
+        f"Tried:\n"
+        + "\n".join(f"  {p}" for p in candidates)
+        + "\n"
+    )
 
 
-def get_job_key() -> str:
-    """Get unique key for current job (SLURM_JOB_ID or local_{pid})."""
-    return os.environ.get("SLURM_JOB_ID") or f"local_{os.getpid()}"
+def extract_stem(config_path: Path) -> str:
+    """Extract the stem from a resolved config path.
+
+    Strips the configs/ prefix and .yaml suffix to get the internal identity.
+
+    Args:
+        config_path: Resolved config path (from resolve_config_path).
+
+    Returns:
+        Stem string, e.g. "classification/mnli/distilbert/bert-base/ablations/02_kd_frozen-sft"
+
+    Examples:
+        configs/classification/mnli/distilbert/00_sft.yaml
+            -> classification/mnli/distilbert/00_sft
+        configs/classification/mnli/distilbert/bert-base/ablations/02_kd_frozen-sft.yaml
+            -> classification/mnli/distilbert/bert-base/ablations/02_kd_frozen-sft
+    """
+    parts = config_path.parts
+
+    # Find 'configs' in path (handles absolute paths)
+    try:
+        configs_idx = parts.index("configs")
+        # Everything after 'configs', rejoin, strip .yaml
+        relative = Path(*parts[configs_idx + 1:])
+    except ValueError:
+        # No configs/ prefix, just strip suffix
+        relative = config_path
+
+    return str(relative.with_suffix(""))
+
+
+def generate_wandb_run_id(prefix: str, timestamp: str, max_length: int = 64) -> str:
+    """Generate a W&B run ID from prefix and timestamp.
+
+    Format: {prefix[:x]}-{timestamp}. Truncates prefix to fit the 64-char limit
+    while preserving the full timestamp. Uses - not / as separator (W&B run IDs
+    must not contain / \\ # ? % :). Always includes timestamp for uniqueness
+    since W&B tombstones deleted run IDs.
+
+    Args:
+        prefix: The stem (auto-named) or run_name (named). Slashes are replaced with -.
+        timestamp: Timestamp string (e.g. "20260304-1200Z").
+        max_length: W&B run ID character limit.
+
+    Returns:
+        W&B-safe run ID string.
+    """
+    safe_prefix = prefix.replace("/", "-")
+    full_id = f"{safe_prefix}-{timestamp}"
+    if len(full_id) <= max_length:
+        return full_id
+
+    # Truncate prefix, keep full timestamp
+    max_prefix_len = max_length - len(timestamp) - 1
+    return f"{safe_prefix[:max_prefix_len]}-{timestamp}"
+
+
+def generate_wandb_group(stem: str) -> str:
+    """Generate W&B group name from stem.
+
+    Returns the parent directory of the stem, which groups runs by their
+    config location (e.g. model pair or experiment directory).
+
+    Args:
+        stem: Config stem from extract_stem().
+
+    Returns:
+        Group string, or None if stem has no parent.
+
+    Examples:
+        classification/mnli/distilbert/00_sft -> classification/mnli/distilbert
+        classification/mnli/distilbert/bert-base/ablations/02_kd -> classification/mnli/distilbert/bert-base/ablations
+    """
+    parent = str(Path(stem).parent)
+    return parent if parent != "." else None
+
+
+def generate_wandb_tags(stem: str) -> list:
+    """Generate W&B tags from stem path segments (excluding the leaf config name).
+
+    Args:
+        stem: Config stem from extract_stem().
+
+    Returns:
+        List of tag strings.
+
+    Examples:
+        classification/mnli/distilbert/00_sft -> ["classification", "mnli", "distilbert"]
+        classification/mnli/distilbert/bert-base/ablations/02_kd -> ["classification", "mnli", "distilbert", "bert-base", "ablations"]
+    """
+    parts = Path(stem).parts
+    if len(parts) > 1:
+        return list(parts[:-1])
+    return []
 
 
 def remove_incomplete_job(job_key: str = None):
@@ -398,37 +378,33 @@ def remove_incomplete_job(job_key: str = None):
     if job_key is None:
         job_key = get_job_key()
 
-    jobs = load_incomplete_jobs()
-    if job_key in jobs:
-        del jobs[job_key]
-        save_incomplete_jobs(jobs)
-        logger.info(f"Removed job from incomplete registry: {job_key}")
+    with locked_incomplete_jobs() as jobs:
+        if job_key in jobs:
+            del jobs[job_key]
+            logger.info(f"Removed job from incomplete registry: {job_key}")
 
 
-def add_incomplete_job(run_name: str, output_dir: Path):
+def add_incomplete_job(resume_path: str, output_dir: Path):
     """Add current job to incomplete jobs registry.
 
     Uses SLURM_JOB_ID if available, otherwise falls back to local_{pid}.
     Also removes previous job entry if PREV_JOB_ID is set (for SLURM resubmission).
 
     Args:
-        run_name: The actual run name (with timestamp if applicable)
+        resume_path: Output dir relative to outputs/ (for --resume on resubmit)
         output_dir: Path to the output directory
     """
-    # Remove previous job entry if this is a resubmission
-    prev_job_id = os.environ.get("PREV_JOB_ID")
-    if prev_job_id:
-        remove_incomplete_job(prev_job_id)
-
-    # Add current job
     job_key = get_job_key()
-    jobs = load_incomplete_jobs()
-    jobs[job_key] = {
-        "type": "training",
-        "run_name": run_name,
-        "output_dir": str(output_dir),
-    }
-    save_incomplete_jobs(jobs)
+    prev_job_id = os.environ.get("PREV_JOB_ID")
+
+    with locked_incomplete_jobs() as jobs:
+        if prev_job_id and prev_job_id in jobs:
+            del jobs[prev_job_id]
+        jobs[job_key] = {
+            "type": "training",
+            "resume_path": resume_path,
+            "output_dir": str(output_dir),
+        }
     logger.info(f"Added job to incomplete registry: {job_key}")
 
 
@@ -563,14 +539,14 @@ def _train(
 
     # Choose trainer based on whether we have a teacher
     if teacher is None:
-        # CE-only baseline: use standard HuggingFace Trainer
-        logger.info("No teacher - using standard Trainer (CE-only mode)")
-        trainer = Trainer(
+        # CE-only baseline: use FinetuningTrainer
+        logger.info("No teacher - using FinetuningTrainer (CE-only mode)")
+        trainer = FinetuningTrainer(
             model=student,
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            tokenizer=tokenizer,
+            processing_class=tokenizer,
             compute_metrics=compute_metrics,
             data_collator=data_collator,
         )
@@ -588,7 +564,7 @@ def _train(
             teacher_model=teacher,
             temperature=config["distillation"]["temperature"],
             alpha=config["distillation"]["alpha"],
-            freeze_teacher=config["distillation"].get("freeze_teacher", True),
+            freeze_teacher=config["model"].get("teacher", {}).get("freeze", True),
             loss_strategy=loss_strategy,
             teacher_label_map=config["distillation"].get("teacher_label_map"),
             layer_mapping=layer_mapping,
@@ -597,7 +573,7 @@ def _train(
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            tokenizer=tokenizer,
+            processing_class=tokenizer,
             compute_metrics=compute_metrics,
             data_collator=data_collator,
         )
@@ -677,7 +653,7 @@ def _train(
     trainer.save_model()
 
     # Save co-trained teacher (weights changed during training)
-    if teacher is not None and not config["distillation"].get("freeze_teacher", True):
+    if teacher is not None and not config["model"].get("teacher", {}).get("freeze", True):
         teacher_dir = output_dir / "teacher"
         logger.info(f"Saving co-trained teacher to {teacher_dir}...")
         teacher.save_pretrained(teacher_dir)
@@ -687,13 +663,15 @@ def _train(
 def main():
     parser = argparse.ArgumentParser(description="Forge Training")
     parser.add_argument("--config", type=str, default=None,
-                        help="Path to config file (required for new runs, ignored for resume)")
+                        help="Path to config file (required for new runs)")
+    parser.add_argument("--resume", type=str, default=None,
+                        help="Path to output dir to resume (e.g. outputs/classification/mnli/.../20260304-1200Z)")
     parser.add_argument("--run_name", type=str, default=None,
-                        help="Run name. Creates if not exists, resumes if exists. Use --force to overwrite.")
+                        help="Run name for flat output dir (e.g. seed42 -> outputs/seed42/). Create-only.")
     parser.add_argument("--timestamp", action="store_true",
-                        help="Append timestamp to --run_name (e.g., mnli_00 -> mnli_00_2026-01-31_12-00Z).")
+                        help="Append timestamp to --run_name (e.g. seed42 -> seed42_20260304-1200Z).")
     parser.add_argument("--force", action="store_true",
-                        help="Overwrite existing run (deletes existing outputs and starts fresh).")
+                        help="Overwrite existing named run (deletes outputs and W&B run, starts fresh).")
     parser.add_argument("--max_steps", type=int, default=-1, help="Max training steps (for testing)")
     parser.add_argument("--epochs", type=int, default=None, help="Override num_epochs from config")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
@@ -707,67 +685,112 @@ def main():
     # Timestamp for new runs
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%MZ")
 
-    # Determine output directory and run name
-    if args.run_name is not None:
-        # Apply timestamp suffix if requested
-        if args.timestamp:
-            run_name = f"{args.run_name}_{timestamp}"
-        else:
-            run_name = args.run_name
-        output_dir = Path(f"./outputs/{run_name}")
-        if output_dir.exists():
-            if args.force:
-                # Force overwrite: delete existing and start fresh
-                logger.info(f"--force specified. Deleting existing run: {output_dir}")
-                # Delete W&B run if it exists (before deleting metadata)
-                old_metadata = load_run_metadata(output_dir)
-                if old_metadata and old_metadata.get("wandb_run_id"):
-                    delete_wandb_run(old_metadata["wandb_run_id"])
-                shutil.rmtree(output_dir)
-                if args.config is None:
-                    sys.exit(
-                        "\nError: --config is required for new runs.\n\n"
-                        "Usage:\n"
-                        "  python forge.py --run_name NAME --config CONFIG [--force]\n"
-                    )
-                is_resume = False
-                logger.info(f"Starting fresh run: {run_name}")
-            else:
-                # Resume existing run
-                is_resume = True
-                logger.info(f"Run '{run_name}' exists at {output_dir}/")
-                logger.info(f"Resuming existing run. Use --force to overwrite.")
-        else:
-            # Create new run
-            if args.config is None:
-                sys.exit(
-                    f"\nError: Run '{args.run_name}' does not exist and --config not provided.\n\n"
-                    f"Usage:\n"
-                    f"  New run:    python forge.py --run_name {args.run_name} --config CONFIG\n"
-                    f"  Resume:     python forge.py --run_name EXISTING_RUN\n"
-                    f"  Overwrite:  python forge.py --run_name NAME --config CONFIG --force\n"
-                )
-            is_resume = False
-            logger.info(f"Starting new run: {run_name}")
-    else:
-        # New run: auto-generate name from config
-        if args.config is None:
-            sys.exit(
-                "\nError: No --run_name or --config provided.\n\n"
-                "Usage:\n"
-                "  New run:    python forge.py --config CONFIG\n"
-                "  Named run:  python forge.py --run_name NAME --config CONFIG\n"
-                "  Resume:     python forge.py --run_name EXISTING_RUN\n"
-            )
+    # Determine output directory and mode
+    if args.resume:
+        # =====================================================================
+        # RESUME MODE
+        # =====================================================================
+        invalid = []
+        if args.config:
+            invalid.append("--config")
+        if args.run_name:
+            invalid.append("--run_name")
         if args.force:
-            logger.warning("--force without --run_name is redundant (auto-generated names are always unique)")
+            invalid.append("--force")
         if args.timestamp:
-            logger.warning("--timestamp without --run_name is redundant (auto-generated names include timestamps)")
-        config_id = generate_config_id(args.config)
-        run_name = f"{config_id}_{timestamp}"
-        output_dir = Path(f"./outputs/{run_name}")
+            invalid.append("--timestamp")
+        if invalid:
+            sys.exit(
+                f"\nError: {', '.join(invalid)} cannot be used with --resume.\n\n"
+                f"Usage:\n"
+                f"  python forge.py --resume {args.resume}\n"
+            )
+
+        # Strip outputs/ prefix if present, then ensure outputs/ base
+        resume_path = args.resume
+        if resume_path.startswith("outputs/"):
+            resume_path = resume_path[len("outputs/"):]
+        resume_path = resume_path.rstrip("/")
+
+        output_dir = Path(f"./outputs/{resume_path}")
+        if not output_dir.exists():
+            sys.exit(
+                f"\nError: Output directory not found: {output_dir}\n\n"
+                f"Usage:\n"
+                f"  python forge.py --resume outputs/PATH_TO_RUN\n"
+            )
+        metadata_path = output_dir / "run_metadata.json"
+        if not metadata_path.exists():
+            sys.exit(
+                f"\nError: No run_metadata.json found in {output_dir}.\n"
+                f"Run may have crashed before setup completed.\n\n"
+                f"Start fresh with:\n"
+                f"  python forge.py --config CONFIG\n"
+            )
+        is_resume = True
+        stem = None  # loaded from metadata later
+        config_path = None
+        logger.info(f"Resuming run from: {output_dir}")
+
+    elif args.config:
+        # =====================================================================
+        # CREATE MODE
+        # =====================================================================
+        config_path = resolve_config_path(args.config)
+        stem = extract_stem(config_path)
+
+        if args.timestamp and not args.run_name:
+            logger.warning("--timestamp without --run_name is redundant (auto-named runs always include timestamp)")
+        if args.force and not args.run_name:
+            logger.warning("--force without --run_name is redundant (auto-named runs are always unique)")
+
+        if args.run_name:
+            # Named run (flat output dir)
+            if args.timestamp:
+                display_name = f"{args.run_name}_{timestamp}"
+            else:
+                display_name = args.run_name
+            output_dir = Path(f"./outputs/{display_name}")
+
+            if output_dir.exists():
+                if args.force:
+                    logger.info(f"--force specified. Deleting existing run: {output_dir}")
+                    old_metadata = load_run_metadata(output_dir)
+                    if old_metadata and old_metadata.get("wandb_run_id"):
+                        delete_wandb_run(old_metadata["wandb_run_id"])
+                    shutil.rmtree(output_dir)
+                else:
+                    sys.exit(
+                        f"\nError: Output directory already exists: {output_dir}\n\n"
+                        f"Options:\n"
+                        f"  Resume:     python forge.py --resume outputs/{display_name}\n"
+                        f"  Overwrite:  python forge.py --run_name {args.run_name} --config {args.config} --force\n"
+                    )
+        else:
+            # Auto-named run (hierarchical output dir)
+            display_name = f"{stem}/{timestamp}"
+            output_dir = Path(f"./outputs/{stem}/{timestamp}")
+
         is_resume = False
-        logger.info(f"Starting new run: {run_name}")
+        logger.info(f"Starting new run: {display_name}")
+
+    elif args.run_name:
+        # --run_name without --config
+        sys.exit(
+            f"\nError: --config is required for new runs.\n\n"
+            f"Usage:\n"
+            f"  python forge.py --run_name {args.run_name} --config CONFIG\n"
+        )
+
+    else:
+        # Nothing provided
+        sys.exit(
+            "\nError: No --config or --resume provided.\n\n"
+            "Usage:\n"
+            "  New run:    python forge.py --config configs/PATH.yaml\n"
+            "  Named run:  python forge.py --config configs/PATH.yaml --run_name NAME\n"
+            "  Resume:     python forge.py --resume outputs/PATH_TO_RUN\n"
+        )
 
     # Convert to string for compatibility
     args.output_dir = str(output_dir)
@@ -778,29 +801,41 @@ def main():
 
     # Load configuration
     if is_resume:
-        # Resume: load stored config, error if --config provided
-        if args.config is not None:
-            sys.exit(
-                f"\nError: --config cannot be used when resuming.\n"
-                f"The stored config at {output_dir / 'config.yaml'} will be used.\n\n"
-                f"Usage:\n"
-                f"  Resume:     python forge.py --run_name {run_name}\n"
-                f"  Overwrite:  python forge.py --run_name {run_name} --config CONFIG --force\n"
-            )
+        # Resume: load stored config
         config = load_config_snapshot(output_dir)
         if config is None:
             sys.exit(
                 f"\nError: No stored config found at {output_dir / 'config.yaml'}\n"
                 f"The run directory exists but appears corrupted.\n\n"
                 f"Options:\n"
-                f"  Delete and restart:  python forge.py --run_name {run_name} --config CONFIG --force\n"
-                f"  Or manually delete:  rm -rf {output_dir}\n"
+                f"  Start fresh:  python forge.py --config CONFIG\n"
+                f"  Delete dir:   rm -rf {output_dir}\n"
             )
+        # Load stem from metadata (with backward compat)
+        existing_metadata = load_run_metadata(output_dir)
+        if existing_metadata:
+            stem = existing_metadata.get("stem")
+            if stem is None:
+                # Backward compat: regenerate stem from stored config path
+                old_config = existing_metadata.get("config", "")
+                if old_config:
+                    try:
+                        stem = extract_stem(Path(old_config))
+                    except Exception:
+                        stem = output_dir.name
+                else:
+                    stem = output_dir.name
+                # Migrate: add stem and display_name fields
+                existing_metadata["stem"] = stem
+                if "display_name" not in existing_metadata:
+                    existing_metadata["display_name"] = existing_metadata.get("run_name", output_dir.name)
+                save_run_metadata(output_dir, existing_metadata)
+                logger.warning(f"Migrated metadata: added stem={stem}")
         logger.info(f"Loaded stored config from: {output_dir / 'config.yaml'}")
     else:
-        # New run: --config already validated above
-        logger.info(f"Loading config from {args.config}")
-        config = load_config(args.config)
+        # New run: --config already validated/resolved above
+        logger.info(f"Loading config from {config_path}")
+        config = load_config(str(config_path))
 
     # Apply CLI overrides to config
     if args.epochs is not None:
@@ -871,38 +906,22 @@ def main():
         logger.info(f"Resuming from checkpoint: {resume_checkpoint}")
 
     # Handle run metadata
-    metadata = load_run_metadata(output_dir)
     if is_resume:
-        if metadata:
-            wandb_run_id = metadata.get("wandb_run_id")
-            logger.info(f"Resuming run: wandb_run_id={wandb_run_id}")
-        else:
-            # Corrupted run: config.yaml exists but run_metadata.json missing
-            # Regenerate metadata from available info
-            wandb_run_id = truncate_for_wandb(run_name)
-            metadata = {
-                "run_name": run_name,
-                "wandb_run_id": wandb_run_id,
-                "config": "(recovered from config.yaml)",
-                "created": "(unknown - recovered run)",
-                "seed": args.seed,
-            }
-            save_run_metadata(output_dir, metadata)
-            logger.warning(f"Recovered missing run_metadata.json for: {run_name}")
+        # existing_metadata already loaded in config loading section
+        metadata = existing_metadata
+        wandb_run_id = metadata.get("wandb_run_id")
+        display_name = metadata.get("display_name") or metadata.get("run_name", output_dir.name)
+        stem = metadata.get("stem", stem)  # stem may have been set by backward compat above
+        logger.info(f"Resuming run: wandb_run_id={wandb_run_id}")
     else:
-        # New run — include timestamp in W&B ID for uniqueness
-        # (W&B tombstones deleted run IDs, so deterministic IDs can't be reused)
-        config_id = generate_config_id(args.config)
-        # Skip adding timestamp if run_name already contains one (--timestamp or auto-named)
-        if timestamp in run_name:
-            wandb_run_id = truncate_for_wandb(run_name)
-        else:
-            wandb_run_id = truncate_for_wandb(f"{run_name}_{timestamp}")
+        # New run: generate W&B run ID with timestamp for uniqueness
+        prefix = args.run_name if args.run_name else stem
+        wandb_run_id = generate_wandb_run_id(prefix, timestamp)
         metadata = {
-            "run_name": run_name,
+            "stem": stem,
+            "display_name": display_name,
             "wandb_run_id": wandb_run_id,
-            "config": args.config,
-            "config_id": config_id,
+            "config": str(config_path),
             "created": timestamp,
             "seed": args.seed,
         }
@@ -912,7 +931,8 @@ def main():
         logger.info(f"Created run metadata: {output_dir / 'run_metadata.json'}")
 
     # Track job in incomplete registry for SLURM auto-resubmission
-    add_incomplete_job(run_name, output_dir)
+    resume_path = str(output_dir.relative_to("./outputs")) if str(output_dir).startswith("./outputs") else str(output_dir).replace("outputs/", "", 1)
+    add_incomplete_job(resume_path, output_dir)
 
     # Setup W&B
     wandb_project = "Test" if args.debug else "Forge-Default"
@@ -922,11 +942,10 @@ def main():
         os.environ["WANDB_RESUME"] = "allow"
     else:
         os.environ.pop("WANDB_RESUME", None)
-    # Use args.config for new runs, metadata["config"] for resume
-    config_path = args.config or metadata.get("config")
-    if config_path:
-        wandb_group = generate_wandb_group(config_path)
-        wandb_tags = generate_wandb_tags(config_path)
+
+    if stem:
+        wandb_group = generate_wandb_group(stem)
+        wandb_tags = generate_wandb_tags(stem)
         logger.info(f"W&B group: {wandb_group}, tags: {wandb_tags}")
         if wandb_group:
             os.environ["WANDB_RUN_GROUP"] = wandb_group
@@ -948,7 +967,7 @@ def main():
             wandb.init(
                 project=os.environ.get("WANDB_PROJECT"),
                 id=wandb_run_id,
-                name=run_name,
+                name=display_name,
                 group=os.environ.get("WANDB_RUN_GROUP"),
                 tags=os.environ.get("WANDB_TAGS", "").split(",") if os.environ.get("WANDB_TAGS") else None,
                 resume="allow" if is_resume else None,
@@ -994,7 +1013,7 @@ def main():
     _train(
         config, device, tokenizer, num_labels, task,
         train_dataset, eval_dataset, compute_metrics, data_collator,
-        output_dir, run_name, args, state, resume_checkpoint,
+        output_dir, display_name, args, state, resume_checkpoint,
         env, report_to, metadata,
     )
 

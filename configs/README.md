@@ -1,47 +1,61 @@
 # Configuration Directory Structure
 
-**88 runnable configs** across classification and translation tasks.
+**113 config files** (70 runnable + 38 base.yaml + 5 meta).
 
 ```
 configs/
 ├── base.yaml                              # Root defaults (training, logging, checkpointing)
+├── TEMPLATE.yaml                          # Config parameter reference
+├── examples/                              # Example configs (4)
 ├── classification/
 │   ├── base.yaml                          # Classification defaults (T=2, α=0.5)
 │   ├── mnli/
 │   │   ├── base.yaml                      # MNLI task passthrough
-│   │   └── bert_distilbert/
-│   │       ├── base.yaml                  # Model pair: BERT→DistilBERT on MNLI
-│   │       ├── ablations/                 # Teacher/training ablations (5 configs)
-│   │       ├── far/                       # FAR factorial study (8 configs)
-│   │       ├── staged/                    # Staged distillation (4 configs)
-│   │       └── gpu/                       # GPU-specific batch/LR configs
-│   ├── qqp/                               # QQP paraphrase detection (5 ablations)
-│   ├── sst2/                              # SST-2 sentiment (5 ablations)
-│   └── cola/                              # CoLA linguistic acceptability (5 ablations)
-└── translation/
-    ├── base.yaml                          # Translation defaults (T=15, α=0.2, BLEU eval)
-    └── europarl/
-        ├── base.yaml                      # Europarl task passthrough
-        └── llama3p2-3b_llama3p2-1b/
-            ├── base.yaml                  # Model pair: Llama 3.2 3B→1B
-            ├── ablations/                 # Teacher/training ablations (5 configs)
-            ├── far/                       # FAR factorial study (8 configs)
-            └── staged/                    # Staged distillation (4 configs)
+│   │   └── distilbert/
+│   │       ├── 00_sft.yaml               # SFT baseline (no teacher)
+│   │       └── bert-base/
+│   │           ├── base.yaml              # Model pair: BERT→DistilBERT on MNLI
+│   │           ├── ablations/             # Teacher/training ablations (4 configs)
+│   │           ├── far/                   # FAR factorial study (8 configs)
+│   │           ├── staged/                # Staged distillation (4 configs)
+│   │           └── gpu/                   # GPU-specific batch/LR configs (10)
+│   ├── qqp/                               # QQP paraphrase detection (SFT + 4 ablations)
+│   ├── sst2/                              # SST-2 sentiment (SFT + 4 ablations)
+│   └── cola/                              # CoLA linguistic acceptability (SFT + 4 ablations)
+├── translation/
+│   ├── base.yaml                          # Translation defaults (T=15, α=0.2, BLEU eval)
+│   └── europarl/
+│       └── llama32-1b/
+│           ├── 00_sft.yaml               # SFT baseline
+│           └── llama32-3b/
+│               ├── base.yaml              # Model pair: Llama 3.2 3B→1B
+│               ├── ablations/             # Teacher/training ablations (4 configs)
+│               ├── far/                   # FAR factorial study (8 configs)
+│               └── staged/                # Staged distillation (4 configs)
+└── ocr/
+    └── olmocr-mix/
+        ├── qwen3vl-2b/                    # SFT + 1 KD config
+        └── qwen25vl-3b/                   # SFT + 2 KD configs
 ```
 
 ## Config Counts
 
 | Category | Count |
 |----------|-------|
-| Classification Ablations | 20 (5 × 4 tasks) |
+| Classification SFT | 4 (1 per task) |
+| Classification Ablations | 17 (4 per task + 1 obsolete) |
 | Classification FAR | 8 (MNLI) |
 | Classification Staged | 4 (MNLI) |
-| Translation Ablations | 5 |
+| Classification GPU | 10 (MNLI hardware variants) |
+| Translation SFT | 1 |
+| Translation Ablations | 4 |
 | Translation FAR | 8 |
 | Translation Staged | 4 |
-| **Total Runnable** | **49** |
+| OCR SFT + KD | 6 |
+| Examples | 4 |
+| **Total Runnable** | **70** |
 
-Plus 39 base.yaml files for inheritance = 88 total YAML files.
+Plus 38 base.yaml files + TEMPLATE.yaml = 113 total YAML files.
 
 ## Inheritance Convention
 
@@ -130,11 +144,11 @@ The alternative (2) would be better if comparing model pairs within experiments,
 
 ### Phase 1: Ablation Study (Teacher Setup)
 Establish baseline with BERT→DistilBERT on MNLI:
-- `00_no-teacher_ce-only` - Student alone (lower bound)
-- `01_frozen_base-teacher_kl` - Frozen pretrained teacher
-- `02_frozen_sft-teacher_kl` - Frozen task-trained teacher
-- `03_cotrain_base-teacher_kl` - Co-training from pretrained
-- `04_cotrain_sft-teacher_kl` - Co-training from task-trained
+- `00_sft` - Student alone (lower bound)
+- `01_kd_frozen-base` - Frozen pretrained teacher
+- `02_kd_frozen-sft` - Frozen task-trained teacher
+- `03_kd_cotrain-base` - Co-training from pretrained
+- `04_kd_cotrain-sft` - Co-training from task-trained
 
 ### Phase 2: FAR Factorial Study
 8 combinations of Feature/Attention/Response signals on best teacher setup.
@@ -156,7 +170,7 @@ Apply best practices to LLaMA 3B→1B on Europarl translation.
 
 Runs are automatically grouped and tagged based on config path:
 - **Group:** `{task}_{experiment}` (e.g., `mnli_ablations`)
-- **Tags:** `[task, experiment, model_pair]` (e.g., `[mnli, ablations, bert_distilbert]`)
+- **Tags:** `[task, experiment, model_pair]` (e.g., `[mnli, ablations, distilbert, bert-base]`)
 
 ## Creating New Configs
 
@@ -165,7 +179,7 @@ Runs are automatically grouped and tagged based on config path:
 3. Override only what differs from parent
 
 ```yaml
-# configs/classification/mnli/bert_distilbert/ablations/my_experiment.yaml
+# configs/classification/mnli/distilbert/bert-base/ablations/my_experiment.yaml
 inherit: ../base.yaml
 
 distillation:
@@ -174,6 +188,6 @@ distillation:
 
 Adding a new experiment directory:
 ```yaml
-# configs/classification/mnli/bert_distilbert/my_experiment/base.yaml
+# configs/classification/mnli/distilbert/bert-base/my_experiment/base.yaml
 inherit: ../base.yaml
 ```

@@ -1,0 +1,34 @@
+# Llama 3.2 1B Instruct model defaults
+inherit: ../base.yaml
+
+model:
+  name: meta-llama/Llama-3.2-1B-Instruct
+  init: pretrained
+
+training:
+  num_epochs: 3
+  batch_size: 4
+  gradient_accumulation_steps: 24
+  learning_rate: 0.0001
+  warmup_steps: 200
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: true
+  use_lora: true
+  lora:
+    r: 16
+    alpha: 16
+    dropout: 0.05
+    target_modules: ["down_proj", "up_proj", "gate_proj"]
+
+checkpointing:
+  save_steps: 500
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 10
+
+evaluation:
+  eval_steps: 500
+  eval_strategy: steps

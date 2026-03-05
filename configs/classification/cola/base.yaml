@@ -1,2 +1,6 @@
-# CoLA task base - passthrough to classification defaults
+# CoLA dataset defaults
 inherit: ../base.yaml
+
+data:
+  task: cola
+  max_length: 128

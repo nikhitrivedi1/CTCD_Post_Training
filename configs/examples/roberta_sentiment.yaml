@@ -4,10 +4,10 @@
 inherit: ../base.yaml
 
 model:
-  teacher: roberta-large           # 355M parameters
-  student: roberta-base            # 125M parameters
-  student_init: pretrained
-
+  name: roberta-base
+  init: pretrained
+  teacher:
+    name: roberta-large            # 355M parameters
 data:
   task: sentiment_analysis         # You'd need to implement this loader
   dataset: imdb                    # Or any sentiment dataset

@@ -40,4 +40,8 @@ if [ -f "$_REPO_DIR/.env" ]; then
     source "$_REPO_DIR/.env"
     set +a
 fi
+
+# Load shell aliases (SLURM shortcuts, etc.)
+source "$_ACTIVATE_DIR/aliases.sh"
+
 unset _ACTIVATE_DIR _REPO_DIR

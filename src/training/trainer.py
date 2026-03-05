@@ -1,4 +1,4 @@
-"""DistillationTrainer: HuggingFace Trainer subclass for knowledge distillation."""
+"""Forge trainers: FinetuningTrainer (base) and DistillationTrainer (KD)."""
 
 import logging
 from typing import Any, Dict, List, Optional, Tuple
@@ -14,7 +14,19 @@ from .projections import create_projection_if_needed
 logger = logging.getLogger(__name__)
 
 
-class DistillationTrainer(Trainer):
+class FinetuningTrainer(Trainer):
+    """
+    Base trainer for supervised fine-tuning.
+
+    Wraps HuggingFace Trainer and serves as the base class for
+    DistillationTrainer. Currently a pass-through that establishes
+    the class hierarchy for future extensions (LoRA setup, eval hooks).
+    """
+
+    pass
+
+
+class DistillationTrainer(FinetuningTrainer):
     """
     Custom Trainer for knowledge distillation.
 

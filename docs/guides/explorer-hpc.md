@@ -485,7 +485,7 @@ rsync -avz --progress folder/ username@login.explorer.northeastern.edu:/scratch/
 srun --partition=gpu --gres=gpu:1 --time=00:30:00 --pty bash
 python forge.py --config config.yaml --max_steps 100
 # Then submit full job
-sbatch scripts/run_training.sh
+sbatch scripts/slurm/run_training.sh
 ```
 
 ### 3. Resource Estimation

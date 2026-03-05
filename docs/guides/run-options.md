@@ -9,244 +9,154 @@ Complete reference for `forge.py` command-line options and run management.
 | Flag | Description |
 |------|-------------|
 | `--config CONFIG` | Path to config file (required for new runs) |
-| `--run_name NAME` | Run name. Creates if not exists, resumes if exists |
-| `--timestamp` | Append timestamp to --run_name (e.g., `mnli_00` → `mnli_00_20260131-1200Z`) |
-| `--force` | Overwrite existing run (deletes and starts fresh) |
+| `--resume PATH` | Path to output dir to resume (e.g. `outputs/classification/mnli/.../20260304-1200Z`) |
+| `--run_name NAME` | Run name for flat output dir (create-only) |
+| `--timestamp` | Append timestamp to --run_name |
+| `--force` | Overwrite existing named run (deletes outputs and W&B run) |
 | `--max_steps N` | Max training steps (for testing) |
+| `--epochs N` | Override num_epochs from config |
 | `--seed N` | Random seed (default: 42) |
+| `--debug` | Enable DEBUG logging and use W&B Test project |
 
 ---
 
-## Quick Reference
+## Two Modes: Create and Resume
+
+### Create Mode (`--config`)
 
 ```bash
-# New run (auto-named with timestamp)
-python forge.py --config configs/classification/mnli/.../00.yaml
+# Auto-named (hierarchical output, always includes timestamp):
+python forge.py --config configs/classification/mnli/distilbert/00_sft.yaml
+# -> outputs/classification/mnli/distilbert/00_sft/20260304-1200Z/
 
-# New run (custom name, no timestamp)
-python forge.py --run_name mnli_00 --config configs/classification/mnli/.../00.yaml
+# Named (flat output):
+python forge.py --config configs/classification/mnli/distilbert/00_sft.yaml --run_name seed42
+# -> outputs/seed42/
 
-# New run (custom name + timestamp = unique each time)
-python forge.py --run_name mnli_00 --timestamp --config configs/classification/mnli/.../00.yaml
-
-# Resume existing
-python forge.py --run_name mnli_00
-
-# Overwrite existing
-python forge.py --run_name mnli_00 --config configs/... --force
+# Named + timestamp:
+python forge.py --config configs/classification/mnli/distilbert/00_sft.yaml --run_name seed42 --timestamp
+# -> outputs/seed42_20260304-1200Z/
 ```
 
----
+| `--run_name` | `--timestamp` | Output dir |
+|:---:|:---:|---|
+| - | - | `outputs/{stem}/{timestamp}/` |
+| Y | - | `outputs/{run_name}/` |
+| Y | Y | `outputs/{run_name}_{timestamp}/` |
 
-## All Scenarios
+The **stem** is derived internally from the config path by stripping the `configs/` prefix and `.yaml` suffix:
+```
+configs/classification/mnli/distilbert/00_sft.yaml
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  stem: classification/mnli/distilbert/00_sft
+```
 
-### 1. Auto-generated name (no --run_name)
+### Resume Mode (`--resume`)
 
 ```bash
-python forge.py --config configs/classification/mnli/bert_distilbert/ablations/00_no-teacher_ce-only.yaml
+# Resume auto-named run:
+python forge.py --resume outputs/classification/mnli/distilbert/00_sft/20260304-1200Z
+
+# Resume named run:
+python forge.py --resume outputs/seed42
 ```
 
-| Field | Value |
-|-------|-------|
-| **Output Dir** | `./outputs/mnli_ablations_00_no-teacher_ce-only_20260131-1200Z/` |
-| **Run Name** | `mnli_ablations_00_no-teacher_ce-only_20260131-1200Z` |
-| **W&B Run ID** | `mnli_ablations_00_no-teacher_ce-only_20260131-1200Z` |
-
-**Run Name Format:** `{task}_{experiment}_{config}_{timestamp}`
+Resume always uses `--resume` with the full tab-completable path. It is never implicit.
+Cannot combine `--resume` with `--config`, `--run_name`, `--timestamp`, or `--force`.
+CLI overrides like `--max_steps`, `--epochs`, `--seed`, `--debug` work with `--resume`.
 
 ---
 
-### 2. Manual name (CREATE)
+## Metadata
 
-```bash
-python forge.py --run_name mnli_00 --config configs/...
-```
+### run_metadata.json
 
-| Field | Value |
-|-------|-------|
-| **Output Dir** | `./outputs/mnli_00/` |
-| **Run Name** | `mnli_00` |
-| **W&B Run ID** | `mnli_00` |
-
----
-
-### 3. Manual name (RESUME)
-
-```bash
-python forge.py --run_name mnli_00
-```
-
-| Field | Value |
-|-------|-------|
-| **Output Dir** | `./outputs/mnli_00/` (existing) |
-| **Run Name** | `mnli_00` |
-| **W&B Run ID** | Loaded from `run_metadata.json` |
-
-**Console output:**
-```
-Run 'mnli_00' exists at ./outputs/mnli_00/
-Resuming existing run. Use --force to overwrite.
-```
-
----
-
-### 4. Manual name + --force (OVERWRITE)
-
-```bash
-python forge.py --run_name mnli_00 --force --config configs/...
-```
-
-| Field | Value |
-|-------|-------|
-| **Output Dir** | `./outputs/mnli_00/` (deleted & recreated) |
-| **Run Name** | `mnli_00` |
-| **W&B Run ID** | `mnli_00` (fresh) |
-
----
-
-### 5. Manual name + --timestamp (UNIQUE RUN)
-
-```bash
-python forge.py --run_name mnli_00 --timestamp --config configs/...
-```
-
-| Field | Value |
-|-------|-------|
-| **Output Dir** | `./outputs/mnli_00_20260131-1200Z/` |
-| **Run Name** | `mnli_00_20260131-1200Z` |
-| **W&B Run ID** | `mnli_00_20260131-1200Z` |
-
-Each run is unique (timestamp ensures no collision).
-
----
-
-### 6. Manual name + --timestamp + --force (UNIQUE + OVERWRITE)
-
-```bash
-python forge.py --run_name mnli_00 --timestamp --force --config configs/...
-```
-
-| Field | Value |
-|-------|-------|
-| **Output Dir** | `./outputs/mnli_00_20260131-1200Z/` |
-| **Run Name** | `mnli_00_20260131-1200Z` |
-| **Behavior** | Deletes if exists (rare: same minute), creates fresh |
-
-Mostly redundant since `--timestamp` makes names unique, but valid for re-runs within the same minute.
-
----
-
-### 7. Long name > 64 characters (TRUNCATION)
-
-**Auto-generated (preserves timestamp):**
-```
-Input:  mnli_very_long_experiment_name_with_details_20260131-1200Z (70 chars)
-Output: mnli_very_long_experiment_name_with_de_20260131-1200Z (64 chars)
-```
-Truncation: `{prefix[:49]}_{timestamp}` (timestamp is 14 chars: YYYYMMDD-HHMMZ)
-
-**Manual without timestamp (simple truncation):**
-```
-Input:  this_is_a_very_long_name_exceeding_64_characters_significantly (65 chars)
-Output: this_is_a_very_long_name_exceeding_64_characters_significantl (64 chars)
-```
-
----
-
-## Metadata & Environment
-
-### run_metadata.json Structure
-
+Auto-named run:
 ```json
 {
-  "run_name": "mnli_00",
-  "wandb_run_id": "mnli_00",
-  "config": "configs/classification/mnli/.../00_no-teacher_ce-only.yaml",
-  "config_id": "mnli_ablations_00_no-teacher_ce-only",
-  "created": "20260131-1200Z",
+  "stem": "classification/mnli/distilbert/00_sft",
+  "display_name": "classification/mnli/distilbert/00_sft/20260304-1200Z",
+  "wandb_run_id": "classification-mnli-distilbert-00_sft-20260304-1200Z",
+  "config": "configs/classification/mnli/distilbert/00_sft.yaml",
+  "created": "20260304-1200Z",
   "seed": 42
 }
 ```
 
-### W&B Environment Variables
+Named run:
+```json
+{
+  "stem": "classification/mnli/distilbert/00_sft",
+  "display_name": "seed42",
+  "wandb_run_id": "seed42-20260304-1200Z",
+  "config": "configs/classification/mnli/distilbert/00_sft.yaml",
+  "created": "20260304-1200Z",
+  "seed": 42
+}
+```
 
-| Variable | Value | Purpose |
-|----------|-------|---------|
-| `WANDB_PROJECT` | `Forge-Default` | Project name |
-| `WANDB_RUN_ID` | `{wandb_run_id}` | Run identifier (≤64 chars) |
-| `WANDB_RESUME` | `allow` | Enable run resumption |
+- `display_name` is the W&B display name.
+- `wandb_run_id` always includes timestamp for uniqueness (W&B tombstones deleted IDs).
+- `stem` drives W&B group and tags.
 
-### Checkpoint Resume
+### W&B Naming
 
-- Auto-detected via `TrainingState.get_resume_checkpoint(output_dir)`
-- Finds latest `checkpoint-*` directory in output_dir
-- Trainer resumes from checkpoint automatically
+| Field | Auto-named | Named | Named + timestamp |
+|-------|-----------|-------|-------------------|
+| **Display name** | `{stem}/{timestamp}` | `{run_name}` | `{run_name}_{timestamp}` |
+| **Run ID** | `{stem[:x]}-{timestamp}` | `{run_name}-{timestamp}` | `{run_name}-{timestamp}` |
+| **Group** | parent dir of stem | parent dir of stem | parent dir of stem |
+| **Tags** | stem segments (except leaf) | stem segments (except leaf) | stem segments (except leaf) |
+
+Run IDs use `-` not `/` as separator (W&B forbids `/` in run IDs).
+Run IDs are truncated to 64 characters, preserving the timestamp suffix.
 
 ---
 
 ## Error Cases
 
-### E1: No run_name, no config
-```bash
-python forge.py
+### No arguments
 ```
-```
-Error: No --run_name or --config provided.
+Error: No --config or --resume provided.
 
 Usage:
-  New run:    python forge.py --config CONFIG
-  Named run:  python forge.py --run_name NAME --config CONFIG
-  Resume:     python forge.py --run_name EXISTING_RUN
+  New run:    python forge.py --config configs/PATH.yaml
+  Named run:  python forge.py --config configs/PATH.yaml --run_name NAME
+  Resume:     python forge.py --resume outputs/PATH_TO_RUN
 ```
 
-### E2: New run_name, no config
-```bash
-python forge.py --run_name mnli_00
-```
-```
-Error: Run 'mnli_00' does not exist and --config not provided.
-
-Usage:
-  New run:    python forge.py --run_name mnli_00 --config CONFIG
-  Resume:     python forge.py --run_name EXISTING_RUN
-  Overwrite:  python forge.py --run_name NAME --config CONFIG --force
-```
-
-### E3: --force without config
-```bash
-python forge.py --run_name mnli_00 --force   # when run exists
-```
+### --run_name without --config
 ```
 Error: --config is required for new runs.
 
 Usage:
-  python forge.py --run_name NAME --config CONFIG [--force]
+  python forge.py --run_name NAME --config CONFIG
 ```
 
-### E4: Resume with --config provided
-```bash
-python forge.py --run_name mnli_00 --config configs/...   # when run exists
+### Named run already exists (without --force)
 ```
-```
-Error: --config cannot be used when resuming.
-The stored config at ./outputs/mnli_00/config.yaml will be used.
-
-Usage:
-  Resume:     python forge.py --run_name mnli_00
-  Overwrite:  python forge.py --run_name mnli_00 --config CONFIG --force
-```
-
-### E5: Corrupted run (missing config.yaml)
-```bash
-python forge.py --run_name mnli_00   # run dir exists but no config.yaml
-```
-```
-Error: No stored config found at ./outputs/mnli_00/config.yaml
-The run directory exists but appears corrupted.
+Error: Output directory already exists: ./outputs/seed42
 
 Options:
-  Delete and restart:  python forge.py --run_name mnli_00 --config CONFIG --force
-  Or manually delete:  rm -rf ./outputs/mnli_00
+  Resume:     python forge.py --resume outputs/seed42
+  Overwrite:  python forge.py --run_name seed42 --config CONFIG --force
+```
+
+### --resume with incompatible flags
+```
+Error: --config, --run_name cannot be used with --resume.
+
+Usage:
+  python forge.py --resume outputs/PATH
+```
+
+### --resume with missing metadata
+```
+Error: No run_metadata.json found in ./outputs/PATH.
+Run may have crashed before setup completed.
+
+Start fresh with:
+  python forge.py --config CONFIG
 ```
 
 ---
@@ -255,168 +165,78 @@ Options:
 
 | Command | Warning |
 |---------|---------|
-| `python forge.py --force --config ...` | --force without --run_name is redundant |
-| `python forge.py --timestamp --config ...` | --timestamp without --run_name is redundant |
-
----
-
-## Decision Matrix
-
-| --run_name | --timestamp | Exists | --force | --config | Result |
-|:----------:|:-----------:|:------:|:-------:|:--------:|--------|
-| - | - | - | - | Y | **CREATE** (auto-name) |
-| - | - | - | - | - | **ERROR E1** |
-| Y | - | - | - | Y | **CREATE** |
-| Y | - | - | - | - | **ERROR E2** |
-| Y | - | Y | - | - | **RESUME** |
-| Y | - | Y | - | Y | **ERROR E4** |
-| Y | - | Y | Y | Y | **OVERWRITE** |
-| Y | - | Y | Y | - | **ERROR E3** |
-| Y | Y | - | - | Y | **CREATE** (unique) |
-| Y | Y | Y | - | - | **RESUME** (rare) |
-| Y | Y | Y | Y | Y | **OVERWRITE** (rare) |
+| `--force --config ...` (no --run_name) | Redundant: auto-named runs are always unique |
+| `--timestamp --config ...` (no --run_name) | Redundant: auto-named runs always include timestamp |
 
 ---
 
 ## Output Directory Structure
 
+### Auto-named (hierarchical)
 ```
 outputs/
-└── mnli_00/                      # Run directory
-    ├── config.yaml               # Frozen config snapshot
-    ├── run_metadata.json         # Run metadata (W&B ID, timestamps)
-    ├── training_state.json       # Epoch/step tracking for resume
-    ├── checkpoint-500/           # Intermediate checkpoints
-    ├── checkpoint-1000/
-    └── pytorch_model.bin         # Final model (after training)
+└── classification/
+    └── mnli/
+        └── distilbert/
+            └── 00_sft/
+                └── 20260304-1200Z/
+                    ├── config.yaml
+                    ├── run_metadata.json
+                    ├── training_state.json
+                    ├── output.log
+                    ├── checkpoint-500/
+                    └── checkpoint-1000/
+```
+
+### Named (flat)
+```
+outputs/
+└── seed42/
+    ├── config.yaml
+    ├── run_metadata.json
+    ├── training_state.json
+    ├── output.log
+    ├── checkpoint-500/
+    └── checkpoint-1000/
 ```
 
 ---
 
-## Invocation Modes & Job Tracking
+## SLURM Integration
 
-The `.incomplete_jobs` file tracks running/incomplete jobs for SLURM auto-resubmission.
-
-### Job Key Logic
-
-```python
-job_key = os.environ.get("SLURM_JOB_ID") or f"local_{os.getpid()}"
-```
-
-| Environment | Job Key | Example |
-|-------------|---------|---------|
-| SLURM (sbatch/srun) | `SLURM_JOB_ID` | `12345` |
-| Local (direct) | `local_{pid}` | `local_98765` |
-
----
-
-### Mode 1: Direct Local Run
+### Initial Submission
 
 ```bash
-python forge.py --config configs/.../config.yaml
-python forge.py --run_name my_run --config configs/.../config.yaml
-python forge.py --run_name my_run --timestamp --config configs/.../config.yaml
+# Auto-named:
+sbatch scripts/slurm/run_training.sh configs/classification/mnli/distilbert/00_sft.yaml
+
+# Named:
+sbatch scripts/slurm/run_training.sh seed42 configs/classification/mnli/distilbert/00_sft.yaml
+
+# With env var overrides:
+TIMESTAMP=1 SEED=123 DEBUG=1 sbatch scripts/slurm/run_training.sh seed42 configs/...
 ```
 
-| Event | Action |
-|-------|--------|
-| Start | `job_key = local_{pid}`, adds entry |
-| Complete | Removes entry |
-| Ctrl+C/crash | Entry stays (stale) |
+### Auto-Resubmission
 
----
+When a job times out with incomplete training:
 
-### Mode 2: Direct Local Resume
+1. Script reads `resume_path` from `.incomplete_jobs`
+2. Resubmits with `_FORGE_RESUME_PATH` env var
+3. New job runs `python forge.py --resume outputs/{resume_path}`
+4. Forwards `SEED`, `MAX_STEPS`, `EPOCHS`, `DEBUG` (not `TIMESTAMP` or `FORCE`)
 
-```bash
-python forge.py --run_name existing_run_20260201-1200Z
-```
-
-| Event | Action |
-|-------|--------|
-| Start | New `local_{pid}`, adds entry |
-| Original entry | Stays stale (no `PREV_JOB_ID`) |
-
----
-
-### Mode 3: srun (Interactive SLURM)
-
-```bash
-srun --gres=gpu:1 python forge.py --run_name my_run --config ...
-```
-
-| Event | Action |
-|-------|--------|
-| Start | `job_key = SLURM_JOB_ID`, adds entry |
-| Complete | Removes entry |
-| Timeout/cancel | Entry stays, no auto-resubmit |
-
----
-
-### Mode 4: sbatch (Batch SLURM)
-
-```bash
-sbatch scripts/run_training.sh my_run configs/.../config.yaml
-TIMESTAMP=1 sbatch scripts/run_training.sh my_run configs/.../config.yaml
-```
-
-| Event | Action |
-|-------|--------|
-| Start | `job_key = 12345`, adds entry with actual run_name |
-| Complete | Removes entry |
-| Timeout | Entry stays, triggers auto-resubmit |
-
----
-
-### Mode 5: sbatch Auto-Resubmit
-
-When job 12345 times out:
-
-```bash
-# run_training.sh automatically does:
-PREV_JOB_ID=12345 sbatch scripts/run_training.sh my_run_20260201-1200Z
-```
-
-| Event | Action |
-|-------|--------|
-| New job 12346 starts | Reads `PREV_JOB_ID=12345` |
-| | Removes entry `12345` |
-| | Adds entry `12346` |
-| Complete | Removes `12346` |
-
----
-
-### Mode 6: Concurrent SLURM Jobs
-
-```bash
-sbatch scripts/run_training.sh far-03 configs/.../03.yaml  # Job 12345
-sbatch scripts/run_training.sh far-07 configs/.../07.yaml  # Job 12346
-```
-
-Each job gets unique key, no collision:
+### Job Tracking (.incomplete_jobs)
 
 ```json
 {
-  "12345": {"run_name": "far-03_2026...", "output_dir": "..."},
-  "12346": {"run_name": "far-07_2026...", "output_dir": "..."}
+  "12345": {
+    "type": "training",
+    "resume_path": "classification/mnli/distilbert/00_sft/20260304-1200Z",
+    "output_dir": "./outputs/classification/mnli/distilbert/00_sft/20260304-1200Z"
+  }
 }
 ```
 
----
-
-### Edge Cases
-
-| Case | Behavior |
-|------|----------|
-| Crash before cleanup | Entry stays stale, manual cleanup |
-| PID reuse (local) | New job overwrites old entry (acceptable) |
-| Missing `.incomplete_jobs` | Returns `{}`, self-healing |
-| Corrupted JSON | `JSONDecodeError` caught, returns `{}` |
-
----
-
-### Future Enhancements
-
-- [ ] Cleanup script for stale entries
-- [ ] `--prev_job_id` flag for manual handoff
-- [ ] Notification on job completion/failure
+Job key: `SLURM_JOB_ID` on cluster, `local_{pid}` locally.
+Entry removed on successful completion. Resubmit uses `PREV_JOB_ID` to clean up the old entry.

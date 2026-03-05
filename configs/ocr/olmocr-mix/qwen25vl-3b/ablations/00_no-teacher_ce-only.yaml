@@ -1,5 +1,0 @@
-inherit: ../base.yaml
-
-distillation:
-  alpha: 0.0
-  freeze_teacher: true

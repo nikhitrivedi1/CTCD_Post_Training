@@ -1,0 +1,39 @@
+# 01_frozen_base-teacher_kl: Frozen pretrained teacher
+# Teacher is frozen bert-base-uncased (not fine-tuned on SST-2)
+# Tests whether pretrained knowledge alone helps distillation
+
+inherit: ../base.yaml
+
+model:
+  name: distilbert-base-uncased
+  init: pretrained
+  teacher:
+    name: bert-base-uncased
+    freeze: true
+data:
+  task: sst2
+  max_length: 128
+
+training:
+  num_epochs: 3
+  batch_size: 16
+  learning_rate: 0.00002
+  warmup_steps: 200
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: true
+
+distillation:
+  temperature: 2
+  alpha: 0.5              # Balance CE and KL loss
+checkpointing:
+  save_steps: 2000
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 100
+
+evaluation:
+  eval_steps: 2000
+  eval_strategy: steps

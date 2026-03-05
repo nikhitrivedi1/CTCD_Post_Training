@@ -1,9 +1,0 @@
-# 00_no-teacher_ce-only: Phase 1 SFT baseline
-# Student (Qwen3-VL-2B) trains on OCR with cross-entropy loss only
-# No teacher supervision - validates vision pipeline and establishes baseline
-
-inherit: ../base.yaml
-
-distillation:
-  alpha: 0.0              # CE only: no distillation
-  freeze_teacher: true

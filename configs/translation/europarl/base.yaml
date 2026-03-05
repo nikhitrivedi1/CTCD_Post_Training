@@ -1,2 +1,15 @@
-# Europarl task base - passthrough to translation defaults
+# Europarl EN-FR translation defaults
 inherit: ../base.yaml
+
+data:
+  task: europarl
+  dataset: europarl
+  source_lang: en
+  target_lang: fr
+  max_samples: 45715
+  max_length: 256
+
+evaluation:
+  compute_translation_metrics: true
+  translation_metrics_samples: 200
+  max_new_tokens: 128

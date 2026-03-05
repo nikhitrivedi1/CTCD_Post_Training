@@ -38,7 +38,7 @@ How to scale training from a single GPU debug run to a frontier-scale distribute
 **Resources:** 1 CPU, 1 GPU, minutes
 
 ```bash
-python forge.py --config configs/ocr/olmocr-mix/qwen3vl-2b/ablations/00_no-teacher_ce-only.yaml --debug
+python forge.py --config configs/ocr/olmocr-mix/qwen3vl-2b/00_sft.yaml --debug
 ```
 
 **What's happening:**
@@ -55,7 +55,7 @@ python forge.py --config configs/ocr/olmocr-mix/qwen3vl-2b/ablations/00_no-teach
 **Resources:** 8 CPUs, 1 GPU (H200 140GB), hours
 
 ```bash
-python forge.py --config configs/ocr/olmocr-mix/qwen3vl-2b/ablations/00_no-teacher_ce-only.yaml
+python forge.py --config configs/ocr/olmocr-mix/qwen3vl-2b/00_sft.yaml
 ```
 
 **This is the current Forge default.** Everything runs in a single process.
@@ -78,7 +78,7 @@ GPU:      trains on batch 3 ─────────────────�
 
 Set `dataloader_num_workers` in your config's `training` section. Rule of thumb: 2–4 workers per GPU. More workers = more CPU RAM usage.
 
-**2. Offline data prep** — `scripts/prepare_ocr_data.py --workers N`
+**2. Offline data prep** — `scripts/data/prepare_ocr_data.py --workers N`
 
 PDF rendering is CPU-bound. The `--workers` flag uses `ProcessPoolExecutor` for parallel rendering. Defaults to `os.cpu_count()`.
 
@@ -117,7 +117,7 @@ Forge has built-in SLURM integration for long-running jobs:
 
 **SLURM signal handling:** When the job approaches its time limit, SLURM sends SIGUSR1 (configured via `#SBATCH --signal=B:SIGUSR1@120`). Forge's `SLURMSignalCallback` catches this and saves a checkpoint before the job is killed.
 
-**Auto-resubmission:** `scripts/run_training.sh` reads `training_state.json` after each job. If training isn't complete, it resubmits with `resume_from_checkpoint` pointing to the latest checkpoint. This chains jobs across SLURM's time limits.
+**Auto-resubmission:** `scripts/slurm/run_training.sh` reads `training_state.json` after each job. If training isn't complete, it resubmits with `resume_from_checkpoint` pointing to the latest checkpoint. This chains jobs across SLURM's time limits.
 
 ```
 Job 1 (8 hrs) → checkpoint at step 4800 → SIGUSR1 → save → exit
@@ -283,7 +283,7 @@ source ~/.zshrc && conda activate forge
 NGPUS=$(nvidia-smi -L | wc -l)
 
 torchrun --nproc_per_node=$NGPUS \
-    forge.py --config configs/ocr/olmocr-mix/qwen3vl-2b/ablations/00_no-teacher_ce-only.yaml
+    forge.py --config configs/ocr/olmocr-mix/qwen3vl-2b/00_sft.yaml
 ```
 
 Note: `--ntasks-per-node=1` because `torchrun` handles process spawning — SLURM just launches the one `torchrun` process.
@@ -635,7 +635,7 @@ Enable via TrainingArguments: `gradient_checkpointing=True`. Particularly useful
 | What | How CPUs help | Forge config |
 |------|--------------|-----------------|
 | **Data loading** | Workers prefetch batches while GPU trains | `training.dataloader_num_workers: 4` |
-| **Data prep** | Parallel PDF rendering | `scripts/prepare_ocr_data.py --workers N` |
+| **Data prep** | Parallel PDF rendering | `scripts/data/prepare_ocr_data.py --workers N` |
 | **CPU offloading** | Move optimizer states to CPU RAM (DeepSpeed ZeRO-Offload) | `ds_config.json: offload_optimizer.device: "cpu"` |
 | **Tokenization** | HF `datasets.map()` uses multiple processes | Automatic (uses available CPUs) |
 

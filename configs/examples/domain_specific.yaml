@@ -5,10 +5,10 @@ inherit: ../base.yaml
 
 model:
   # Use your own fine-tuned models
-  teacher: your-org/finetuned-bert-medical    # Your domain expert
-  student: distilbert-base-uncased             # Smaller general model
-  student_init: fresh                          # Start from scratch
-
+  name: distilbert-base-uncased
+  init: fresh
+  teacher:
+    name: your-org/finetuned-bert-medical     # Your domain expert
 data:
   task: medical_classification                 # Custom task
   dataset: your_medical_dataset

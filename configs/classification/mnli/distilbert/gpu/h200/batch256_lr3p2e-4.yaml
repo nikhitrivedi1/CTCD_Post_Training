@@ -1,0 +1,42 @@
+# BERT → DistilBERT on MNLI - H200 Default (Recommended)
+# Batch size: 256 (16× base) - Proven stable settings
+# LR: 3.2e-4 (linear scaling rule)
+# Expected time: ~15-20 min for 3 epochs
+
+inherit: ../base.yaml
+
+model:
+  name: distilbert-base-uncased
+  init: pretrained
+  teacher:
+    name: bert-base-uncased
+data:
+  task: mnli
+  max_length: 128
+
+training:
+  num_epochs: 3
+  batch_size: 256          # 16× base - same as A100, proven to work
+  learning_rate: 0.00032   # 16× base (linear scaling rule)
+  warmup_steps: 500        # Same as A100 config
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: true               # bf16 would be better but fp16 is safer
+  dataloader_num_workers: 4
+  dataloader_pin_memory: true
+
+distillation:
+  temperature: 2
+  alpha: 0.5
+
+checkpointing:
+  save_steps: 250          # More frequent saves with faster training
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 50        # More frequent logging
+
+evaluation:
+  eval_steps: 250          # Match save_steps
+  eval_strategy: steps

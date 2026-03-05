@@ -324,50 +324,41 @@ Visual:
 
 ## Model Parameters
 
-### `teacher`
+Config section: `model:`
 
-The large, pre-trained model providing "soft labels".
+### `model.name`
 
-```
-teacher: bert-base-uncased
+The primary model being trained (HuggingFace model ID or local path).
 
-├── 110M parameters
-├── 12 transformer layers
-├── 768 hidden dimension
-├── Pre-trained on large corpus
-├── Frozen during distillation (no gradient updates)
-└── Provides soft probability distributions for student
+```yaml
+model:
+  name: distilbert-base-uncased
+
+# 66M parameters, 6 transformer layers, 768 hidden dimension
 ```
 
-### `student`
+### `model.init`
 
-The smaller model being trained to mimic the teacher.
-
-```
-student: distilbert-base-uncased
-
-├── 66M parameters (40% smaller)
-├── 6 transformer layers (50% fewer)
-├── 768 hidden dimension (same)
-├── Learns from teacher + labels
-└── Goal: Match teacher accuracy with fewer parameters
-```
-
-### `student_init`
-
-How to initialize student weights before training.
+How to initialize model weights before training. Default: `pretrained`.
 
 ```
-student_init: fresh
-├── Random initialization
-├── Student learns everything from scratch
-└── Fair comparison, but slower convergence
-
-student_init: pretrained
-├── Use DistilBERT's pretrained weights
-├── Already has language understanding
-└── Faster convergence, may be "unfair" comparison
+init: fresh       - Random initialization, learns from scratch
+init: pretrained  - Use pretrained weights, faster convergence
 ```
+
+### `model.teacher`
+
+Optional. The larger model providing soft labels for distillation or serving as reward model for RL.
+
+```yaml
+model:
+  teacher:
+    name: bert-base-uncased   # HuggingFace model ID or local path
+    freeze: true               # true = frozen teacher, false = co-training
+```
+
+When `freeze: true` (default), teacher weights don't update during training.
+When `freeze: false`, both models train together (co-training).
 
 ---
 

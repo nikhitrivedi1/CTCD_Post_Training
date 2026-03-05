@@ -70,7 +70,7 @@ What's already supported vs what needs work:
 
 ---
 
-## Data Preparation: `scripts/prepare_ocr_data.py`
+## Data Preparation: `scripts/data/prepare_ocr_data.py`
 
 **Date:** 2026-02-25
 
@@ -134,13 +134,13 @@ Three optimizations:
 
 ```bash
 # Full 260K run (all 4 subsets)
-sbatch scripts/run_prepare_data.sh --output data/ocr/olmocr-mix-full
+sbatch scripts/slurm/run_prepare_data.sh --output data/ocr/olmocr-mix-full
 
 # Test run (50 samples per subset)
-sbatch scripts/run_prepare_data.sh --output data/ocr/olmocr-mix-test --max_samples 50
+sbatch scripts/slurm/run_prepare_data.sh --output data/ocr/olmocr-mix-test --max_samples 50
 
 # Single subset
-python scripts/prepare_ocr_data.py --subset 00_documents --output data/ocr/olmocr-mix-5k --max_samples 5000
+python scripts/data/prepare_ocr_data.py --subset 00_documents --output data/ocr/olmocr-mix-5k --max_samples 5000
 ```
 
 ---
@@ -179,12 +179,12 @@ All three run through the same pipeline — same rendering, prompting, scoring.
 
 ### Implementation
 
-**Script:** `scripts/eval_olmocr_bench.py`
+**Script:** `scripts/eval/olmocr_bench.py`
 
 ```
-python scripts/eval_olmocr_bench.py --model allenai/olmOCR-2-7B-1025-FP8
-python scripts/eval_olmocr_bench.py --model Qwen/Qwen3-VL-2B-Instruct
-python scripts/eval_olmocr_bench.py --checkpoint outputs/.../checkpoint-400
+python scripts/eval/olmocr_bench.py --model allenai/olmOCR-2-7B-1025-FP8
+python scripts/eval/olmocr_bench.py --model Qwen/Qwen3-VL-2B-Instruct
+python scripts/eval/olmocr_bench.py --checkpoint outputs/.../checkpoint-400
 ```
 
 **Args:**
@@ -228,7 +228,7 @@ pip install olmocr  # for bench scoring classes
 huggingface-cli download --repo-type dataset allenai/olmOCR-bench --local-dir data/olmocr-bench
 ```
 
-**SLURM wrapper:** `scripts/run_olmocr_bench.sh`
+**SLURM wrapper:** `scripts/slurm/run_olmocr_bench.sh`
 
 ### Runtime Estimate
 - 1,403 pages × ~5s/page = ~2 hours per model on H200

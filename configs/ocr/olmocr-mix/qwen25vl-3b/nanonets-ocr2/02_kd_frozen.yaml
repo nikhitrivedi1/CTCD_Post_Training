@@ -1,0 +1,9 @@
+inherit: ../base.yaml
+
+model:
+  teacher:
+    name: nanonets/Nanonets-OCR2-3B
+    freeze: true
+distillation:
+  temperature: 2.0
+  alpha: 0.3

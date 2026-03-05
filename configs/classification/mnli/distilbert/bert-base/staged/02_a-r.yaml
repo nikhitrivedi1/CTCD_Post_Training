@@ -1,0 +1,54 @@
+# Staged Distillation 03: Attention → Response
+# Tests if attention patterns first, then response matching improves results
+# Completes the two-stage curriculum: F→R (01), A→R (this)
+
+inherit: ../base.yaml
+
+model:
+  name: distilbert-base-uncased
+  init: pretrained
+  teacher:
+    name: textattack/bert-base-uncased-MNLI
+    freeze: false
+data:
+  task: mnli
+  max_length: 128
+
+training:
+  num_epochs: 4  # 2 per stage (A: 2, R: 2)
+  batch_size: 64
+  gradient_accumulation_steps: 4
+  learning_rate: 0.00032
+  warmup_steps: 500
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: true
+  dataloader_num_workers: 4
+  dataloader_pin_memory: true
+
+distillation:
+  temperature: 2
+  alpha: 0.5
+  teacher_label_map: [1, 2, 0]
+
+  # Staged distillation: A then R (2 epochs each)
+  stages:
+  - strategy: attention_kl
+    until_progress: 0.5             # Epochs 1-2: attention patterns
+  - strategy: response_kl
+    until_progress: 1.0             # Epochs 3-4: task decisions
+
+  layer_mapping:
+    type: uniform  # Required for attention_kl stage
+
+checkpointing:
+  save_steps: 250
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 50
+
+evaluation:
+  eval_steps: 250
+  eval_strategy: steps

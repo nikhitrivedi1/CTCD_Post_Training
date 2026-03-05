@@ -48,6 +48,11 @@ HOOK
 cat > "$DEACTIVATE_DIR/forge.sh" << 'HOOK'
 unset HF_HOME
 unset LD_PRELOAD
+
+# Clean up aliases (from scripts/env/aliases.sh)
+unset _FORGE_ROOT
+unset -f sqw stail slog serr sc sjob sswitch sdefault snode 2>/dev/null
+unalias sq sqall sgpu sh200 scall scpend saccts sfair 2>/dev/null
 HOOK
 
 echo "Conda hooks installed for '$ENV_NAME' environment."

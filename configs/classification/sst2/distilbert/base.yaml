@@ -1,0 +1,6 @@
+# DistilBERT model defaults
+inherit: ../base.yaml
+
+model:
+  name: distilbert-base-uncased
+  init: pretrained

@@ -30,10 +30,11 @@ from .projections import (
     create_projection_if_needed,
     PROJECTION_REGISTRY,
 )
-from .trainer import DistillationTrainer
+from .trainer import FinetuningTrainer, DistillationTrainer
 
 __all__ = [
-    # Trainer
+    # Trainers
+    "FinetuningTrainer",
     "DistillationTrainer",
     # Loss strategies
     "DistillationLossStrategy",

@@ -308,7 +308,7 @@ def load_ocr(
     """
     Load pre-processed OCR dataset (images + text pairs).
 
-    Expects a local dataset created by scripts/prepare_ocr_data.py with
+    Expects a local dataset created by scripts/data/prepare_ocr_data.py with
     'image' (PIL) and 'text' (markdown) columns.
 
     Args:
@@ -443,7 +443,7 @@ def load_dataset_for_task(config: dict):
     if is_ocr_task(task_name):
         import logging
         _logger = logging.getLogger(__name__)
-        processor_name = config["model"].get("processor", config["model"]["student"])
+        processor_name = config["model"].get("processor", config["model"]["name"])
         _logger.info(f"Loading processor: {processor_name}...")
         processor = AutoProcessor.from_pretrained(processor_name)
         return load_ocr(
@@ -454,7 +454,11 @@ def load_dataset_for_task(config: dict):
             include_reasoning=config.get("data", {}).get("include_reasoning", False),
         )
 
-    teacher_model = config["model"]["teacher"]
+    teacher_cfg = config["model"].get("teacher", {})
+    teacher_model = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
+    # Fall back to primary model for tokenizer when no teacher
+    if teacher_model is None:
+        teacher_model = config["model"]["name"]
 
     # Load appropriate tokenizer
     tokenizer = AutoTokenizer.from_pretrained(teacher_model)

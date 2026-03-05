@@ -148,17 +148,17 @@ Catalog of tasks for systematically understanding knowledge distillation across 
 - **Goal:** Classify premise-hypothesis pairs as entailment/neutral/contradiction
 - **Why:** Tests reasoning transfer; multiple output classes reveal soft-label dynamics
 - **Key findings:** Co-training outperforms frozen; overconfident-wrong teachers hurt
-- **Config:** `configs/mnli/bert_distilbert/`
+- **Config:** `configs/classification/mnli/distilbert/bert-base/`
 
 **QQP (Quora Question Pairs)**
 - **Goal:** Detect duplicate questions (binary)
 - **Why:** Class imbalance (~64% negative); tests robustness under skewed distributions
-- **Config:** `configs/qqp/bert_distilbert/`
+- **Config:** `configs/classification/qqp/distilbert/bert-base/`
 
 **Translation (EN → FR)**
 - **Goal:** Translate English to French using causal LM
 - **Why:** Sequence generation requires per-token distillation; tests if KL scales to large vocabularies
-- **Config:** `configs/translation/llama3p2-3b_llama3p2-1b/`
+- **Config:** `configs/translation/europarl/llama32-1b/llama32-3b/`
 
 ---
 
@@ -284,11 +284,11 @@ For each new task:
 - [ ] Create base config in `configs/{task}/{teacher}_{student}/base.yaml`
 - [ ] Define appropriate metrics (accuracy, F1, BLEU, ROUGE, etc.)
 - [ ] Create L0 ablation configs:
-  - [ ] `00_no-teacher_ce-only.yaml`
-  - [ ] `01_frozen_base-teacher_kl.yaml`
-  - [ ] `02_frozen_sft-teacher_kl.yaml`
-  - [ ] `03_cotrain_base-teacher_kl.yaml`
-  - [ ] `04_cotrain_sft-teacher_kl.yaml`
+  - [ ] `00_sft.yaml`
+  - [ ] `01_kd_frozen-base.yaml`
+  - [ ] `02_kd_frozen-sft.yaml`
+  - [ ] `03_kd_cotrain-base.yaml`
+  - [ ] `04_kd_cotrain-sft.yaml`
 - [ ] Document expected baselines and teacher performance
 - [ ] Run smoke test on small subset to verify pipeline
 - [ ] Scale up to full training run

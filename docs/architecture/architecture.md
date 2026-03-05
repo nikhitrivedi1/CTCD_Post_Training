@@ -38,8 +38,8 @@ Signals compose via `CombinedDistillationLoss` for factorial experiments (8 comb
 
 **Teacher strategies:**
 
-| Strategy | `freeze_teacher` | Finding |
-|----------|-------------------|---------|
+| Strategy | `teacher.freeze` | Finding |
+|----------|------------------|---------|
 | Frozen SFT | `true` | Risk: overconfident teacher on imbalanced data |
 | Frozen Base | `true` | Safer but limited knowledge |
 | Co-train SFT | `false` | Self-corrects, best for binary tasks |
@@ -76,7 +76,7 @@ Orchestrates the full pipeline: CLI parsing → config loading → data → mode
 
 ```
 forge.py
-  ├── Parse CLI (--run_name, --config, --seed, --max_steps, --epochs, --force, --timestamp, --debug)
+  ├── Parse CLI (--config, --resume, --run_name, --seed, --max_steps, --epochs, --force, --timestamp, --debug)
   ├── Load config with inheritance
   ├── Load data (src/data/)
   ├── Load models (src/models/)
@@ -170,7 +170,7 @@ Configs use `inherit: base.yaml` for cascading overrides. Resolution walks up th
 ```
 configs/base.yaml                        # Global defaults
   └── configs/ocr/olmocr-mix/base.yaml   # Task + dataset defaults
-      └── configs/.../sizes/5k.yaml      # Data size settings
+      └── configs/.../sizes/5k.yaml       # Data size settings
           └── configs/.../qwen3vl-2b/base.yaml  # Model-specific
               └── configs/.../ablations/01.yaml  # Experiment-specific
 ```
@@ -179,10 +179,12 @@ configs/base.yaml                        # Global defaults
 
 ```yaml
 model:
-  teacher: "model-name"          # HF model ID or null
-  student: "model-name"
-  student_init: pretrained       # pretrained | fresh
+  name: "model-name"             # HF model ID (student for KD, sole model for SFT)
+  init: pretrained               # pretrained | fresh
   processor: "model-name"        # For VLMs
+  teacher:                       # Optional, presence triggers KD
+    name: "model-name"
+    freeze: true                 # Frozen or co-trained teacher
 
 data:
   task: ocr                      # classification | translation | ocr
@@ -204,7 +206,6 @@ training:
 distillation:
   temperature: 2.0
   alpha: 0.5                     # 0.0 = CE only (SFT), 1.0 = distillation only
-  freeze_teacher: true
   loss_type: kl_divergence
   layer_mapping:
     type: uniform
@@ -231,34 +232,35 @@ evaluation:
 ### 4.1 Local
 
 ```bash
-python forge.py --config configs/.../ablation.yaml
-python forge.py --run_name my_run --config configs/.../ablation.yaml
-python forge.py --run_name my_run  # resume
+python forge.py --config configs/.../ablation.yaml                     # auto-named
+python forge.py --run_name my_run --config configs/.../ablation.yaml   # named
+python forge.py --resume outputs/classification/mnli/.../20260304-1200Z  # resume
 ```
 
 ### 4.2 SLURM (Explorer HPC)
 
-**Training:** `scripts/run_training.sh`
+**Training:** `scripts/slurm/run_training.sh`
 
 ```bash
-sbatch scripts/run_training.sh my_run configs/.../ablation.yaml   # new named run
-sbatch scripts/run_training.sh my_run                              # resume
-sbatch scripts/run_training.sh configs/.../ablation.yaml           # auto-named
+sbatch scripts/slurm/run_training.sh configs/.../ablation.yaml           # auto-named
+sbatch scripts/slurm/run_training.sh my_run configs/.../ablation.yaml    # named run
 ```
+
+Resume is automatic via `.incomplete_jobs` and `_FORGE_RESUME_PATH` env var.
 
 Environment variables: `SEED`, `MAX_STEPS`, `EPOCHS`, `TIMESTAMP`, `FORCE`, `DEBUG`
 
-**Evaluation:** `scripts/run_olmocr_bench.sh`
+**Evaluation:** `scripts/slurm/run_olmocr_bench.sh`
 
 ```bash
-sbatch scripts/run_olmocr_bench.sh --model allenai/olmOCR-2-7B-1025-FP8
-sbatch scripts/run_olmocr_bench.sh --checkpoint outputs/.../checkpoint-400
+sbatch scripts/slurm/run_olmocr_bench.sh --model allenai/olmOCR-2-7B-1025-FP8
+sbatch scripts/slurm/run_olmocr_bench.sh --checkpoint outputs/.../checkpoint-400
 ```
 
-**Data Preparation:** `scripts/run_prepare_data.sh`
+**Data Preparation:** `scripts/slurm/run_prepare_data.sh`
 
 ```bash
-sbatch scripts/run_prepare_data.sh --output data/ocr/olmocr-mix-full
+sbatch scripts/slurm/run_prepare_data.sh --output data/ocr/olmocr-mix-full
 ```
 
 ### 4.3 Graceful Shutdown & Auto-Resume
@@ -272,21 +274,20 @@ All SLURM scripts handle time limit interruptions. The pattern:
 
 | Script | Signal | Buffer | State | Resume Mechanism |
 |--------|--------|--------|-------|-----------------|
-| **Training** (`run_training.sh`) | `SIGUSR1@120` | 2 min | HF checkpoints + `training_state.json` | `.incomplete_jobs` JSON → auto `sbatch` |
-| **Evaluation** (`run_olmocr_bench.sh`) | `SIGTERM@300` | 5 min | Per-page atomic writes (`.tmp` + rename) | `.bench_resume_{JOB_ID}` → auto `sbatch` |
+| **Training** (`slurm/run_training.sh`) | `SIGUSR1@120` | 2 min | HF checkpoints + `training_state.json` | `.incomplete_jobs` JSON → auto `sbatch` |
+| **Evaluation** (`slurm/run_olmocr_bench.sh`) | `SIGUSR1@120` | 2 min | Per-page atomic writes (`.tmp` + rename) | `.incomplete_jobs` JSON → auto `sbatch` |
 
 **Training auto-resume flow:**
 ```
 Python detects SIGUSR1 → saves checkpoint → writes to .incomplete_jobs
-Shell reads .incomplete_jobs → extracts run_name → sbatch $0 $run_name
-New job resumes from latest checkpoint automatically
+Shell reads .incomplete_jobs → extracts resume_path → _FORGE_RESUME_PATH=... sbatch $0
+New job runs forge.py --resume outputs/$_FORGE_RESUME_PATH
 ```
 
 **Eval auto-resume flow:**
 ```
-Python detects SIGTERM → finishes current page → saves metadata
-  → writes .bench_resume_{JOB_ID} with output dir path
-Shell reads resume file → rebuilds args with --resume → sbatch $0 $RESUBMIT_ARGS
+Shell detects SIGUSR1 → kills Python → reads .incomplete_jobs
+Shell extracts output_dir → sbatch $0 --output_dir $OUTPUT_DIR
 New job skips already-generated markdowns
 ```
 
@@ -303,7 +304,7 @@ output.log            # Training logs
 checkpoint-N/         # HF Trainer checkpoints
 ```
 
-Job tracking via `.incomplete_jobs` (project root): maps `SLURM_JOB_ID` → `{run_name, output_dir}`.
+Job tracking via `.incomplete_jobs` (project root): maps `SLURM_JOB_ID` → `{type, resume_path, output_dir}`.
 
 **Eval outputs** (`outputs/bench/{model}/{timestamp}/`):
 ```
@@ -361,7 +362,7 @@ Logged to W&B (`report_to: wandb` in config).
 
 ### 5.2 olmOCR-Bench (Standalone)
 
-**Script:** `scripts/eval_olmocr_bench.py`
+**Script:** `scripts/eval/olmocr_bench.py`
 
 Runs any VLM against the olmOCR-Bench benchmark (7,010 tests, 1,403 PDFs). Categories: text presence, text absence, reading order, tables, math.
 
@@ -386,10 +387,6 @@ Runs any VLM against the olmOCR-Bench benchmark (7,010 tests, 1,403 PDFs). Categ
 | `disagreement.py` | Where do student and teacher disagree? |
 | `probing.py` | Linear probing of intermediate representations |
 | `finetune_head.py` | Head-only fine-tuning experiments |
-
-### 5.4 Baseline Evaluation
-
-`scripts/eval_baselines.py` — Evaluate pretrained models without any training for reference numbers.
 
 ---
 
@@ -480,13 +477,14 @@ src/
   tasks/registry.py                 # Task registry
   utils/                            # Config, checkpoint, environment
 scripts/
-  run_training.sh                   # SLURM training
-  run_olmocr_bench.sh               # SLURM eval
-  eval_olmocr_bench.py              # Benchmark eval
-  run_prepare_data.sh               # SLURM data prep
-  prepare_ocr_data.py               # OCR data pipeline
-  push_to_hub.py / pull_from_hub.py # HF Hub sync
-  eval_baselines.py                 # Baseline evaluation
+  slurm/                            # SLURM job scripts
+    slurm_essentials.sh             # Shared utilities (trap, env, GPU detection, resubmit)
+    run_training.sh                 # Training with auto-resubmit
+    run_olmocr_bench.sh             # Benchmark eval with auto-resubmit
+    run_prepare_data.sh             # Data preparation
+  eval/olmocr_bench.py              # olmOCR-Bench scoring
+  data/prepare_ocr_data.py           # OCR data pipeline
+  models/                           # HF Hub push/pull
 configs/
   base.yaml                         # Global defaults
   classification/                   # MNLI, QQP, SST-2, CoLA
@@ -498,4 +496,4 @@ docs/                               # Documentation
 
 ---
 
-*Last updated: 2026-02-26*
+*Last updated: 2026-03-04*

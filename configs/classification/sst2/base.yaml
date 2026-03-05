@@ -1,2 +1,6 @@
-# SST-2 task base - passthrough to classification defaults
+# SST-2 dataset defaults
 inherit: ../base.yaml
+
+data:
+  task: sst2
+  max_length: 128

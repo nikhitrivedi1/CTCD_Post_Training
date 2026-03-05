@@ -163,15 +163,15 @@ configs/
 
 1. **L0 Ablation** — Find best teacher setup
    ```bash
-   sbatch scripts/run_training.sh mnli_00 configs/mnli/.../ablations/00_no-teacher_ce-only.yaml
-   sbatch scripts/run_training.sh mnli_01 configs/mnli/.../ablations/01_frozen_base-teacher_kl.yaml
+   sbatch scripts/slurm/run_training.sh mnli_00 configs/mnli/.../ablations/00_no-teacher_ce-only.yaml
+   sbatch scripts/slurm/run_training.sh mnli_01 configs/mnli/.../ablations/01_frozen_base-teacher_kl.yaml
    # ... etc
    ```
 
 2. **L1 FAR Factorial** — Test signal combinations on L0 winner
    ```bash
-   DEBUG=1 sbatch scripts/run_training.sh mnli_cotrain-sft_far-00 configs/mnli/.../far/00_ce-only.yaml
-   DEBUG=1 sbatch scripts/run_training.sh mnli_cotrain-sft_far-01 configs/mnli/.../far/01_r-only.yaml
+   DEBUG=1 sbatch scripts/slurm/run_training.sh mnli_cotrain-sft_far-00 configs/mnli/.../far/00_ce-only.yaml
+   DEBUG=1 sbatch scripts/slurm/run_training.sh mnli_cotrain-sft_far-01 configs/mnli/.../far/01_r-only.yaml
    # ... etc
    ```
 

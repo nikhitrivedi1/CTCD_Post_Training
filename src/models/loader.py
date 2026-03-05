@@ -218,9 +218,10 @@ def load_models(config: dict, device: str, tokenizer: PreTrainedTokenizer, num_l
     Returns:
         Tuple of (teacher, student). Teacher is None if not specified.
     """
-    teacher_name = config["model"].get("teacher")
-    student_name = config["model"]["student"]
-    student_init = config["model"].get("student_init", "pretrained")
+    teacher_cfg = config["model"].get("teacher", {})
+    teacher_name = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
+    student_name = config["model"]["name"]
+    student_init = config["model"].get("init", "pretrained")
     task = config.get("data", {}).get("task", "").lower()
     alpha = config.get("distillation", {}).get("alpha", 0.5)
 
@@ -290,7 +291,8 @@ def load_models_from_checkpoint(
     task = config.get("data", {}).get("task", "").lower()
     translation = is_translation_task(task)
     ocr = is_ocr_task(task)
-    teacher_name = config["model"].get("teacher")
+    teacher_cfg = config["model"].get("teacher", {})
+    teacher_name = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
     alpha = config.get("distillation", {}).get("alpha", 0.5)
     checkpoint_dir = Path(checkpoint_dir)
 

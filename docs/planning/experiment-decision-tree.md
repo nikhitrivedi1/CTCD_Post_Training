@@ -22,22 +22,22 @@ Each level builds on the best configuration from the previous level.
 
 ```
 Teacher Setup
-├── freeze_teacher: true
-│   ├── base-teacher    → 01_frozen_base-teacher_kl   (≈ baseline)
-│   └── sft-teacher     → 02_frozen_sft-teacher_kl    ❌ WORST
+├── teacher.freeze: true
+│   ├── base-teacher    → 01_kd_frozen-base   (≈ baseline)
+│   └── sft-teacher     → 02_kd_frozen-sft    ❌ WORST
 │
-└── freeze_teacher: false (co-train)
-    ├── base-teacher    → 03_cotrain_base-teacher_kl  ✓ 2nd BEST
-    └── sft-teacher     → 04_cotrain_sft-teacher_kl   ✓ BEST
+└── teacher.freeze: false (co-train)
+    ├── base-teacher    → 03_kd_cotrain-base  ✓ 2nd BEST
+    └── sft-teacher     → 04_kd_cotrain-sft   ✓ BEST
 ```
 
 | ID | Config | Teacher | Mode | MNLI | QQP |
 |----|--------|---------|------|------|-----|
-| 00 | `00_no-teacher_ce-only` | None | CE baseline | 80.7% | 89.8% |
-| 01 | `01_frozen_base-teacher_kl` | bert-base | Frozen | 81.0% | 89.8% |
-| 02 | `02_frozen_sft-teacher_kl` | textattack/bert-MNLI | Frozen | 79.2% | 65% |
-| 03 | `03_cotrain_base-teacher_kl` | bert-base | Co-train | 81.6% | 90.3% |
-| 04 | `04_cotrain_sft-teacher_kl` | textattack/bert-MNLI | Co-train | **82.3%** | **90.3%** |
+| 00 | `00_sft` | None | CE baseline | 80.7% | 89.8% |
+| 01 | `01_kd_frozen-base` | bert-base | Frozen | 81.0% | 89.8% |
+| 02 | `02_kd_frozen-sft` | textattack/bert-MNLI | Frozen | 79.2% | 65% |
+| 03 | `03_kd_cotrain-base` | bert-base | Co-train | 81.6% | 90.3% |
+| 04 | `04_kd_cotrain-sft` | textattack/bert-MNLI | Co-train | **82.3%** | **90.3%** |
 
 **Ranking:** 04 > 03 > 01 ≈ 00 >>> 02
 
@@ -101,17 +101,20 @@ Hyperparameters
 **Config paths:**
 ```
 configs/
-└── mnli/
-    └── bert_distilbert/
-        ├── ablations/          # L0 experiments
-        │   ├── 00_no-teacher_ce-only.yaml
-        │   ├── 01_frozen_base-teacher_kl.yaml
-        │   └── ...
-        │
-        └── far/                # L1 experiments
-            ├── 00_ce-only.yaml
-            ├── 01_r-only.yaml
-            └── ...
+└── classification/
+    └── mnli/
+        └── distilbert/
+            └── bert-base/
+                ├── 00_sft.yaml         # L0: SFT baseline (at model root)
+                ├── ablations/          # L0 experiments
+                │   ├── 01_kd_frozen-base.yaml
+                │   ├── 02_kd_frozen-sft.yaml
+                │   └── ...
+                │
+                └── far/                # L1 experiments
+                    ├── 00_ce-only.yaml
+                    ├── 01_r-only.yaml
+                    └── ...
 ```
 
 ---

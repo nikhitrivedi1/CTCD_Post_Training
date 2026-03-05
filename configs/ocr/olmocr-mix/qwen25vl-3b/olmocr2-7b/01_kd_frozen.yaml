@@ -1,0 +1,9 @@
+inherit: ../base.yaml
+
+model:
+  teacher:
+    name: allenai/olmOCR-2-7B-1025-FP8
+    freeze: true
+distillation:
+  temperature: 2.0
+  alpha: 0.3
