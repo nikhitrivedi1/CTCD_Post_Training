@@ -935,8 +935,10 @@ def main():
     add_incomplete_job(resume_path, output_dir)
 
     # Setup W&B
-    wandb_project = "Test" if args.debug else "Forge-Default"
-    os.environ.setdefault("WANDB_PROJECT", wandb_project)
+    if args.debug:
+        os.environ["WANDB_PROJECT"] = "Forge-Test"
+    else:
+        os.environ.setdefault("WANDB_PROJECT", "Forge-Default")
     os.environ["WANDB_RUN_ID"] = wandb_run_id
     if is_resume:
         os.environ["WANDB_RESUME"] = "allow"
