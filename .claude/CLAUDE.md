@@ -17,6 +17,7 @@
 - Do NOT include Co-Authored-By unless explicitly requested.
 - Push when explicitly asked.
 - **DCP**: When the user says "DCP", do: **D**ouble-check the code, **C**ommit, **P**ush.
+- **Merging**: Always squash-and-merge branches into main.
 
 ## Project Context
 - This is an open training framework (FT + KD + RL).

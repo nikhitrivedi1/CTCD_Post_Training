@@ -1,4 +1,4 @@
-# olmOCR-Bench Results (2026-02-28)
+# olmOCR-Bench Results (2026-03-04)
 
 Evaluation on [olmOCR-Bench](https://huggingface.co/datasets/allenai/olmOCR-bench): 7,019 tests across 7 categories, 1,403 unique PDF pages. See [olmOCR GitHub](https://github.com/allenai/olmocr) and [olmOCR demo](https://olmocr.allenai.org/) for benchmark details.
 
@@ -14,6 +14,12 @@ Evaluation on [olmOCR-Bench](https://huggingface.co/datasets/allenai/olmOCR-benc
 | ablations_00 (CE-only) | Fine-tuned (CE loss only) | 2B | Qwen3-VL-2B | Fine-tuned, 5K samples (of 260K) |
 | Qwen3-VL-4B-Instruct | Base model | 4B | Qwen3-VL-4B | `Qwen/Qwen3-VL-4B-Instruct` |
 | Qwen3-VL-8B-Instruct | Base model | 8B | Qwen3-VL-8B | `Qwen/Qwen3-VL-8B-Instruct` |
+| Qwen3.5-0.8B | Base model | 0.8B | Qwen3.5 | `Qwen/Qwen3.5-0.8B` |
+| Qwen3.5-2B | Base model | 2B | Qwen3.5 | `Qwen/Qwen3.5-2B` |
+| Qwen3.5-4B | Base model | 4B | Qwen3.5 | `Qwen/Qwen3.5-4B` |
+| Qwen3.5-9B | Base model | 9B | Qwen3.5 | `Qwen/Qwen3.5-9B` |
+
+**Qwen3.5 architecture notes:** Qwen3.5 models are natively multimodal VLMs (released 2026-03-02) with built-in Vision Transformers. Key differences from Qwen3-VL: mixed attention (linear + full attention layers) for efficiency, 248K vocab (vs 152K), 262K context (vs 32K), no DeepStack. ViT depths: 0.8B=12, 2B=24, 4B=24, 9B=27. Note that 2B and 4B share the same ViT depth despite different LM sizes.
 
 ## ablations_00 Fine-Tuning Config
 
@@ -53,19 +59,19 @@ Scoring uses `olmocr.bench.tests` from the [olmocr](https://github.com/allenai/o
 
 ## Results by Category
 
-| Category | Tests | Qwen2.5-VL-3B | Nanonets-3B | Qwen2.5-VL-7B | olmOCR-7B | Qwen3-VL-2B | ablations_00 | Qwen3-VL-4B | Qwen3-VL-8B |
-|----------|:-----:|:-------------:|:-----------:|:-------------:|:---------:|:-----------:|:------------:|:-----------:|:-----------:|
-| arxiv_math | 2,927 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| headers_footers | 760 | 65.5% | 21.3% | 52.9% | **92.6%** | 46.3% | 79.6% | 37.5% | 39.5% |
-| long_tiny_text | 442 | 46.8% | 65.6% | 65.8% | **69.7%** | 49.5% | 59.3% | 52.7% | 59.3% |
-| multi_column | 884 | 62.9% | 80.2% | 75.5% | **82.6%** | 70.1% | 76.4% | 74.5% | 78.6% |
-| old_scans | 526 | 35.6% | 38.0% | 44.9% | **48.1%** | 38.0% | 39.2% | 38.6% | 45.2% |
-| old_scans_math | 458 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| table_tests | 1,022 | 69.7% | 82.5% | 77.1% | **83.5%** | 61.5% | 72.2% | 80.5% | 80.0% |
-| **Aggregate (all)** | 7,019 | 30.8% | 31.4% | 34.0% | **40.6%** | 28.8% | 35.4% | 31.4% | 33.0% |
-| **Per-JSONL Average (all)** | 7 | 40.1% | 41.1% | 45.2% | **53.8%** | 37.9% | 46.7% | 40.5% | 43.2% |
-| **Per-JSONL Average (non-math)** | 5 | 56.1% | 57.5% | 63.2% | **75.3%** | 53.1% | 65.3% | 56.8% | 60.5% |
-| **Extraction Avg. (w/o H/F)** | 4 | 53.8% | **66.6%** | 65.8% | **71.0%** | 54.8% | 61.8% | 61.6% | 65.8% |
+| Category | Tests | Qwen2.5-VL-3B | Nanonets-3B | Qwen2.5-VL-7B | olmOCR-7B | Qwen3-VL-2B | ablations_00 | Qwen3-VL-4B | Qwen3-VL-8B | Qwen3.5-0.8B | Qwen3.5-2B | Qwen3.5-4B | Qwen3.5-9B |
+|----------|:-----:|:-------------:|:-----------:|:-------------:|:---------:|:-----------:|:------------:|:-----------:|:-----------:|:------------:|:----------:|:----------:|:----------:|
+| arxiv_math | 2,927 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
+| headers_footers | 760 | 65.5% | 21.3% | 52.9% | **92.6%** | 46.3% | 79.6% | 37.5% | 39.5% | 64.6% | 40.3% | 33.2% | 29.6% |
+| long_tiny_text | 442 | 46.8% | 65.6% | 65.8% | **69.7%** | 49.5% | 59.3% | 52.7% | 59.3% | 34.2% | 57.9% | 36.0% | 44.3% |
+| multi_column | 884 | 62.9% | 80.2% | 75.5% | **82.6%** | 70.1% | 76.4% | 74.5% | 78.6% | 56.9% | 73.9% | 64.0% | 67.4% |
+| old_scans | 526 | 35.6% | 38.0% | 44.9% | **48.1%** | 38.0% | 39.2% | 38.6% | 45.2% | 30.8% | 37.8% | 36.3% | 40.1% |
+| old_scans_math | 458 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
+| table_tests | 1,022 | 69.7% | 82.5% | 77.1% | **83.5%** | 61.5% | 72.2% | 80.5% | 80.0% | 54.4% | 61.2% | 57.0% | 55.8% |
+| **Aggregate (all)** | 7,019 | 30.8% | 31.4% | 34.0% | **40.6%** | 28.8% | 35.4% | 31.4% | 33.0% | 26.5% | 29.0% | 24.9% | 25.6% |
+| **Per-JSONL Average (all)** | 7 | 40.1% | 41.1% | 45.2% | **53.8%** | 37.9% | 46.7% | 40.5% | 43.2% | 34.4% | 38.7% | 32.4% | 33.9% |
+| **Per-JSONL Average (non-math)** | 5 | 56.1% | 57.5% | 63.2% | **75.3%** | 53.1% | 65.3% | 56.8% | 60.5% | 48.2% | 54.2% | 45.3% | 47.4% |
+| **Extraction Avg. (w/o H/F)** | 4 | 53.8% | **66.6%** | 65.8% | **71.0%** | 54.8% | 61.8% | 61.6% | 65.8% | 44.1% | 57.7% | 48.3% | 51.9% |
 
 ## Per-Category Analysis
 
@@ -111,6 +117,36 @@ Per-category scaling reveals that different capabilities respond differently to 
 
 **Qwen3-VL-2B has better baseline reading order.** 70.1% multi_column vs Q2.5-VL-3B's 62.9% despite fewer params. The newer architecture handles spatial/column layout better out of the box. This scales steadily to 78.6% at 8B.
 
+### Qwen3.5 scaling (non-monotonic)
+
+| Category | Q3.5 0.8B→2B→4B→9B | 0.8B→2B | 2B→4B | 4B→9B |
+|----------|:-------------------:|:-------:|:-----:|:-----:|
+| headers_footers | 64.6%→40.3%→33.2%→29.6% | -24.3pp | -7.1pp | -3.6pp |
+| long_tiny_text | 34.2%→57.9%→36.0%→44.3% | +23.7pp | **-21.9pp** | +8.3pp |
+| multi_column | 56.9%→73.9%→64.0%→67.4% | +17.0pp | **-9.9pp** | +3.4pp |
+| old_scans | 30.8%→37.8%→36.3%→40.1% | +7.0pp | -1.5pp | +3.8pp |
+| table_tests | 54.4%→61.2%→57.0%→55.8% | +6.8pp | -4.2pp | -1.2pp |
+| **Non-math avg** | 48.2%→54.2%→45.3%→47.4% | +6.0pp | **-8.9pp** | +2.1pp |
+| **Extraction Avg.** | 44.1%→57.7%→48.3%→51.9% | +13.6pp | **-9.4pp** | +3.6pp |
+
+**Qwen3.5 scaling is non-monotonic.** Unlike Qwen3-VL's linear +3.7pp/step, Qwen3.5 peaks at 2B and then regresses. The 4B scores *below* the 0.8B on non-math average (45.3% vs 48.2%). The 9B partially recovers but never reaches 2B levels. This is the opposite of every other architecture family tested.
+
+**The 2B→4B regression is category-wide.** long_tiny_text drops 21.9pp, multi_column drops 9.9pp, table_tests drops 4.2pp. Only old_scans shows a minor dip (-1.5pp). The regression hits extraction hardest, with Extraction Avg. dropping 9.4pp.
+
+**Mixed attention is the likely culprit, but confounds exist.** Qwen3.5 uses linear + full attention layers for efficiency. At 2B (24 LM layers), the ratio of linear-to-full attention may be tolerable. At 4B (32 LM layers), more linear attention layers degrade fine-grained visual understanding. Critically, the 2B and 4B share the same ViT depth (24 layers), so the regression comes entirely from the LM side. However, Qwen3.5 also differs from Qwen3-VL in vocabulary size (248K vs 152K), context length (262K vs 32K), and likely pre-training data composition. The non-monotonic scaling could stem from any combination of these factors, not just mixed attention. The shared-ViT-depth observation isolates the LM side as the source, but within the LM, attention mechanism is not the only variable.
+
+**headers_footers inverse scaling is most extreme in Qwen3.5.** 64.6% at 0.8B down to 29.6% at 9B, a 35pp drop across the family. The 0.8B actually matches Qwen2.5-VL-3B (65.5%) on this category. Larger models extract headers/footers more aggressively, and Qwen3.5's architecture amplifies this tendency.
+
+### Cross-architecture comparison (Qwen3-VL vs Qwen3.5)
+
+| Size | Q3-VL Non-math | Q3.5 Non-math | Delta | Q3-VL Extraction | Q3.5 Extraction | Delta |
+|:----:|:--------------:|:-------------:|:-----:|:----------------:|:---------------:|:-----:|
+| 2B | 53.1% | 54.2% | +1.1pp | 54.8% | 57.7% | +2.9pp |
+| 4B | 56.8% | 45.3% | -11.5pp | 61.6% | 48.3% | -13.3pp |
+| 8B/9B | 60.5% | 47.4% | -13.1pp | 65.8% | 51.9% | -13.9pp |
+
+**Qwen3.5 is competitive only at 2B.** At that scale, it slightly outperforms Qwen3-VL on both metrics. But at 4B+, Qwen3-VL pulls ahead by 11-14pp. The efficiency-focused mixed attention architecture trades visual quality for speed, and the tradeoff worsens with scale.
+
 ## Extraction Avg. Analysis
 
 The Extraction Avg. (w/o H/F) strips out the headers_footers convention noise and reveals the true extraction picture.
@@ -122,6 +158,8 @@ The Extraction Avg. (w/o H/F) strips out the headers_footers convention noise an
 **ablations_00 (61.8%) roughly matches Q3-VL-4B (61.6%)** on extraction. Most of its non-math average advantage (+8.5pp over 4B) comes from the headers_footers convention it learned. The actual extraction capability boost from 5K CE training is +7.0pp over base (54.8% to 61.8%).
 
 **Extraction Avg. scaling is front-loaded for Q3-VL.** +6.8pp from 2B→4B vs +4.2pp from 4B→8B. This is the opposite of the non-math avg pattern (+3.7pp both steps), because headers_footers drags down the non-math average at 4B (37.5%) while extraction categories like table_tests jump sharply (+19.0pp at 4B).
+
+**Qwen3.5-2B (57.7%) outperforms Q3-VL-2B (54.8%) on extraction** by 2.9pp, making it the strongest 2B-class model. But this advantage reverses at scale: Q3.5-9B (51.9%) falls 13.9pp behind Q3-VL-8B (65.8%). The non-monotonic scaling means Qwen3.5's extraction capability peaks early and then degrades.
 
 ## Gap Analysis: CE-only Recovery vs KD Opportunity
 
@@ -177,8 +215,8 @@ Four axes define the comparison space:
 
 | Axis | Values | Coverage |
 |------|--------|----------|
-| **1. Base VLM** | Qwen2.5-VL, Qwen3-VL | Architecture generation |
-| **2. Param count** | 2B, 3B, 4B, 7B, 8B | Model capacity |
+| **1. Base VLM** | Qwen2.5-VL, Qwen3-VL, Qwen3.5 | Architecture generation |
+| **2. Param count** | 0.8B, 2B, 3B, 4B, 7B, 8B, 9B | Model capacity |
 | **3. Dataset size** | 0, 5K, full (~260K) | Data scaling |
 | **4. Training method** | None, CE (SFT), CE + KD | Distillation signal |
 
@@ -194,6 +232,10 @@ Four axes define the comparison space:
 | ablations_00 | Qwen3-VL | 2B | 5K | CE | 65.3% | 61.8% |
 | Qwen3-VL-4B (base) | Qwen3-VL | 4B | 0 | None | 56.8% | 61.6% |
 | Qwen3-VL-8B (base) | Qwen3-VL | 8B | 0 | None | 60.5% | 65.8% |
+| Qwen3.5-0.8B (base) | Qwen3.5 | 0.8B | 0 | None | 48.2% | 44.1% |
+| Qwen3.5-2B (base) | Qwen3.5 | 2B | 0 | None | 54.2% | 57.7% |
+| Qwen3.5-4B (base) | Qwen3.5 | 4B | 0 | None | 45.3% | 48.3% |
+| Qwen3.5-9B (base) | Qwen3.5 | 9B | 0 | None | 47.4% | 51.9% |
 
 \* Nanonets non-math average is deflated by headers_footers (21.3%) due to different design goal (verbatim extraction).
 
@@ -204,6 +246,8 @@ Four axes define the comparison space:
 - **Training effect** (axis 4): Qwen2.5-VL-7B base (63.2%) vs olmOCR-7B (75.3%). OCR-specific training adds +12.1pp on top of the base.
 - **Nanonets decomposition**: Qwen2.5-VL-3B base (56.1%) vs Nanonets-3B (57.5%). Only +1.4pp, but deflated by headers_footers design choice.
 - **CE fine-tuning vs scale**: ablations_00 (2B, 5K CE, 65.3%) beats Qwen3-VL-8B base (60.5%) by +4.8pp and Qwen2.5-VL-7B base (63.2%) by +2.1pp. 5K samples of task-specific training on the smallest model outperforms untrained models with 4x the params. At Q3-VL's linear scaling rate (+3.7pp per doubling), matching 65.3% untrained would need 12.2pp/3.7pp = 3.3 doublings from 2B, or ~20B parameters. **5K training samples on 2B replaces roughly 10x the parameters.**
+- **Architecture matters more than scale (Qwen3.5)**: Qwen3.5-9B (47.4%) scores below Qwen3-VL-2B (53.1%) by 5.7pp despite 4.5x more params. Mixed attention architecture degrades visual understanding enough that scaling from 2B to 9B within Qwen3.5 barely recovers. The efficiency-for-quality tradeoff in Qwen3.5's attention design is not viable for fine-grained OCR tasks.
+- **Qwen3.5-2B is the sweet spot**: Best Qwen3.5 model (54.2% non-math, 57.7% extraction), slightly outperforms Qwen3-VL-2B (+1.1pp, +2.9pp). At 2B scale, the mixed attention tradeoff is acceptable. Beyond 2B, it becomes counterproductive.
 
 ### Planned experiments
 
@@ -231,6 +275,20 @@ Four axes define the comparison space:
 
 8. **Category difficulty tiers**: multi_column and table_tests are approachable (78-84% at scale), long_tiny_text is medium difficulty (59-70%), old_scans is hard (45-48% even for the best models).
 
+9. **Qwen3.5 non-monotonic scaling**: The 2B model is the best Qwen3.5 performer. Going from 2B to 4B causes a broad regression (-8.9pp non-math, -9.4pp extraction), with long_tiny_text dropping 21.9pp. The shared ViT depth between 2B and 4B (both 24 layers) and mixed attention architecture are likely causes.
+
+10. **Attention architecture constrains visual scaling**: Qwen3.5's mixed attention (linear + full) trades quality for efficiency. This works at 2B where it's competitive with Qwen3-VL, but fails at 4B+ where Qwen3-VL pulls ahead by 11-14pp. For OCR/document tasks, full attention architectures scale better.
+
+## Caveats
+
+**Single-run results.** All scores are from single evaluation runs with no variance estimation. The non-monotonic scaling claims (Qwen3.5 4B regression) and close comparisons (Q3-VL-8B tying Q2.5-VL-7B at 65.8%) should be interpreted with caution. A 1-2pp difference may not be meaningful without repeated runs.
+
+**Parameter efficiency extrapolation.** The "5K training samples replaces ~10x parameters" claim (section "What the baselines isolate") assumes Q3-VL's +3.7pp/doubling scaling rate continues linearly to 20B. In practice, scaling curves flatten at larger sizes, so the true parameter equivalent is likely lower than 10x. The directional conclusion holds (task-specific data is far more efficient than raw scale), but the 10x number is an upper-bound estimate.
+
+**Cross-architecture comparisons are confounded.** Qwen3-VL vs Qwen3.5 differ in attention mechanism, vocabulary, context length, ViT architecture (DeepStack vs none), and pre-training data. Attributing performance differences to any single factor requires controlled experiments. The analysis identifies likely contributors but cannot isolate causation.
+
+**Math test format mismatch.** The 0% math scores reflect a systematic format mismatch (LaTeX vs Unicode), not model capability. Models may have strong mathematical OCR ability that this benchmark cannot measure. Any future math evaluation needs format-normalized scoring.
+
 ## References
 
 - [olmOCR GitHub](https://github.com/allenai/olmocr) - toolkit, scoring code, benchmark definitions
@@ -241,5 +299,10 @@ Four axes define the comparison space:
 
 ## Next Steps
 
-- Run KD-trained model (with distillation loss from olmOCR-7B) and compare against ablations_00 (CE-only)
-- Update gap analysis with new baselines
+**Priority 1: KD on Qwen3-VL-2B.** Run KD-trained model (distillation loss from olmOCR-7B teacher) and compare against ablations_00 (CE-only). Target the 10pp non-math avg gap. old_scans is the strongest KD case (12% CE recovery, 8.9pp remaining). This is the core experiment that the entire gap analysis is designed to inform.
+
+**Priority 2: Data scaling on Qwen3-VL-2B.** CE-only at 25K and 50K samples to establish diminishing returns. The 5K→full curve shape determines whether more data or better signal (KD) is the higher-leverage axis. If 25K CE approaches KD-at-5K, the KD benefit may be marginal.
+
+**Priority 3: Qwen3.5-2B fine-tuning.** The 2B model slightly outperforms Q3-VL-2B on extraction (+2.9pp) before any training. A CE-only 5K run on Q3.5-2B would reveal whether fine-tuning preserves or erases this advantage. If it holds, Q3.5-2B may be a better student than Q3-VL-2B for the final KD experiment. Low cost to test since the infrastructure is already in place.
+
+**Deferred: KD + more data interaction.** Wait for Priority 1 and 2 results to determine if the interaction experiment (KD at 25K+) is worth the compute.
