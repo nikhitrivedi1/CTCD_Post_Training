@@ -1,0 +1,32 @@
+# GRPO with unit test rewards on olmOCR-synthmix
+# Starts from SFT checkpoint via --adapter, trains fresh LoRA with RL
+#
+# Pipeline: Qwen3-VL-2B -> SFT (5K olmOCR-mix) -> GRPO (synthmix unit tests)
+#
+# Run:
+#   python forge.py \
+#     --config configs/ocr/olmocr-mix/qwen3vl-2b/rl/01_synthmix.yaml \
+#     --adapter outputs/olmocr-mix_ablations_00_no-teacher_ce-only_20260225-0952Z/ \
+#     --run-name synthmix_grpo_01
+
+inherit: ../base.yaml
+
+data:
+  task: ocr
+  dataset: synthmix
+  data_dir: data/ocr/synthmix
+  max_length: 1024
+
+training:
+  num_epochs: 1
+  learning_rate: 1e-6
+
+rl:
+  algorithm: grpo
+  reward: [unit_test]
+  num_generations: 4
+  max_completion_length: 1024
+  temperature: 0.8
+  beta: 0.0
+  loss_type: grpo
+  log_completions: true

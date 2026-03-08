@@ -1,0 +1,26 @@
+# GRPO with edit similarity + format rewards for OCR
+# Starts from SFT checkpoint via --adapter, trains fresh LoRA with RL
+#
+# Pipeline: Qwen3-VL-2B -> SFT (5K olmOCR-mix) -> GRPO (edit_similarity + format)
+
+inherit: ../base.yaml
+
+data:
+  task: ocr
+  data_dir: data/ocr/olmocr-mix-full
+  max_train_samples: 5000
+  max_length: 1024
+
+training:
+  num_epochs: 1
+  learning_rate: 1e-6
+
+rl:
+  algorithm: grpo
+  reward: [edit_similarity, format]
+  num_generations: 4
+  max_completion_length: 1024
+  temperature: 0.8
+  beta: 0.0
+  loss_type: grpo
+  log_completions: true

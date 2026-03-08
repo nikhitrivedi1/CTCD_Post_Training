@@ -448,10 +448,17 @@ What needs a new trainer class (extends trl.GRPOTrainer):
 - Shared utilities (model loading, eval hooks) are functions, not inherited
 
 #### Sub-phases
-1. **Phase 2a - DPO/SPIN** (low effort): Add preference loss strategy + data prep script
-   that generates (chosen, rejected) pairs using teacher. No new trainer needed.
-2. **Phase 2b - GRPO** (medium effort): Add RLTrainer wrapping `trl.GRPOTrainer`.
-   Teacher-as-reward-model support. KL reference = teacher or SFT checkpoint.
+1. **Phase 2a - DPO/SPIN** (deferred): Preference loss strategy for encoder models is an
+   awkward fit with trl. Deferred until there's a clear use case.
+2. **Phase 2b - GRPO** (IN PROGRESS): GRPO integration via `trl.GRPOTrainer`.
+   - ~~Add trl dependency~~
+   - ~~Reward functions: BLEU (translation), edit similarity (OCR), format reward~~
+   - ~~RL dataset loaders: prompt-based format for GRPO~~
+   - ~~Config mapping: `rl:` YAML section to GRPOConfig~~
+   - ~~Trainer selection: RL path in forge.py main()~~
+   - ~~Example configs: translation RLVR, OCR RLVR~~
+   - Teacher-as-reward-model support (TODO)
+   - End-to-end GPU testing (TODO)
 3. **Phase 2c - Reward sources** (config-only after 2b): Swap reward function via config.
    RLVR for OCR/translation (verifiable), RLAIF for open-ended (judge LLM).
 

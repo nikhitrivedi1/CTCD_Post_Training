@@ -19,12 +19,40 @@
 # ---------------------------------------------------------------------------
 # SIGUSR1 trap
 # ---------------------------------------------------------------------------
-# Shell survives SIGUSR1 and sets a flag. Callers decide what to do:
-#   - Training: ignore flag (Python handles SIGUSR1 via SLURMSignalCallback)
-#   - Bench: use flag to kill background Python (C extensions block signals)
-# Uses a handler (not '') so children inherit default disposition, not SIG_IGN.
+# With B:SIGUSR1, SLURM sends the signal only to the batch shell, not to
+# child processes. The shell must forward it to Python. Callers run Python
+# in background, set _FORGE_CHILD_PID, and `wait` for it.
+#
+# Training: forwards SIGUSR1 to Python so SLURMSignalCallback saves checkpoint.
+#   If Python doesn't exit within _FORGE_KILL_DEADLINE seconds, the shell
+#   kills it to ensure time remains for resubmit logic.
+# Bench: uses SIGUSR1_RECEIVED flag to kill Python (C extensions block signals)
+#
+# Timeline with --signal=B:SIGUSR1@120:
+#   T-120s: SIGUSR1 -> forward to Python, start kill timer
+#   T-30s:  Kill timer fires if Python still running (deadline=90s default)
+#   T-0s:   SLURM sends SIGKILL (but shell should be done by now)
 SIGUSR1_RECEIVED=0
-trap 'SIGUSR1_RECEIVED=1; echo "SIGUSR1 received by shell ($(date -u +%H:%M:%S))"' SIGUSR1
+_FORGE_CHILD_PID=""
+_FORGE_KILL_DEADLINE=${_FORGE_KILL_DEADLINE:-90}
+_FORGE_KILL_TIMER_PID=""
+trap '
+    SIGUSR1_RECEIVED=1
+    echo "SIGUSR1 received by shell ($(date -u +%H:%M:%S))"
+    if [ -n "$_FORGE_CHILD_PID" ]; then
+        echo "Forwarding SIGUSR1 to Python (PID $_FORGE_CHILD_PID)"
+        kill -SIGUSR1 $_FORGE_CHILD_PID 2>/dev/null
+        # Start kill timer: if Python does not exit in time, force-kill it
+        (
+            sleep $_FORGE_KILL_DEADLINE
+            if kill -0 $_FORGE_CHILD_PID 2>/dev/null; then
+                echo "Kill deadline reached (${_FORGE_KILL_DEADLINE}s) - force-killing Python"
+                kill -9 $_FORGE_CHILD_PID 2>/dev/null
+            fi
+        ) &
+        _FORGE_KILL_TIMER_PID=$!
+    fi
+' SIGUSR1
 
 # ---------------------------------------------------------------------------
 # GPU detection (NVIDIA-specific)
@@ -116,10 +144,14 @@ import json
 try:
     with open('$state_file') as f:
         s = json.load(f)
-    target = s.get('target_epochs') or s.get('target_steps') or float('inf')
-    current = s.get('completed_epochs', 0)
-    print('true' if current >= target else 'false')
-except:
+    # pipeline_complete is set after training AND post-eval both finish.
+    # Fall back to training_complete for runs that predate pipeline_complete.
+    if 'pipeline_complete' in s:
+        is_complete = bool(s.get('pipeline_complete'))
+    else:
+        is_complete = bool(s.get('training_complete', False))
+    print('true' if is_complete else 'false')
+except Exception:
     print('false')
 "
 }

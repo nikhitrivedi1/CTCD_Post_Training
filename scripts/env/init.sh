@@ -34,6 +34,14 @@ if [ -f "$REQUIREMENTS" ]; then
     pip install --no-deps -r "$REQUIREMENTS"
 fi
 
+# Install Playwright Chromium browser (needed for KaTeX math scoring in olmOCR-Bench)
+if python -c "import playwright" 2>/dev/null; then
+    echo "Installing Playwright Chromium (timeout 5min)..."
+    if ! timeout 300 python -m playwright install chromium; then
+        echo "WARNING: Playwright install failed or timed out. olmocr_bench.py will install on-demand." >&2
+    fi
+fi
+
 ACTIVATE_DIR="$CONDA_PREFIX/etc/conda/activate.d"
 DEACTIVATE_DIR="$CONDA_PREFIX/etc/conda/deactivate.d"
 mkdir -p "$ACTIVATE_DIR" "$DEACTIVATE_DIR"

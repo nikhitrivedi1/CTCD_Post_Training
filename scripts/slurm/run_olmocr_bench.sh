@@ -38,7 +38,9 @@ if [ ! -d "$BENCH_DIR/bench_data" ]; then
     git clone https://huggingface.co/datasets/allenai/olmOCR-bench "$BENCH_DIR"
 fi
 
-# Run Python in background so `wait` can be interrupted by SIGUSR1
+# Run Python in background so `wait` can be interrupted by SIGUSR1.
+# Don't set _FORGE_CHILD_PID - bench handles signals itself (Python's C
+# extensions block SIGUSR1, so the shell kills Python via SIGTERM instead).
 python scripts/eval/olmocr_bench.py "$@" &
 PYTHON_PID=$!
 wait $PYTHON_PID

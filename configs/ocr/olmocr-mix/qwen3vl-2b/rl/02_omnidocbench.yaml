@@ -1,0 +1,32 @@
+# GRPO with 5 rewards on OmniDocBench: edit similarity, format, table cell F1, formula CDM, reading order
+# Starts from SFT (or synthmix GRPO) checkpoint via --adapter
+#
+# Pipeline: Qwen3-VL-2B -> SFT -> [GRPO-synthmix] -> GRPO (OmniDocBench)
+#
+# Run:
+#   python forge.py \
+#     --config configs/ocr/olmocr-mix/qwen3vl-2b/rl/02_omnidocbench.yaml \
+#     --adapter outputs/<previous_stage>/ \
+#     --run-name omnidocbench_grpo_01
+
+inherit: ../base.yaml
+
+data:
+  task: ocr
+  dataset: omnidocbench
+  data_dir: data/ocr/omnidocbench
+  max_length: 1024
+
+training:
+  num_epochs: 1
+  learning_rate: 1e-6
+
+rl:
+  algorithm: grpo
+  reward: [edit_similarity, format, table_cell_f1, formula_cdm, reading_order]
+  num_generations: 4
+  max_completion_length: 1024
+  temperature: 0.8
+  beta: 0.0
+  loss_type: grpo
+  log_completions: true

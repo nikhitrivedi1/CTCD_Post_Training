@@ -8,6 +8,8 @@ from typing import List, Optional
 import torch
 from transformers import TrainerCallback
 
+from src.utils.checkpoint import mark_checkpoint_complete
+
 logger = logging.getLogger(__name__)
 
 
@@ -15,9 +17,10 @@ class SLURMSignalCallback(TrainerCallback):
     """
     Handle SLURM signals for graceful job termination.
 
-    SLURM sends SIGUSR1 before the job time limit is reached (configured with
-    --signal=B:SIGUSR1@120 for 2 minutes before), giving us time to save state.
-    This callback catches the signal and triggers checkpoint saving.
+    The shell forwards SIGUSR1 to Python (via B:SIGUSR1 + _FORGE_CHILD_PID).
+    This callback catches the signal and tells the training loop to save a
+    checkpoint and stop. The actual checkpoint is saved by HF Trainer's normal
+    save path (triggered by should_save=True), not in the signal handler.
 
     Critical for handling 8-hour job limits on Explorer HPC cluster.
     """
@@ -40,7 +43,11 @@ class SLURMSignalCallback(TrainerCallback):
 
     def _handler(self, signum, frame):
         """
-        Signal handler that triggers checkpoint saving.
+        Signal handler that flags training for graceful stop.
+
+        Does NOT save directly (risky in signal context). Instead sets a flag
+        that on_step_end checks to trigger should_save + should_training_stop,
+        letting HF Trainer save through its normal (safe) checkpoint path.
 
         Args:
             signum: Signal number
@@ -48,14 +55,8 @@ class SLURMSignalCallback(TrainerCallback):
         """
         self.caught_signal = True
         logger.warning("=" * 60)
-        logger.warning(f"Caught signal {signum} - saving checkpoint...")
+        logger.warning(f"Caught signal {signum} - will save and stop after current step")
         logger.warning("=" * 60)
-
-        # Save model and trainer state
-        self.trainer.save_model()
-        self.trainer.save_state()
-
-        logger.info("Checkpoint saved successfully")
 
     def on_step_end(self, args, state, control, **kwargs):
         """
@@ -78,6 +79,32 @@ class SLURMSignalCallback(TrainerCallback):
             logger.info("Training will stop at the end of this step")
 
         return control
+
+
+class CheckpointMarkerCallback(TrainerCallback):
+    """
+    Mark checkpoints as safely completed after all files are written.
+
+    Writes a `latest_checkpoint` file pointing to the most recently
+    completed checkpoint. If the process is killed mid-checkpoint-save,
+    this file still points to the previous good checkpoint, preventing
+    resume from a corrupt/partial checkpoint.
+
+    Add this callback LAST so it runs after all other on_save hooks
+    (e.g. TeacherEvalCallback saving the teacher model).
+    """
+
+    def on_save(self, args, state, control, **kwargs):
+        """
+        Mark the checkpoint as complete after HF Trainer finishes saving.
+
+        Args:
+            args: Training arguments
+            state: Trainer state
+            control: Trainer control
+        """
+        checkpoint_dir = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
+        mark_checkpoint_complete(checkpoint_dir)
 
 
 class TeacherEvalCallback(TrainerCallback):
@@ -373,7 +400,7 @@ class PeakMetricsCallback(TrainerCallback):
 
             metric_name = key.replace("eval_", "")
 
-            # Normalize teacher-prefixed metrics (e.g. "teacher_runtime" → "runtime")
+            # Normalize teacher-prefixed metrics (e.g. "teacher_runtime" -> "runtime")
             base_name = metric_name.removeprefix("teacher_")
 
             # Skip runtime/throughput metrics

@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=ocr-data-prep
-#SBATCH --partition=courses
-#SBATCH --cpus-per-task=64
+#SBATCH --partition=short
+#SBATCH --cpus-per-task=32
 #SBATCH --time=08:00:00
-#SBATCH --mem=128G
+#SBATCH --mem=64G
 #SBATCH --output=logs/data_prep_%j.out
 
 # Prepare olmOCR-mix-1025 dataset for training

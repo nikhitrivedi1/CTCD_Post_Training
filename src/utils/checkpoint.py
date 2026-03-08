@@ -1,10 +1,15 @@
 """Training state management for SLURM job chaining."""
 
 import json
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
+
+logger = logging.getLogger(__name__)
+
+LATEST_CHECKPOINT_FILE = "latest_checkpoint"
 
 
 class TrainingState:
@@ -79,9 +84,32 @@ class TrainingState:
             return self.state["completed_steps"] >= self.state["target_steps"]
         return False
 
+    def is_pipeline_complete(self) -> bool:
+        """
+        Check if the full pipeline (training + post-eval) has completed.
+
+        Set only after post-training evaluation finishes successfully.
+        If training completes but Python is killed during post-eval,
+        this remains False so the resubmitted job re-runs post-eval.
+
+        Returns:
+            True if full pipeline is complete, False otherwise
+        """
+        return self.state.get("pipeline_complete", False)
+
+    def mark_pipeline_complete(self):
+        """Mark the full pipeline as complete (training + post-eval done)."""
+        self.state["pipeline_complete"] = True
+        with open(self.state_file, 'w') as f:
+            json.dump(self.state, f, indent=2)
+
     def get_resume_checkpoint(self, output_dir: Optional[str] = None) -> Optional[str]:
         """
-        Find the latest checkpoint to resume from.
+        Find the latest safely-completed checkpoint to resume from.
+
+        Reads the `latest_checkpoint` file, which is only written after a
+        checkpoint is fully saved. Falls back to globbing checkpoint dirs
+        if the file doesn't exist (backward compat).
 
         Args:
             output_dir: Directory to search for checkpoints (defaults to self.output_dir)
@@ -94,11 +122,31 @@ class TrainingState:
         else:
             output_dir = Path(output_dir)
 
+        # Prefer latest_checkpoint file (atomic, corruption-safe)
+        latest_file = output_dir / LATEST_CHECKPOINT_FILE
+        if latest_file.exists():
+            raw_path = latest_file.read_text().strip()
+            if raw_path:
+                checkpoint_path = Path(raw_path)
+                # Try as-is first (may be absolute or already include output_dir)
+                if checkpoint_path.exists():
+                    logger.info(f"Resuming from latest_checkpoint: {checkpoint_path}")
+                    return str(checkpoint_path)
+                # Try relative to output_dir
+                if not checkpoint_path.is_absolute():
+                    resolved = (output_dir / checkpoint_path).resolve()
+                    if resolved.exists():
+                        logger.info(f"Resuming from latest_checkpoint: {resolved}")
+                        return str(resolved)
+            logger.warning(
+                f"latest_checkpoint points to {raw_path} but it doesn't exist"
+            )
+
+        # Fallback: glob for checkpoint dirs (backward compat)
         checkpoints = list(output_dir.glob("checkpoint-*"))
         if not checkpoints:
             return None
 
-        # Sort by step number and return the latest
         latest = max(checkpoints, key=lambda x: int(x.name.split("-")[1]))
         return str(latest)
 
@@ -117,3 +165,27 @@ class TrainingState:
 
         with open(self.state_file, 'w') as f:
             json.dump(self.state, f, indent=2)
+
+
+def mark_checkpoint_complete(checkpoint_dir: str):
+    """
+    Record a checkpoint as the latest safely-completed one.
+
+    Called after HF Trainer finishes writing all checkpoint files. Writes
+    the checkpoint path to `latest_checkpoint` in the parent output dir.
+    If the process is killed mid-checkpoint-save, this file still points
+    to the previous good checkpoint.
+
+    Args:
+        checkpoint_dir: Path to the completed checkpoint directory
+    """
+    checkpoint_dir = Path(checkpoint_dir)
+    output_dir = checkpoint_dir.parent
+    latest_file = output_dir / LATEST_CHECKPOINT_FILE
+
+    # Atomic write: write to temp file, then rename
+    tmp = latest_file.with_suffix(f".tmp.{os.getpid()}")
+    tmp.write_text(str(checkpoint_dir))
+    os.replace(tmp, latest_file)
+
+    logger.info(f"Marked latest checkpoint: {checkpoint_dir.name}")

@@ -35,7 +35,7 @@ def locked_incomplete_jobs():
             yield jobs
             tmp = _INCOMPLETE_JOBS.with_suffix(f".tmp.{os.getpid()}")
             tmp.write_text(json.dumps(jobs, indent=2))
-            tmp.rename(_INCOMPLETE_JOBS)
+            os.replace(tmp, _INCOMPLETE_JOBS)
         finally:
             fcntl.flock(lf, fcntl.LOCK_UN)
 

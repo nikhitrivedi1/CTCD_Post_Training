@@ -1,0 +1,595 @@
+"""Reward functions for GRPO training.
+
+Each function follows trl's reward function signature:
+    def reward_fn(completions, **kwargs) -> list[float]
+
+The trainer passes all dataset columns as kwargs, plus `prompts`,
+`completion_ids`, and `trainer_state`.
+"""
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def translation_reward(completions, ground_truth, **kwargs):
+    """Reward based on sentence-level BLEU between generated translation and reference.
+
+    Args:
+        completions: List of generated translation strings.
+        ground_truth: List of reference translation strings (from dataset column).
+
+    Returns:
+        List of float rewards in [0, 1].
+    """
+    import sacrebleu
+
+    rewards = []
+    for completion, reference in zip(completions, ground_truth):
+        # Handle conversational format (list of message dicts)
+        if isinstance(completion, list):
+            completion = completion[-1]["content"]
+        try:
+            bleu = sacrebleu.sentence_bleu(completion, [reference])
+            rewards.append(bleu.score / 100.0)  # Normalize to [0, 1]
+        except Exception:
+            rewards.append(0.0)
+    return rewards
+
+
+def ocr_reward(completions, ground_truth, **kwargs):
+    """Reward based on edit similarity between generated markdown and reference.
+
+    Uses 1 - CER (character error rate) so higher is better.
+
+    Args:
+        completions: List of generated markdown strings.
+        ground_truth: List of reference markdown strings (from dataset column).
+
+    Returns:
+        List of float rewards in [0, 1].
+    """
+    from rapidfuzz.distance import Levenshtein
+
+    rewards = []
+    for completion, reference in zip(completions, ground_truth):
+        if isinstance(completion, list):
+            completion = completion[-1]["content"]
+        if not reference:
+            rewards.append(0.0)
+            continue
+        distance = Levenshtein.distance(completion, reference)
+        max_len = max(len(completion), len(reference))
+        similarity = 1.0 - (distance / max_len) if max_len > 0 else 1.0
+        rewards.append(max(0.0, similarity))
+    return rewards
+
+
+def unit_test_reward(completions, tests, **kwargs):
+    """Reward based on olmOCR-bench unit test pass rate.
+
+    Each sample has a list of test dicts (absent, order, math, table).
+    Score = fraction of tests passed per completion.
+
+    Args:
+        completions: List of generated markdown strings.
+        tests: List of lists of test dicts (one list per completion).
+
+    Returns:
+        List of float rewards in [0, 1].
+    """
+    # Try olmocr's test runner for exact scoring (handles math, tables, etc.)
+    try:
+        from olmocr.bench.tests import load_single_test
+        use_olmocr = True
+    except ImportError:
+        use_olmocr = False
+        logger.warning("olmocr not installed, using fallback unit test scoring")
+
+    rewards = []
+    for completion, test_list in zip(completions, tests):
+        if isinstance(completion, list):
+            completion = completion[-1]["content"]
+
+        if not test_list:
+            rewards.append(0.0)
+            continue
+
+        passed = 0
+        for test in test_list:
+            try:
+                if use_olmocr:
+                    # Strip private keys and None values (HF Dataset adds None
+                    # for missing keys when schema-unifying heterogeneous dicts)
+                    test_data = {k: v for k, v in test.items() if not k.startswith("_") and v is not None}
+                    test_obj = load_single_test(test_data)
+                    result, _ = test_obj.run(completion)
+                    if result:
+                        passed += 1
+                else:
+                    if _fallback_unit_test(test, completion):
+                        passed += 1
+            except Exception as e:
+                logger.debug(f"Test {test.get('id', '?')} failed with error: {e}")
+
+        rewards.append(passed / len(test_list))
+    return rewards
+
+
+def _fallback_unit_test(test: dict, text: str) -> bool:
+    """Simple fallback for unit tests when olmocr is not installed.
+
+    Args:
+        test: Test dict with 'type' and test-specific fields.
+        text: Generated markdown text.
+
+    Returns:
+        True if test passes.
+    """
+    test_type = test.get("type", "")
+    if test_type == "present":
+        return test.get("text", "") in text
+    elif test_type == "absent":
+        return test.get("text", "") not in text
+    elif test_type == "order":
+        before = test.get("before", "")
+        after = test.get("after", "")
+        b_idx = text.find(before)
+        a_idx = text.find(after)
+        return b_idx >= 0 and a_idx >= 0 and b_idx < a_idx
+    elif test_type == "math":
+        return test.get("math", "") in text
+    elif test_type == "table":
+        return test.get("cell", "") in text
+    return False
+
+
+def format_reward(completions, **kwargs):
+    """Reward for well-structured markdown output (OCR tasks).
+
+    Gives partial credit for outputs that contain markdown structure
+    elements like headings, lists, or tables.
+
+    Args:
+        completions: List of generated strings.
+
+    Returns:
+        List of float rewards in [0, 1].
+    """
+    import re
+
+    rewards = []
+    for completion in completions:
+        if isinstance(completion, list):
+            completion = completion[-1]["content"]
+
+        score = 0.0
+        # Has any content at all
+        if completion.strip():
+            score += 0.2
+        # Contains markdown headings
+        if re.search(r"^#{1,6}\s", completion, re.MULTILINE):
+            score += 0.2
+        # Contains lists
+        if re.search(r"^[\-\*]\s|^\d+\.\s", completion, re.MULTILINE):
+            score += 0.2
+        # Contains tables
+        if "|" in completion and "-|-" in completion.replace(" ", ""):
+            score += 0.2
+        # Not excessively short relative to a reasonable document
+        if len(completion.strip()) > 50:
+            score += 0.2
+
+        rewards.append(min(1.0, score))
+    return rewards
+
+
+def table_cell_f1_reward(completions, ground_truth, **kwargs):
+    """Reward based on cell-level F1 similarity for markdown tables.
+
+    Extracts markdown tables from completion and GT, computes cell-level
+    precision/recall/F1 as a lightweight alternative to full TEDS.
+    Score is averaged across all GT tables in the document.
+
+    Args:
+        completions: List of generated markdown strings.
+        ground_truth: List of reference markdown strings.
+
+    Returns:
+        List of float rewards in [0, 1].
+    """
+    rewards = []
+    for completion, reference in zip(completions, ground_truth):
+        if isinstance(completion, list):
+            completion = completion[-1]["content"]
+        if not reference:
+            rewards.append(0.0)
+            continue
+
+        gt_tables = _extract_markdown_tables(reference)
+        if not gt_tables:
+            # No tables in GT, skip this reward (neutral)
+            rewards.append(0.5)
+            continue
+
+        pred_tables = _extract_markdown_tables(completion)
+        if not pred_tables:
+            rewards.append(0.0)
+            continue
+
+        # Match tables by order and compute TEDS for each pair
+        scores = []
+        for i, gt_table in enumerate(gt_tables):
+            if i < len(pred_tables):
+                scores.append(_compute_table_similarity(pred_tables[i], gt_table))
+            else:
+                scores.append(0.0)
+
+        rewards.append(sum(scores) / len(scores))
+    return rewards
+
+
+def _extract_markdown_tables(text: str) -> list[list[list[str]]]:
+    """Extract tables from markdown as list of row-cell grids.
+
+    Args:
+        text: Markdown text.
+
+    Returns:
+        List of tables, each a list of rows, each a list of cell strings.
+    """
+    import re
+
+    tables = []
+    current_table = []
+    for line in text.split("\n"):
+        line = line.strip()
+        if line.startswith("|") and line.endswith("|"):
+            # Skip separator rows (| --- | --- |)
+            inner = line.strip("|")
+            parts = [p.strip() for p in inner.split("|")]
+            if all(re.match(r"^:?-+:?$", p) for p in parts if p):
+                continue
+            cells = [c.strip() for c in line.split("|")[1:-1]]
+            current_table.append(cells)
+        else:
+            if current_table:
+                tables.append(current_table)
+                current_table = []
+    if current_table:
+        tables.append(current_table)
+    return tables
+
+
+def _compute_table_similarity(pred: list[list[str]], gt: list[list[str]]) -> float:
+    """Compute cell-level F1 similarity between two table grids.
+
+    A lightweight alternative to full TEDS that still captures table
+    structure and content quality without needing a tree edit distance library.
+
+    Args:
+        pred: Predicted table as list of rows of cells.
+        gt: Ground truth table as list of rows of cells.
+
+    Returns:
+        Float in [0, 1] representing table similarity.
+    """
+    from rapidfuzz.distance import Levenshtein
+
+    # Flatten to cell lists for comparison
+    gt_cells = [cell for row in gt for cell in row if cell.strip()]
+    pred_cells = [cell for row in pred for cell in row if cell.strip()]
+
+    if not gt_cells:
+        return 1.0 if not pred_cells else 0.0
+
+    # For each GT cell, find best matching pred cell
+    matched = 0
+    used = set()
+    for gt_cell in gt_cells:
+        best_sim = 0.0
+        best_idx = -1
+        for j, pred_cell in enumerate(pred_cells):
+            if j in used:
+                continue
+            dist = Levenshtein.distance(gt_cell, pred_cell)
+            max_len = max(len(gt_cell), len(pred_cell))
+            sim = 1.0 - (dist / max_len) if max_len > 0 else 1.0
+            if sim > best_sim:
+                best_sim = sim
+                best_idx = j
+        if best_idx >= 0 and best_sim > 0.3:
+            matched += best_sim
+            used.add(best_idx)
+
+    precision = matched / len(pred_cells) if pred_cells else 0.0
+    recall = matched / len(gt_cells) if gt_cells else 0.0
+    if precision + recall == 0:
+        return 0.0
+    return 2 * precision * recall / (precision + recall)
+
+
+def formula_cdm_reward(completions, ground_truth, **kwargs):
+    """Reward based on formula similarity between completion and GT.
+
+    Extracts LaTeX formulas ($$...$$ and $...$) from both texts and
+    computes normalized edit distance on cleaned LaTeX. This is a
+    practical proxy for full CDM (computational distance metric).
+
+    Args:
+        completions: List of generated markdown strings.
+        ground_truth: List of reference markdown strings.
+
+    Returns:
+        List of float rewards in [0, 1].
+    """
+    rewards = []
+    for completion, reference in zip(completions, ground_truth):
+        if isinstance(completion, list):
+            completion = completion[-1]["content"]
+        if not reference:
+            rewards.append(0.0)
+            continue
+
+        gt_formulas = _extract_latex(reference)
+        if not gt_formulas:
+            rewards.append(0.5)
+            continue
+
+        pred_formulas = _extract_latex(completion)
+        if not pred_formulas:
+            rewards.append(0.0)
+            continue
+
+        scores = []
+        for i, gt_f in enumerate(gt_formulas):
+            if i < len(pred_formulas):
+                scores.append(_latex_similarity(pred_formulas[i], gt_f))
+            else:
+                scores.append(0.0)
+
+        rewards.append(sum(scores) / len(scores))
+    return rewards
+
+
+def _extract_latex(text: str) -> list[str]:
+    """Extract LaTeX formulas from markdown text.
+
+    Args:
+        text: Markdown text with $$...$$ or $...$ formulas.
+
+    Returns:
+        List of cleaned LaTeX strings.
+    """
+    import re
+
+    formulas = []
+    # Display math: $$...$$
+    for match in re.finditer(r"\$\$(.*?)\$\$", text, re.DOTALL):
+        formulas.append(_clean_latex(match.group(1)))
+    # Inline math: $...$ (but not $$)
+    for match in re.finditer(r"(?<!\$)\$(?!\$)(.*?)(?<!\$)\$(?!\$)", text):
+        formulas.append(_clean_latex(match.group(1)))
+    return formulas
+
+
+def _clean_latex(latex: str) -> str:
+    """Normalize LaTeX for comparison.
+
+    Args:
+        latex: Raw LaTeX string.
+
+    Returns:
+        Cleaned LaTeX with normalized whitespace.
+    """
+    import re
+
+    latex = latex.strip()
+    latex = re.sub(r"\s+", " ", latex)
+    # Remove common no-op commands
+    latex = latex.replace(r"\left", "").replace(r"\right", "")
+    latex = latex.replace(r"\displaystyle", "").replace(r"\textstyle", "")
+    return latex.strip()
+
+
+def _latex_similarity(pred: str, gt: str) -> float:
+    """Compute normalized edit distance similarity between two LaTeX strings.
+
+    Args:
+        pred: Predicted LaTeX.
+        gt: Ground truth LaTeX.
+
+    Returns:
+        Float in [0, 1].
+    """
+    from rapidfuzz.distance import Levenshtein
+
+    if not gt:
+        return 1.0 if not pred else 0.0
+    dist = Levenshtein.distance(pred, gt)
+    max_len = max(len(pred), len(gt))
+    return 1.0 - (dist / max_len) if max_len > 0 else 1.0
+
+
+def reading_order_reward(completions, ground_truth, **kwargs):
+    """Reward based on reading order correctness.
+
+    Extracts text blocks (paragraphs) from completion and GT, then
+    computes the longest common subsequence ratio to measure whether
+    blocks appear in the correct order.
+
+    Args:
+        completions: List of generated markdown strings.
+        ground_truth: List of reference markdown strings.
+
+    Returns:
+        List of float rewards in [0, 1].
+    """
+    rewards = []
+    for completion, reference in zip(completions, ground_truth):
+        if isinstance(completion, list):
+            completion = completion[-1]["content"]
+        if not reference:
+            rewards.append(0.0)
+            continue
+
+        gt_blocks = _extract_text_blocks(reference)
+        pred_blocks = _extract_text_blocks(completion)
+
+        if not gt_blocks:
+            rewards.append(0.5)
+            continue
+        if not pred_blocks:
+            rewards.append(0.0)
+            continue
+
+        # Match pred blocks to GT blocks by content similarity
+        gt_order = list(range(len(gt_blocks)))
+        pred_order = _match_block_order(pred_blocks, gt_blocks)
+
+        if not pred_order:
+            rewards.append(0.0)
+            continue
+
+        # LCS ratio measures how well the predicted order preserves GT order
+        lcs_len = _lcs_length(pred_order, gt_order)
+        rewards.append(lcs_len / len(gt_blocks))
+    return rewards
+
+
+def _extract_text_blocks(text: str) -> list[str]:
+    """Split text into blocks by double newline.
+
+    Args:
+        text: Markdown text.
+
+    Returns:
+        List of non-empty text blocks (first 50 chars for matching).
+    """
+    blocks = []
+    for block in text.split("\n\n"):
+        block = block.strip()
+        if block and len(block) > 10:
+            blocks.append(block[:50])
+    return blocks
+
+
+def _match_block_order(pred_blocks: list[str], gt_blocks: list[str]) -> list[int]:
+    """Match predicted blocks to GT blocks and return GT indices in pred order.
+
+    Args:
+        pred_blocks: List of predicted text block prefixes.
+        gt_blocks: List of GT text block prefixes.
+
+    Returns:
+        List of GT indices that matched, in the order they appear in pred.
+    """
+    from rapidfuzz.distance import Levenshtein
+
+    order = []
+    used = set()
+    for pred_b in pred_blocks:
+        best_sim = 0.0
+        best_idx = -1
+        for j, gt_b in enumerate(gt_blocks):
+            if j in used:
+                continue
+            dist = Levenshtein.distance(pred_b, gt_b)
+            max_len = max(len(pred_b), len(gt_b))
+            sim = 1.0 - (dist / max_len) if max_len > 0 else 1.0
+            if sim > best_sim:
+                best_sim = sim
+                best_idx = j
+        if best_idx >= 0 and best_sim > 0.3:
+            order.append(best_idx)
+            used.add(best_idx)
+    return order
+
+
+def _lcs_length(a: list[int], b: list[int]) -> int:
+    """Compute length of longest common subsequence.
+
+    Args:
+        a: First sequence of integers.
+        b: Second sequence of integers.
+
+    Returns:
+        Length of LCS.
+    """
+    m, n = len(a), len(b)
+    dp = [0] * (n + 1)
+    for i in range(m):
+        prev = 0
+        for j in range(n):
+            temp = dp[j + 1]
+            if a[i] == b[j]:
+                dp[j + 1] = prev + 1
+            else:
+                dp[j + 1] = max(dp[j + 1], dp[j])
+            prev = temp
+    return dp[n]
+
+
+# Registry mapping reward names to functions
+REWARD_REGISTRY = {
+    "bleu": translation_reward,
+    "edit_similarity": ocr_reward,
+    "format": format_reward,
+    "unit_test": unit_test_reward,
+    "table_cell_f1": table_cell_f1_reward,
+    "table_teds": table_cell_f1_reward,  # backward compat alias
+    "formula_cdm": formula_cdm_reward,
+    "reading_order": reading_order_reward,
+}
+
+# Default reward function per task (used by reward: verifiable)
+TASK_REWARDS = {
+    "europarl": "bleu",
+    "ocr": "edit_similarity",
+}
+
+
+def get_reward_funcs(config):
+    """Build reward function list from config.
+
+    Args:
+        config: Full config dict with 'rl' and 'data' sections.
+
+    Returns:
+        List of reward callables for GRPOTrainer.
+    """
+    rl_config = config["rl"]
+    task = config["data"]["task"]
+    reward_spec = rl_config.get("reward", "verifiable")
+
+    if reward_spec == "verifiable":
+        reward_name = TASK_REWARDS.get(task)
+        if reward_name is None:
+            raise ValueError(
+                f"No default verifiable reward for task '{task}'. "
+                f"Supported: {list(TASK_REWARDS.keys())}. "
+                f"Use 'reward: <name>' to specify explicitly."
+            )
+        logger.info(f"Using verifiable reward '{reward_name}' for task '{task}'")
+        return [REWARD_REGISTRY[reward_name]]
+
+    # List of reward names (check before dict lookup to avoid unhashable type error)
+    if isinstance(reward_spec, list):
+        funcs = []
+        for name in reward_spec:
+            if name not in REWARD_REGISTRY:
+                raise ValueError(f"Unknown reward: {name}. Available: {list(REWARD_REGISTRY.keys())}")
+            funcs.append(REWARD_REGISTRY[name])
+        logger.info(f"Using reward functions: {reward_spec}")
+        return funcs
+
+    # Single reward name
+    if isinstance(reward_spec, str) and reward_spec in REWARD_REGISTRY:
+        logger.info(f"Using reward function: {reward_spec}")
+        return [REWARD_REGISTRY[reward_spec]]
+
+    raise ValueError(
+        f"Unknown reward spec: {reward_spec}. "
+        f"Use 'verifiable', a reward name ({list(REWARD_REGISTRY.keys())}), "
+        f"or a list of names."
+    )

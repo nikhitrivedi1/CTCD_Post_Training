@@ -16,6 +16,10 @@
 # automatically resubmits using --resume. The .incomplete_jobs file tracks
 # jobs by SLURM_JOB_ID, supporting concurrent job execution.
 #
+# Signal handling: SLURM sends SIGUSR1 to the shell (B: prefix), which
+# forwards it to the Python child. Python's SLURMSignalCallback saves a
+# checkpoint and stops training gracefully. The shell then resubmits.
+#
 # Usage:
 #   sbatch scripts/slurm/run_training.sh <config>                    # Auto-named run
 #   sbatch scripts/slurm/run_training.sh <run_name> <config>         # Named run
@@ -37,6 +41,7 @@
 #   SEED=123      - Custom random seed
 #   MAX_STEPS=10  - Limit steps (for testing)
 #   EPOCHS=5      - Override num_epochs from config
+#   ADAPTER=path  - SFT adapter to merge before RL training
 #   TIMESTAMP=1   - Append timestamp to run_name
 #   FORCE=1       - Overwrite existing run
 #   DEBUG=1       - Enable verbose DEBUG logging
@@ -52,6 +57,40 @@ set -e
 
 slurm_setup_env
 slurm_print_header
+
+# Run Python in background so the shell can receive and forward SIGUSR1.
+# Python runs as a background job, shell waits for it. When SIGUSR1 arrives,
+# the trap in slurm_essentials.sh forwards it to $_FORGE_CHILD_PID.
+# After the trap fires, `wait` returns early (128+sig), so we re-wait
+# for Python to finish its graceful shutdown (checkpoint save).
+run_forge() {
+    python forge.py "$@" &
+    _FORGE_CHILD_PID=$!
+    set +e
+    while true; do
+        wait $_FORGE_CHILD_PID 2>/dev/null
+        EXIT_CODE=$?
+        # If wait was interrupted by SIGUSR1 (128+10=138), re-wait for child
+        if [ "$EXIT_CODE" -eq 138 ] && [ "$SIGUSR1_RECEIVED" = "1" ]; then
+            continue
+        fi
+        break
+    done
+    set -e
+    _FORGE_CHILD_PID=""
+    # Clean up kill timer if it was started
+    if [ -n "$_FORGE_KILL_TIMER_PID" ]; then
+        kill $_FORGE_KILL_TIMER_PID 2>/dev/null
+        wait $_FORGE_KILL_TIMER_PID 2>/dev/null
+        _FORGE_KILL_TIMER_PID=""
+    fi
+    # If killed by our own kill timer (exit 137), treat as clean for resubmit
+    if [ $EXIT_CODE -eq 137 ] && [ "$SIGUSR1_RECEIVED" = "1" ]; then
+        echo "Python was force-killed by deadline timer, treating as clean exit"
+        EXIT_CODE=0
+    fi
+    return $EXIT_CODE
+}
 
 # Build common ARGS from env vars
 ARGS=""
@@ -71,6 +110,11 @@ if [ -n "$EPOCHS" ]; then
     echo "Epoch override: $EPOCHS"
 fi
 
+if [ -n "$ADAPTER" ]; then
+    ARGS="$ARGS --adapter $ADAPTER"
+    echo "Adapter: $ADAPTER"
+fi
+
 if [ -n "$DEBUG" ]; then
     ARGS="$ARGS --debug"
     echo "Debug mode: verbose logging enabled"
@@ -87,7 +131,7 @@ if [ -n "$_FORGE_RESUME_PATH" ]; then
 
     CMD="python forge.py --resume \"outputs/$_FORGE_RESUME_PATH\" $ARGS"
     echo "CMD: $CMD"
-    python forge.py --resume "outputs/$_FORGE_RESUME_PATH" $ARGS || EXIT_CODE=$?
+    run_forge --resume "outputs/$_FORGE_RESUME_PATH" $ARGS || EXIT_CODE=$?
 else
     # Initial submission: parse positional arguments
     # Detect if $1 is config (ends with .yaml/.yml) or run_name
@@ -145,11 +189,11 @@ else
         fi
         CMD="python forge.py --run_name \"$RUN_NAME\" --config \"$CONFIG\" $ARGS"
         echo "CMD: $CMD"
-        python forge.py --run_name "$RUN_NAME" --config "$CONFIG" $ARGS || EXIT_CODE=$?
+        run_forge --run_name "$RUN_NAME" --config "$CONFIG" $ARGS || EXIT_CODE=$?
     else
         CMD="python forge.py --config \"$CONFIG\" $ARGS"
         echo "CMD: $CMD"
-        python forge.py --config "$CONFIG" $ARGS || EXIT_CODE=$?
+        run_forge --config "$CONFIG" $ARGS || EXIT_CODE=$?
     fi
 fi
 
@@ -167,7 +211,7 @@ if [ $EXIT_CODE -eq 0 ] && slurm_read_incomplete; then
             echo "========================================="
 
             _FORGE_RESUME_PATH="$_RESUME_PATH" PREV_JOB_ID="$SLURM_JOB_ID" \
-                SEED="$SEED" MAX_STEPS="$MAX_STEPS" EPOCHS="$EPOCHS" DEBUG="$DEBUG" \
+                SEED="$SEED" MAX_STEPS="$MAX_STEPS" EPOCHS="$EPOCHS" ADAPTER="$ADAPTER" DEBUG="$DEBUG" \
                 sbatch "$0"
         else
             echo ""

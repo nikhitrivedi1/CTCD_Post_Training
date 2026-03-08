@@ -1,4 +1,4 @@
-"""Main training script for knowledge distillation."""
+"""Main training script for fine-tuning, knowledge distillation, and reinforcement learning."""
 
 import argparse
 import json
@@ -97,9 +97,12 @@ from src.evaluation import get_compute_metrics, run_evaluation
 from src.tasks import get_num_labels, get_primary_metric, is_ocr_task
 from src.models import load_models
 from src.training.callbacks import (
-    SLURMSignalCallback, TeacherEvalCallback, TranslationMetricsCallback, PeakMetricsCallback,
+    SLURMSignalCallback, CheckpointMarkerCallback,
+    TeacherEvalCallback, TranslationMetricsCallback, PeakMetricsCallback,
 )
 from src.training.trainer import FinetuningTrainer, DistillationTrainer
+from src.training.rewards import get_reward_funcs
+from src.data.rl_datasets import load_rl_dataset
 from src.training.losses import (
     get_loss_strategy,
     CombinedDistillationLoss,
@@ -611,6 +614,9 @@ def _train(
         )
         trainer.add_callback(metrics_callback)
 
+    # Add checkpoint marker (LAST - runs after all other on_save hooks)
+    trainer.add_callback(CheckpointMarkerCallback())
+
     # =========================================================================
     # Training
     # =========================================================================
@@ -648,16 +654,237 @@ def _train(
         step=trainer.state.global_step
     )
 
-    # Save final model
-    logger.info("Saving final model...")
-    trainer.save_model()
+    # Save final model (skip if training was interrupted - checkpoint already saved)
+    if state.is_complete():
+        logger.info("Saving final model...")
+        trainer.save_model()
 
-    # Save co-trained teacher (weights changed during training)
-    if teacher is not None and not config["model"].get("teacher", {}).get("freeze", True):
-        teacher_dir = output_dir / "teacher"
-        logger.info(f"Saving co-trained teacher to {teacher_dir}...")
-        teacher.save_pretrained(teacher_dir)
-        tokenizer.save_pretrained(teacher_dir)
+        # Save co-trained teacher (weights changed during training)
+        if teacher is not None and not config["model"].get("teacher", {}).get("freeze", True):
+            teacher_dir = output_dir / "teacher"
+            logger.info(f"Saving co-trained teacher to {teacher_dir}...")
+            teacher.save_pretrained(teacher_dir)
+            tokenizer.save_pretrained(teacher_dir)
+    else:
+        logger.info("Training interrupted - skipping final model save (checkpoint already saved)")
+
+
+def _build_grpo_config(config, output_dir, run_name, args, device, report_to):
+    """Build a GRPOConfig from the Forge YAML config.
+
+    Args:
+        config: Full config dict with 'rl' and 'training' sections.
+        output_dir: Path to output directory.
+        run_name: W&B display name.
+        args: Parsed CLI arguments.
+        device: Device string.
+        report_to: Logging target.
+
+    Returns:
+        GRPOConfig instance.
+    """
+    from trl import GRPOConfig
+
+    rl = config.get("rl", {})
+    training = config["training"]
+
+    grpo_args = GRPOConfig(
+        output_dir=str(output_dir),
+        # GRPO-specific
+        num_generations=rl.get("num_generations", 8),
+        max_completion_length=rl.get("max_completion_length", 256),
+        beta=rl.get("beta", 0.0),
+        temperature=rl.get("temperature", 1.0),
+        loss_type=rl.get("loss_type", "grpo"),
+        num_iterations=rl.get("num_iterations", 1),
+        scale_rewards=rl.get("scale_rewards", "group"),
+        # Training params from config
+        num_train_epochs=training["num_epochs"],
+        per_device_train_batch_size=training.get("batch_size", 4),
+        gradient_accumulation_steps=training.get("gradient_accumulation_steps", 1),
+        learning_rate=float(rl.get("learning_rate", training.get("learning_rate", 1e-6))),
+        warmup_steps=training.get("warmup_steps", 200),
+        weight_decay=training.get("weight_decay", 0.01),
+        max_grad_norm=training.get("max_grad_norm", 2.0),
+        # Logging & eval
+        logging_steps=config["logging"]["logging_steps"],
+        save_steps=config["checkpointing"]["save_steps"],
+        save_total_limit=config["checkpointing"]["save_total_limit"],
+        eval_strategy=config.get("evaluation", {}).get("eval_strategy", "steps"),
+        eval_steps=config.get("evaluation", {}).get("eval_steps", 500),
+        report_to=report_to,
+        run_name=run_name,
+        # Hardware
+        bf16=(device == "cuda"),
+        dataloader_num_workers=training.get("dataloader_num_workers", 4) if device == "cuda" else 0,
+        dataloader_pin_memory=(device == "cuda"),
+        # Overrides
+        max_steps=args.max_steps if args.max_steps > 0 else -1,
+        seed=args.seed,
+        data_seed=args.seed,
+        # Log generated completions to W&B for inspection
+        log_completions=rl.get("log_completions", True),
+    )
+    return grpo_args
+
+
+def _train_rl(
+    config, device, tokenizer, task,
+    train_dataset, eval_dataset,
+    output_dir, run_name, args, state, resume_checkpoint,
+    env, report_to, metadata, processor=None,
+):
+    """Run RL (GRPO) training.
+
+    Args:
+        config: Full configuration dictionary.
+        device: Device string.
+        tokenizer: Tokenizer.
+        task: Task name.
+        train_dataset: Training dataset (prompt-based format).
+        eval_dataset: Evaluation dataset.
+        output_dir: Output directory (Path).
+        run_name: Run name for W&B.
+        args: Parsed CLI arguments.
+        state: TrainingState for checkpoint tracking.
+        resume_checkpoint: Path to resume checkpoint (or None).
+        env: Environment string.
+        report_to: Logging target.
+        metadata: Run metadata dict.
+        processor: AutoProcessor for VLM models (or None).
+    """
+    from trl import GRPOTrainer
+    from peft import LoraConfig
+
+    # Build reward functions from config
+    reward_funcs = get_reward_funcs(config)
+    logger.info(f"Reward functions: {[f.__name__ for f in reward_funcs]}")
+
+    # Build GRPOConfig
+    grpo_config = _build_grpo_config(config, output_dir, run_name, args, device, report_to)
+    logger.info(f"GRPO config: num_generations={grpo_config.num_generations}, "
+                f"max_completion_length={grpo_config.max_completion_length}, "
+                f"beta={grpo_config.beta}, loss_type={grpo_config.loss_type}")
+
+    # Model loading
+    model_name = config["model"]["name"]
+    adapter_path = config["model"].get("adapter_path")
+
+    # If adapter_path is set, load the base model + SFT adapter and merge them.
+    # GRPO then trains a fresh LoRA on top of the merged model.
+    if adapter_path:
+        from transformers import AutoModelForImageTextToText, AutoModelForCausalLM
+        from peft import PeftModel
+
+        logger.info(f"Loading base model: {model_name}")
+        if is_ocr_task(task):
+            base_model = AutoModelForImageTextToText.from_pretrained(
+                model_name, torch_dtype="auto", attn_implementation="sdpa",
+            )
+        else:
+            base_model = AutoModelForCausalLM.from_pretrained(
+                model_name, torch_dtype="auto", attn_implementation="sdpa",
+            )
+
+        logger.info(f"Loading and merging SFT adapter: {adapter_path}")
+        model = PeftModel.from_pretrained(base_model, adapter_path)
+        model = model.merge_and_unload()
+        logger.info("SFT adapter merged into base model")
+
+        # Save base model for this stage (eval loads base/ + checkpoint LoRA)
+        base_dir = output_dir / "base"
+        logger.info(f"Saving base model to {base_dir}")
+        model.save_pretrained(base_dir)
+        if processor is not None:
+            processor.save_pretrained(base_dir)
+        elif tokenizer is not None:
+            tokenizer.save_pretrained(base_dir)
+        logger.info("Base model saved")
+    else:
+        model = model_name
+
+    # LoRA config (if enabled)
+    peft_config = None
+    if config["training"].get("use_lora", False):
+        lora_cfg = config["training"].get("lora", {})
+        peft_config = LoraConfig(
+            r=lora_cfg.get("r", 16),
+            lora_alpha=lora_cfg.get("alpha", 16),
+            lora_dropout=lora_cfg.get("dropout", 0.05),
+            target_modules=lora_cfg.get("target_modules", None),
+            task_type="CAUSAL_LM",
+        )
+        logger.info(f"LoRA enabled: r={peft_config.r}, alpha={peft_config.lora_alpha}")
+
+    # Processing class (tokenizer or processor for VLMs)
+    processing_class = processor if processor is not None else tokenizer
+
+    # Create trainer
+    trainer = GRPOTrainer(
+        model=model,
+        reward_funcs=reward_funcs,
+        args=grpo_config,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        processing_class=processing_class,
+        peft_config=peft_config,
+    )
+
+    # Add SLURM signal handler
+    if env == "slurm":
+        logger.info("Adding SLURM signal handler...")
+        trainer.add_callback(SLURMSignalCallback(trainer))
+
+    # Add checkpoint marker (LAST - runs after all other on_save hooks)
+    trainer.add_callback(CheckpointMarkerCallback())
+
+    # Training
+    logger.info("=" * 60)
+    logger.info("Starting GRPO training...")
+    logger.info("=" * 60)
+
+    trainer.train(resume_from_checkpoint=resume_checkpoint)
+
+    # Update W&B with full config
+    try:
+        import wandb
+        if wandb.run:
+            wandb.config.update(config, allow_val_change=True)
+            if wandb.run.id != metadata.get("wandb_run_id"):
+                old_id = metadata.get("wandb_run_id")
+                metadata["wandb_run_id"] = wandb.run.id
+                metadata.setdefault("wandb_run_id_history", []).append(old_id)
+                save_run_metadata(output_dir, metadata)
+                logger.info(f"W&B ID changed: {old_id} -> {wandb.run.id}")
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.debug(f"W&B config update failed: {e}")
+
+    # Update state
+    state.save(
+        epoch=trainer.state.epoch,
+        step=trainer.state.global_step,
+    )
+
+    # Save final model (skip if training was interrupted)
+    if state.is_complete():
+        # Save final model to output dir root
+        # (adapter is already saved in checkpoint-XXX/ dirs)
+        if hasattr(trainer.model, "merge_and_unload"):
+            logger.info("Merging LoRA and saving final model to output dir...")
+            merged = trainer.model.merge_and_unload()
+            merged.save_pretrained(output_dir)
+        else:
+            logger.info("Saving final model to output dir...")
+            trainer.save_model(output_dir)
+        if processor is not None:
+            processor.save_pretrained(output_dir)
+        elif tokenizer is not None:
+            tokenizer.save_pretrained(output_dir)
+        logger.info("Final merged model saved")
+    else:
+        logger.info("Training interrupted - skipping final model save (checkpoint already saved)")
 
 
 def main():
@@ -675,6 +902,8 @@ def main():
     parser.add_argument("--max_steps", type=int, default=-1, help="Max training steps (for testing)")
     parser.add_argument("--epochs", type=int, default=None, help="Override num_epochs from config")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
+    parser.add_argument("--adapter", type=str, default=None,
+                        help="Path to SFT adapter to merge before RL training (e.g. outputs/my_sft_run/)")
     parser.add_argument("--debug", action="store_true",
                         help="Enable DEBUG level logging for verbose output")
     args = parser.parse_args()
@@ -841,6 +1070,9 @@ def main():
     if args.epochs is not None:
         config["training"]["num_epochs"] = args.epochs
         logger.info(f"CLI override: num_epochs={args.epochs}")
+    if args.adapter is not None:
+        config.setdefault("model", {})["adapter_path"] = args.adapter
+        logger.info(f"CLI override: adapter_path={args.adapter}")
 
     logger.info(f"Output directory: {args.output_dir}")
 
@@ -870,35 +1102,17 @@ def main():
     state = TrainingState(args.output_dir)
     state.set_targets(epochs=config["training"]["num_epochs"])
 
-    if state.is_complete():
-        logger.info("Training already complete!")
+    if state.is_pipeline_complete():
+        logger.info("Training pipeline already complete!")
         return
 
-    # Load dataset
-    logger.info("Loading dataset...")
-    train_dataset, eval_dataset, tokenizer_or_processor = load_dataset_for_task(config)
-
-    # Truncate training set if max_train_samples is set
-    max_train_samples = config.get("data", {}).get("max_train_samples")
-    if max_train_samples is not None and max_train_samples < len(train_dataset):
-        train_dataset = train_dataset.select(range(max_train_samples))
-        logger.info(f"Truncated training set to {max_train_samples} samples")
-
-    # For VLMs, load_dataset_for_task returns an AutoProcessor (which contains a tokenizer).
-    # Extract the tokenizer for use throughout the pipeline.
+    # Determine task and training mode
     task = config.get("data", {}).get("task", "").lower()
-    processor = None
-    if hasattr(tokenizer_or_processor, 'tokenizer'):
-        processor = tokenizer_or_processor
-        tokenizer = processor.tokenizer
-    else:
-        tokenizer = tokenizer_or_processor
+    has_rl = "rl" in config
+    rl_algorithm = config.get("rl", {}).get("algorithm", "grpo") if has_rl else None
 
-    logger.info(f"Train size: {len(train_dataset)}")
-    logger.info(f"Eval size: {len(eval_dataset) if eval_dataset is not None else 0}")
-
-    # Determine number of labels for classification tasks
-    num_labels = get_num_labels(task)
+    if has_rl:
+        logger.info(f"RL mode: algorithm={rl_algorithm}")
 
     # Find checkpoint to resume from
     resume_checkpoint = state.get_resume_checkpoint(args.output_dir)
@@ -925,6 +1139,10 @@ def main():
             "created": timestamp,
             "seed": args.seed,
         }
+        # Lineage: track where this stage's base model came from
+        if args.adapter:
+            metadata["base_model"] = config["model"]["name"]
+            metadata["adapter"] = args.adapter
         output_dir.mkdir(parents=True, exist_ok=True)
         save_run_metadata(output_dir, metadata)
         save_config_snapshot(output_dir, config)
@@ -977,68 +1195,130 @@ def main():
         except Exception as e:
             logger.debug(f"W&B early init failed: {e}")
 
-    # Get compute metrics function and data collator (shared by eval and training)
-    compute_metrics = get_compute_metrics(task, tokenizer=tokenizer)
-    data_collator = None
-    if is_ocr_task(task):
-        logger.info("Using VLMDataCollator for vision-language model inputs")
-        data_collator = VLMDataCollator(processor=processor)
-    elif num_labels is None:  # Translation/seq2seq task
-        logger.info("Using DataCollatorForSeq2Seq for dynamic padding and label masking")
-        data_collator = DataCollatorForSeq2Seq(
-            tokenizer=tokenizer,
-            padding=True,
-            pad_to_multiple_of=8 if device == "cuda" else None,  # Optimize for GPU
-        )
+    if has_rl and rl_algorithm == "grpo":
+        # =================================================================
+        # RL TRAINING PATH (GRPO)
+        # =================================================================
+        logger.info("Loading RL dataset (prompt-based)...")
+        train_dataset, eval_dataset = load_rl_dataset(config)
+        logger.info(f"Train size: {len(train_dataset)}")
+        logger.info(f"Eval size: {len(eval_dataset) if eval_dataset is not None else 0}")
 
-    # =========================================================================
-    # Pre-training evaluation (models scoped inside run_evaluation)
-    # =========================================================================
-    student_pre = teacher_pre = None
-    default_log_pre_post = num_labels is not None
-    log_pre_post = config.get("evaluation", {}).get("log_pre_post_metrics", default_log_pre_post)
-    if log_pre_post and num_labels is None:
-        logger.warning("log_pre_post_metrics enabled for translation - this may take hours on large eval sets")
-    if log_pre_post:
+        # For VLM tasks, load the processor for tokenization
+        processor = None
+        tokenizer = None
+        if is_ocr_task(task):
+            from transformers import AutoProcessor
+            processor_name = config["model"].get("processor", config["model"]["name"])
+            processor = AutoProcessor.from_pretrained(processor_name)
+            tokenizer = processor.tokenizer
+        else:
+            from transformers import AutoTokenizer
+            model_name = config["model"]["name"]
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            tokenizer.padding_side = "left"
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
+
         set_reproducibility_seed(args.seed)
-        student_pre, teacher_pre = run_evaluation(
-            config, device, tokenizer, num_labels,
-            eval_dataset, compute_metrics, data_collator,
-            task, phase="pre",
-            remove_unused_columns=not is_ocr_task(task),
+        _train_rl(
+            config, device, tokenizer, task,
+            train_dataset, eval_dataset,
+            output_dir, display_name, args, state, resume_checkpoint,
+            env, report_to, metadata, processor=processor,
+        )
+    else:
+        # =================================================================
+        # SUPERVISED TRAINING PATH (SFT / KD)
+        # =================================================================
+        logger.info("Loading dataset...")
+        train_dataset, eval_dataset, tokenizer_or_processor = load_dataset_for_task(config)
+
+        # Truncate training set if max_train_samples is set
+        max_train_samples = config.get("data", {}).get("max_train_samples")
+        if max_train_samples is not None and max_train_samples < len(train_dataset):
+            train_dataset = train_dataset.select(range(max_train_samples))
+            logger.info(f"Truncated training set to {max_train_samples} samples")
+
+        # For VLMs, load_dataset_for_task returns an AutoProcessor (which contains a tokenizer).
+        # Extract the tokenizer for use throughout the pipeline.
+        processor = None
+        if hasattr(tokenizer_or_processor, 'tokenizer'):
+            processor = tokenizer_or_processor
+            tokenizer = processor.tokenizer
+        else:
+            tokenizer = tokenizer_or_processor
+
+        logger.info(f"Train size: {len(train_dataset)}")
+        logger.info(f"Eval size: {len(eval_dataset) if eval_dataset is not None else 0}")
+
+        num_labels = get_num_labels(task)
+
+        # Get compute metrics function and data collator
+        compute_metrics = get_compute_metrics(task, tokenizer=tokenizer)
+        data_collator = None
+        if is_ocr_task(task):
+            logger.info("Using VLMDataCollator for vision-language model inputs")
+            data_collator = VLMDataCollator(processor=processor)
+        elif num_labels is None:  # Translation/seq2seq task
+            logger.info("Using DataCollatorForSeq2Seq for dynamic padding and label masking")
+            data_collator = DataCollatorForSeq2Seq(
+                tokenizer=tokenizer,
+                padding=True,
+                pad_to_multiple_of=8 if device == "cuda" else None,
+            )
+
+        # Pre-training evaluation
+        student_pre = teacher_pre = None
+        default_log_pre_post = num_labels is not None
+        log_pre_post = config.get("evaluation", {}).get("log_pre_post_metrics", default_log_pre_post)
+        if log_pre_post and num_labels is None:
+            logger.warning("log_pre_post_metrics enabled for translation - this may take hours on large eval sets")
+        if log_pre_post:
+            set_reproducibility_seed(args.seed)
+            student_pre, teacher_pre = run_evaluation(
+                config, device, tokenizer, num_labels,
+                eval_dataset, compute_metrics, data_collator,
+                task, phase="pre",
+                remove_unused_columns=not is_ocr_task(task),
+            )
+
+        # Training
+        set_reproducibility_seed(args.seed)
+        _train(
+            config, device, tokenizer, num_labels, task,
+            train_dataset, eval_dataset, compute_metrics, data_collator,
+            output_dir, display_name, args, state, resume_checkpoint,
+            env, report_to, metadata,
         )
 
-    # =========================================================================
-    # Training (models scoped inside _train)
-    # =========================================================================
-    set_reproducibility_seed(args.seed)
-    _train(
-        config, device, tokenizer, num_labels, task,
-        train_dataset, eval_dataset, compute_metrics, data_collator,
-        output_dir, display_name, args, state, resume_checkpoint,
-        env, report_to, metadata,
-    )
+        # Post-training evaluation (skip if training was interrupted to save time for W&B sync)
+        if state.is_complete():
+            set_reproducibility_seed(args.seed)
+            student_post, teacher_post = run_evaluation(
+                config, device, tokenizer, num_labels,
+                eval_dataset, compute_metrics, data_collator,
+                task, phase="post",
+                checkpoint_dir=output_dir,
+                evaluate_teacher=log_pre_post,
+                prev_metrics=(student_pre, teacher_pre) if log_pre_post else None,
+                remove_unused_columns=not is_ocr_task(task),
+            )
+        else:
+            logger.info("Training interrupted - skipping post-training evaluation")
 
-    # =========================================================================
-    # Post-training evaluation (models scoped inside run_evaluation)
-    # =========================================================================
-    set_reproducibility_seed(args.seed)
-    student_post, teacher_post = run_evaluation(
-        config, device, tokenizer, num_labels,
-        eval_dataset, compute_metrics, data_collator,
-        task, phase="post",
-        checkpoint_dir=output_dir,
-        evaluate_teacher=log_pre_post,
-        prev_metrics=(student_pre, teacher_pre) if log_pre_post else None,
-        remove_unused_columns=not is_ocr_task(task),
-    )
-
-    # Remove from incomplete registry
-    remove_incomplete_job()
-
-    logger.info("=" * 60)
-    logger.info("Training complete!")
-    logger.info("=" * 60)
+    # Mark full pipeline complete and remove from incomplete registry
+    if state.is_complete():
+        state.mark_pipeline_complete()
+        remove_incomplete_job()
+        logger.info("=" * 60)
+        logger.info("Training complete!")
+        logger.info("=" * 60)
+    else:
+        logger.info("=" * 60)
+        logger.info(f"Training interrupted (epoch {state.state['completed_epochs']}/{state.state['target_epochs']})")
+        logger.info("Job remains in incomplete registry for resubmission")
+        logger.info("=" * 60)
 
 
 if __name__ == "__main__":

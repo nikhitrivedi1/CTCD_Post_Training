@@ -14,7 +14,7 @@
 
 ## Git Workflow
 - Commit messages: short summary line, optional body for context.
-- Do NOT include Co-Authored-By unless explicitly requested.
+- Do NOT mention LLM assistance anywhere (commits, PRs, code comments, docs) unless explicitly requested. This includes Co-Authored-By, "Generated with", "AI-assisted", or similar attributions.
 - Push when explicitly asked.
 - **DCP**: When the user says "DCP", do: **D**ouble-check the code, **C**ommit, **P**ush.
 - **Merging**: Always squash-and-merge branches into main.

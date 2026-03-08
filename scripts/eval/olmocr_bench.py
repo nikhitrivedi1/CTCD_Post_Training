@@ -28,6 +28,7 @@ import logging
 import os
 import signal
 import sys
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -265,13 +266,13 @@ def _check_olmocr_scoring():
     3. Fallback text-only scoring
 
     Returns:
-        Tuple of (load_single_test function or None, set of skipped test types)
+        Tuple of (load_single_test function or None, set of skipped test types, mock_katex bool)
     """
     skip_types = set()
     try:
         from olmocr.bench.tests import load_single_test
         logger.info("Using olmocr.bench.tests for scoring (exact comparability)")
-        return load_single_test, skip_types
+        return load_single_test, skip_types, False
     except ImportError as e:
         if "playwright" in str(e) or "katex" in str(e):
             # Playwright package exists but Chromium binary may be missing,
@@ -281,12 +282,12 @@ def _check_olmocr_scoring():
                 try:
                     from olmocr.bench.tests import load_single_test
                     logger.info("Using olmocr.bench.tests for scoring (exact comparability)")
-                    return load_single_test, skip_types
+                    return load_single_test, skip_types, False
                 except ImportError:
                     pass
 
-            # Chromium unavailable — fall back to scoring without math
-            logger.warning("Playwright Chromium unavailable — math tests will be skipped")
+            # Chromium unavailable - fall back to scoring without math
+            logger.warning("Playwright Chromium unavailable - math tests will be skipped")
             try:
                 import unittest.mock
                 katex_mock = unittest.mock.MagicMock()
@@ -294,14 +295,56 @@ def _check_olmocr_scoring():
                 sys.modules["olmocr.bench.katex.render"] = katex_mock
                 from olmocr.bench.tests import load_single_test
                 skip_types.add("math")
-                return load_single_test, skip_types
+                return load_single_test, skip_types, True
             except Exception:
                 pass
-        logger.warning("olmocr not installed — using fallback scoring (text presence/absence only)")
-        return None, skip_types
+        logger.warning("olmocr not installed - using fallback scoring (text presence/absence only)")
+        return None, skip_types, False
 
 
-def score_tests(all_tests, markdowns_dir: str):
+def _score_single_test(args):
+    """Score one test against its markdown. Top-level function for pickling.
+
+    Args:
+        args: Tuple of (test_dict, markdowns_dir, use_olmocr, mock_katex)
+
+    Returns:
+        Tuple of (test, result_dict)
+    """
+    test, markdowns_dir, use_olmocr, mock_katex = args
+
+    # Apply katex mock in worker if parent needed it
+    if use_olmocr and mock_katex:
+        import unittest.mock
+        katex_mock = unittest.mock.MagicMock()
+        sys.modules.setdefault("olmocr.bench.katex", katex_mock)
+        sys.modules.setdefault("olmocr.bench.katex.render", katex_mock)
+
+    md_name = pdf_to_md_name(test["pdf"], test["page"])
+    md_path = os.path.join(markdowns_dir, md_name)
+
+    if not os.path.exists(md_path):
+        return test, {"test_id": test.get("id", "unknown"), "status": "missing", "result": "skip"}
+
+    with open(md_path) as f:
+        md_content = f.read()
+
+    if use_olmocr:
+        try:
+            from olmocr.bench.tests import load_single_test
+            test_data = {k: v for k, v in test.items() if not k.startswith("_")}
+            test_obj = load_single_test(test_data)
+            passed, explanation = test_obj.run(md_content)
+            return test, {"test_id": test.get("id", "unknown"), "status": "scored",
+                          "result": "pass" if passed else "fail", "explanation": explanation}
+        except Exception as e:
+            return test, {"test_id": test.get("id", "unknown"), "status": "scored",
+                          "result": "fail", "explanation": f"error: {e}"}
+    else:
+        return test, _fallback_score(test, md_content)
+
+
+def score_tests(all_tests, markdowns_dir: str, num_workers: int = 1):
     """Score all tests against generated markdowns using olmocr test classes.
 
     Tries to import olmocr.bench.tests for exact comparability.
@@ -311,68 +354,76 @@ def score_tests(all_tests, markdowns_dir: str):
     Args:
         all_tests: List of test dicts from JSONL
         markdowns_dir: Directory containing generated .md files
+        num_workers: Number of parallel workers for scoring (default: 1)
 
     Returns:
         Tuple of (results_by_category, results_by_jsonl, individual_results)
     """
-    load_single_test, skip_types = _check_olmocr_scoring()
+    load_single_test, skip_types, mock_katex = _check_olmocr_scoring()
     use_olmocr = load_single_test is not None
 
     results_by_category = defaultdict(lambda: {"passed": 0, "failed": 0, "missing": 0, "total": 0})
     results_by_jsonl = defaultdict(lambda: {"passed": 0, "failed": 0, "missing": 0, "total": 0})
     individual_results = []
 
+    # Filter out unsupported test types
+    scoreable_tests = []
     skipped_count = 0
     for test in all_tests:
-        test_type = test.get("type", "")
-
-        # Skip unsupported test types (e.g. math without playwright)
-        if test_type in skip_types:
+        if test.get("type", "") in skip_types:
             skipped_count += 1
-            continue
-
-        md_name = pdf_to_md_name(test["pdf"], test["page"])
-        md_path = os.path.join(markdowns_dir, md_name)
-
-        if not os.path.exists(md_path):
-            result = {"test_id": test.get("id", "unknown"), "status": "missing", "result": "skip"}
         else:
-            with open(md_path) as f:
-                md_content = f.read()
+            scoreable_tests.append(test)
 
-            if use_olmocr:
-                try:
-                    # Strip internal fields before passing to olmocr (dataclass rejects extras)
-                    test_data = {k: v for k, v in test.items() if not k.startswith("_")}
-                    test_obj = load_single_test(test_data)
-                    passed, explanation = test_obj.run(md_content)
-                    result = {"test_id": test.get("id", "unknown"), "status": "scored",
-                              "result": "pass" if passed else "fail", "explanation": explanation}
-                except Exception as e:
-                    result = {"test_id": test.get("id", "unknown"), "status": "scored",
-                              "result": "fail", "explanation": f"error: {e}"}
-            else:
-                result = _fallback_score(test, md_content)
+    pass_count = 0
+    fail_count = 0
+    work_items = [(test, markdowns_dir, use_olmocr, mock_katex) for test in scoreable_tests]
 
-        category = test["_category"]
-        jsonl = test["_jsonl"]
-        results_by_category[category]["total"] += 1
-        results_by_jsonl[jsonl]["total"] += 1
-        if result["result"] == "pass":
-            results_by_category[category]["passed"] += 1
-            results_by_jsonl[jsonl]["passed"] += 1
-        elif result["result"] == "skip":
-            results_by_category[category]["missing"] += 1
-            results_by_jsonl[jsonl]["missing"] += 1
-        else:
-            results_by_category[category]["failed"] += 1
-            results_by_jsonl[jsonl]["failed"] += 1
-        individual_results.append(result)
+    if num_workers > 1:
+        logger.info(f"Scoring with {num_workers} parallel workers")
+        with ProcessPoolExecutor(max_workers=num_workers) as pool:
+            futures = {pool.submit(_score_single_test, item): i for i, item in enumerate(work_items)}
+            pbar = tqdm(as_completed(futures), total=len(futures), desc="Scoring tests", unit="test")
+            for future in pbar:
+                test_dict, result = future.result()
+                _accumulate_score(test_dict, result, results_by_category, results_by_jsonl, individual_results)
+                if result["result"] == "pass":
+                    pass_count += 1
+                elif result["result"] != "skip":
+                    fail_count += 1
+                pbar.set_postfix(passed=pass_count, failed=fail_count)
+    else:
+        for item in (pbar := tqdm(work_items, desc="Scoring tests", unit="test")):
+            test_dict, result = _score_single_test(item)
+            _accumulate_score(test_dict, result, results_by_category, results_by_jsonl, individual_results)
+            if result["result"] == "pass":
+                pass_count += 1
+            elif result["result"] != "skip":
+                fail_count += 1
+            pbar.set_postfix(passed=pass_count, failed=fail_count)
 
     if skipped_count > 0:
         logger.info(f"Skipped {skipped_count} tests (unsupported types: {skip_types})")
 
     return dict(results_by_category), dict(results_by_jsonl), individual_results
+
+
+def _accumulate_score(test, result, results_by_category, results_by_jsonl, individual_results):
+    """Accumulate a single test result into category/jsonl counters."""
+    category = test["_category"]
+    jsonl = test["_jsonl"]
+    results_by_category[category]["total"] += 1
+    results_by_jsonl[jsonl]["total"] += 1
+    if result["result"] == "pass":
+        results_by_category[category]["passed"] += 1
+        results_by_jsonl[jsonl]["passed"] += 1
+    elif result["result"] == "skip":
+        results_by_category[category]["missing"] += 1
+        results_by_jsonl[jsonl]["missing"] += 1
+    else:
+        results_by_category[category]["failed"] += 1
+        results_by_jsonl[jsonl]["failed"] += 1
+    individual_results.append(result)
 
 
 def _fallback_score(test: dict, md_content: str) -> dict:
@@ -736,7 +787,7 @@ def main():
                 tmp_path = md_path + ".tmp"
                 with open(tmp_path, "w") as f:
                     f.write(markdown)
-                os.rename(tmp_path, md_path)
+                os.replace(tmp_path, md_path)
                 generated += 1
 
             except Exception as e:
@@ -788,7 +839,10 @@ def main():
     pct_available = available / len(all_unique) * 100
     missing = len(all_unique) - available
     logger.info(f"Scoring {available}/{len(all_unique)} pages ({pct_available:.1f}% available, {missing} missing)")
-    results_by_category, results_by_jsonl, individual_results = score_tests(all_tests, markdowns_dir)
+    slurm_cpus = os.getenv("SLURM_CPUS_PER_TASK")
+    available_cpus = int(slurm_cpus) if slurm_cpus else (os.cpu_count() or 1)
+    num_workers = max(1, available_cpus // 2)
+    results_by_category, results_by_jsonl, individual_results = score_tests(all_tests, markdowns_dir, num_workers=num_workers)
     score_of_total, score_of_scored = compute_overall_score(results_by_jsonl)
     print_results_table(results_by_category, score_of_total, score_of_scored)
     save_results(output_dir, results_by_category, results_by_jsonl,
