@@ -218,18 +218,18 @@ If the reward encourages formatting markers, the model might hallucinate formatt
 
 ## Proposed Execution Order
 
-| Step | Action | Type | Effort | Impact |
+| Step | Action | Type | Effort | Status |
 |------|--------|------|--------|--------|
-| 1 | **E3**: Quick formatting probe on current model | Eval | Low | Establishes baseline |
-| 2 | **System prompt update** (section 5) | Prompt | Low | May unlock latent ability |
-| 3 | **D1**: Audit olmocr-mix for formatting content | Data | Low | Informs data strategy |
-| 4 | **E4**: Add formatting stats to eval outputs | Eval | Low | Tracking infrastructure |
-| 5 | **D2**: Curate formatting-rich training data | Data | Medium | Prerequisite for training |
-| 6 | **R1**: Build `inline_formatting_reward` | Reward | Medium | Prerequisite for GRPO |
-| 7 | **E2**: Standalone formatting benchmark | Eval | Medium | Proper measurement |
-| 8 | **T1**: SFT on formatting-rich data | Training | Medium | Core capability |
-| 9 | **T3**: GRPO with bold-first curriculum | Training | Medium | Refinement |
-| 10 | **E1**: Full formatting benchmark | Eval | High | Gold standard eval |
+| 1 | **E3**: Quick formatting probe on current model | Eval | Low | Tool ready (`probe_formatting.py`) |
+| 2 | **System prompt update** (section 5) | Prompt | Low | Done |
+| 3 | **D1**: Audit olmocr-mix for formatting content | Data | Low | Tool ready (`audit_formatting.py`) |
+| 4 | **E4**: Add formatting stats to eval outputs | Eval | Low | Pending |
+| 5 | **D2**: Curate formatting-rich training data | Data | Medium | Done (synthetic generator) |
+| 6 | **R1**: Build `inline_formatting_reward` | Reward | Medium | Done + tested (60/60) |
+| 7 | **E2**: Standalone formatting benchmark | Eval | Medium | Done (`formatting_bench.py`) |
+| 8 | **T1**: SFT on formatting-rich data | Training | Medium | Pending |
+| 9 | **T3**: GRPO with bold-first curriculum | Training | Medium | Pending |
+| 10 | **E1**: Full formatting benchmark | Eval | High | Pending |
 
 Steps 1-4 are low-effort diagnostics. Steps 5-7 build infrastructure. Steps 8-10 are training and evaluation.
 
@@ -241,7 +241,7 @@ Full audit of the GRPO training pipeline, reward system, data loaders, eval scri
 
 ### Tests
 
-38/38 passing (7.7s). Coverage: rewards.py at 73%, callbacks at 16%, data loaders at 0% (no test files yet).
+60/60 passing. Coverage: rewards.py includes `inline_formatting_reward`, `_extract_formatting_spans`, `_fuzzy_set_f1`, `_score_inline_formatting`. Callbacks at 16%, data loaders at 0% (no test files yet).
 
 ### Config Consistency - Clean
 
@@ -291,13 +291,63 @@ Both `omnidoc_bench.py` and `olmocr_bench.py` handle missing images, empty model
 
 ---
 
+## 7. Synthetic Data Generator (2026-03-09)
+
+Built a full pipeline to generate formatting-rich training data: `scripts/data/generate_formatting_data.py`.
+
+### Pipeline
+
+```
+Markdown GT -> HTML+CSS -> Playwright/Chromium render -> PNG -> Augmentation -> Final image
+```
+
+### Key Design
+
+- **Single-pass span-based formatting injection**: picks word-boundary spans, assigns formatting types independently per span, applies right-to-left. No overlapping markers by construction.
+- **Combined formatting**: spans can receive any combination of bold, italic, strikethrough. Explicit 3% chance of triple-combo, 5% chance of double-combo, plus natural co-occurrence from independent rolls.
+- **6 CSS templates**: academic, textbook, technical, financial, modern, compact. Random per-page selection for visual diversity.
+- **18 built-in paragraphs** across domains (academic, financial, legal, technical, medical, educational). Optional wikitext content source.
+- **Augmentation**: rotation (0-2 deg), brightness/contrast variation, Gaussian blur, noise, JPEG compression, grayscale conversion. Simulates real scanned documents.
+
+### Quality Metrics (10-page test run)
+
+| Metric | Per Page Avg | Total (10 pages) |
+|--------|-------------|-------------------|
+| Bold spans | 14.8 | 148 |
+| Italic spans | 7.1 | 71 |
+| Strikethrough spans | 6.9 | 69 |
+| Bold+Italic combined | 1.7 | 17 |
+| Bold+Strike combined | 1.8 | 18 |
+| Italic+Strike combined | 0.8 | 8 |
+| All three combined | 1.2 | 12 |
+
+Zero malformed markdown (all markers balanced). Sample renders in `wip_docs/formatting_samples/`.
+
+### Usage
+
+```bash
+# Generate 1000 pages with augmentation
+python scripts/data/generate_formatting_data.py --output_dir data/ocr/formatting-synth --num_pages 1000 --augment
+
+# Quick test
+python scripts/data/generate_formatting_data.py --output_dir /tmp/fmt_test --num_pages 10
+
+# With wikitext content
+python scripts/data/generate_formatting_data.py --output_dir data/ocr/formatting-synth --num_pages 500 --content_source wikitext --augment
+```
+
+---
+
 ## Key Files
 
 | File | Role | Changes Needed |
 |------|------|----------------|
-| [rewards.py](src/training/rewards.py) | Reward functions | Add `inline_formatting_reward`, update `format_reward` |
-| [ocr_utils.py](src/data/ocr_utils.py) | System prompt | Update `OCR_SYSTEM_PROMPT` |
+| [rewards.py](src/training/rewards.py) | Reward functions | Done: `inline_formatting_reward`, updated `format_reward` |
+| [ocr_utils.py](src/data/ocr_utils.py) | System prompt | Done: updated `OCR_SYSTEM_PROMPT` |
 | [formatting_bench.py](workbench/formatting_bench.py) | Formatting benchmark | Standalone, do NOT modify omnidoc_bench.py |
+| [generate_formatting_data.py](scripts/data/generate_formatting_data.py) | Synthetic data gen | Done: full pipeline |
+| [audit_formatting.py](workbench/audit_formatting.py) | Data auditing | Done: scans GT for formatting stats |
+| [probe_formatting.py](workbench/probe_formatting.py) | Model probing | Done: tests latent formatting capability |
 | [convert_omnidocbench.py](scripts/data/convert_omnidocbench.py) | GT conversion | Preserve formatting from source HTML |
 | [rl_datasets.py](src/data/rl_datasets.py) | Dataset loading | Support formatting-filtered datasets |
 | configs/ocr/.../rl/ | GRPO configs | New config with formatting rewards |
