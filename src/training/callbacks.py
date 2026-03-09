@@ -1,4 +1,4 @@
-"""Callbacks for SLURM signal handling, teacher evaluation, and translation metrics."""
+"""Callbacks for training: signal handling, metrics logging, teacher eval, and more."""
 
 import logging
 import os
@@ -105,6 +105,73 @@ class CheckpointMarkerCallback(TrainerCallback):
         """
         checkpoint_dir = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
         mark_checkpoint_complete(checkpoint_dir)
+
+
+class StepMetricsCallback(TrainerCallback):
+    """
+    Log training metrics to Python logger on each logging step.
+
+    HF Trainer's default ProgressCallback writes metrics as raw dict dumps via
+    tqdm.write(). This callback logs them through the Python logger in a clean,
+    grep-friendly format so they appear in output.log alongside other log lines.
+
+    Logs two lines per step:
+      - step=N epoch=E lr=L loss=V (core training stats)
+      - reward=R reward_std=S edit_similarity=V ... (per-reward breakdown, GRPO only)
+    """
+
+    # Metrics to always show first (in order)
+    _CORE_KEYS = ["loss", "learning_rate", "grad_norm"]
+    # Prefixes to group into a second "rewards" line
+    _REWARD_PREFIX = "rewards/"
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        """
+        Format and log metrics at each logging step.
+
+        Args:
+            args: Training arguments
+            state: Trainer state
+            control: Trainer control
+            logs: Metrics dict from the trainer
+        """
+        if logs is None or not state.is_world_process_zero:
+            return
+
+        # Build header: step + epoch
+        parts = [f"step={state.global_step}"]
+        if state.epoch is not None:
+            parts.append(f"epoch={state.epoch:.2f}")
+
+        reward_parts = []
+
+        # Core keys first, in defined order
+        for key in self._CORE_KEYS:
+            if key in logs and isinstance(logs[key], (int, float)):
+                parts.append(f"{key}={logs[key]:.6f}")
+
+        # Aggregate reward (GRPO)
+        for key in ("reward", "reward_std"):
+            if key in logs and isinstance(logs[key], (int, float)):
+                parts.append(f"{key}={logs[key]:.6f}")
+
+        # Remaining metrics (sorted) and reward breakdown
+        skip = set(self._CORE_KEYS) | {"reward", "reward_std", "total_flos", "epoch"}
+        for key in sorted(logs):
+            if key in skip or not isinstance(logs[key], (int, float)):
+                continue
+            formatted = f"{logs[key]:.6f}" if isinstance(logs[key], float) else str(logs[key])
+            if key.startswith(self._REWARD_PREFIX):
+                short_key = key[len(self._REWARD_PREFIX):]
+                reward_parts.append(f"{short_key}={formatted}")
+            else:
+                parts.append(f"{key}={formatted}")
+
+        logger.info("  ".join(parts))
+
+        # Log reward breakdown (GRPO only)
+        if reward_parts:
+            logger.info("  rewards: " + "  ".join(reward_parts))
 
 
 class TeacherEvalCallback(TrainerCallback):

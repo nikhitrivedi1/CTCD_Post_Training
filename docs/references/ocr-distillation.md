@@ -134,10 +134,10 @@ Three optimizations:
 
 ```bash
 # Full 260K run (all 4 subsets)
-sbatch scripts/slurm/run_prepare_data.sh --output data/ocr/olmocr-mix-full
+sbatch scripts/slurm/run_data_prep.sh olmocr-mix --output data/ocr/olmocr-mix-full
 
 # Test run (50 samples per subset)
-sbatch scripts/slurm/run_prepare_data.sh --output data/ocr/olmocr-mix-test --max_samples 50
+sbatch scripts/slurm/run_data_prep.sh olmocr-mix --output data/ocr/olmocr-mix-test --max_samples 50
 
 # Single subset
 python scripts/data/prepare_ocr_data.py --subset 00_documents --output data/ocr/olmocr-mix-5k --max_samples 5000
@@ -190,19 +190,19 @@ python scripts/eval/olmocr_bench.py --checkpoint outputs/.../checkpoint-400
 **Args:**
 - `--model`: HuggingFace model ID (any VLM)
 - `--checkpoint`: Local LoRA checkpoint path (mutually exclusive with --model)
-- `--output-dir`: Override (default: `outputs/bench/{name}/{YYYYMMDD-HHMMZ}/`)
+- `--output-dir`: Override (default: `outputs/bench/olmocr/{name}/{YYYYMMDD-HHMMZ}/`)
 - `--bench-dir`: Path to olmOCR-bench data (default: `data/olmocr-bench`)
 - `--max-new-tokens`: Generation limit (default: 2048)
 - `--dpi`: PDF render DPI (default: 150)
 
-**Output dir naming:** `outputs/bench/{name}/{timestamp}/`
-- `--model allenai/olmOCR-2-7B-1025-FP8` → `outputs/bench/olmOCR-2-7B-1025-FP8/20260225-1430Z/`
-- `--model Qwen/Qwen3-VL-2B-Instruct` → `outputs/bench/Qwen3-VL-2B-Instruct/20260225-1445Z/`
-- `--checkpoint outputs/run_name_0952Z/checkpoint-400` → `outputs/bench/run_name_0952Z/20260225-1500Z/`
+**Output dir naming:** `outputs/bench/olmocr/{name}/{timestamp}/`
+- `--model allenai/olmOCR-2-7B-1025-FP8` → `outputs/bench/olmocr/olmOCR-2-7B-1025-FP8/20260225-1430Z/`
+- `--model Qwen/Qwen3-VL-2B-Instruct` → `outputs/bench/olmocr/Qwen3-VL-2B-Instruct/20260225-1445Z/`
+- `--checkpoint outputs/run_name_0952Z/checkpoint-400` → `outputs/bench/olmocr/run_name_0952Z/20260225-1500Z/`
 
 **Output structure:**
 ```
-outputs/bench/{name}/{timestamp}/
+outputs/bench/olmocr/{name}/{timestamp}/
   metadata.json    # model_id, hf_commit_hash, generation_params, prompt, dpi, timestamp
   markdowns/       # {pdf_stem}_{page}.md per (pdf, page) pair
   results.json     # overall score, per-category breakdown
@@ -228,7 +228,7 @@ pip install olmocr  # for bench scoring classes
 huggingface-cli download --repo-type dataset allenai/olmOCR-bench --local-dir data/olmocr-bench
 ```
 
-**SLURM wrapper:** `scripts/slurm/run_olmocr_bench.sh`
+**SLURM wrapper:** `scripts/slurm/run_bench.sh olmocr`
 
 ### Runtime Estimate
 - 1,403 pages × ~5s/page = ~2 hours per model on H200

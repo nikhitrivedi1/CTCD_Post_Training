@@ -5,15 +5,20 @@
 ```
 scripts/
   slurm/                    # SLURM job scripts + shared utilities
-    slurm_essentials.sh            # Shared: SIGUSR1 trap, env setup, GPU detection, .incomplete_jobs reader
+    slurm_essentials.sh     # Shared: SIGUSR1 trap, env setup, GPU detection, .incomplete_jobs reader
     run_training.sh         # Training with auto-resubmit
-    run_olmocr_bench.sh     # Benchmark eval with auto-resubmit
-    run_prepare_data.sh     # OCR data preparation
-  gpu_keep-alive.py             # Prevent idle GPU timeout in OOD sessions
+    run_bench.sh            # Benchmark eval (olmocr/omnidoc) with auto-resubmit
+    run_score.sh            # Score-only (CPU, no GPU)
+    run_data_prep.sh        # Data preparation (olmocr-mix, synthmix, omnidocbench)
+  gpu_keep-alive.py         # Prevent idle GPU timeout in OOD sessions
   eval/
-    olmocr_bench.py         # olmOCR-Bench scoring (standalone or via SLURM wrapper)
+    olmocr_bench.py         # olmOCR-Bench scoring
+    omnidoc_bench.py        # OmniDocBench formatting scoring
   data/
-    prepare_ocr_data.py          # Pre-process olmOCR-mix: download, render PDFs, build HF dataset
+    prepare_ocr_data.py     # Pre-process olmOCR-mix: download, render PDFs, build HF dataset
+    download_rl_datasets.sh # Download synthmix + OmniDocBench for RL
+    convert_synthmix.py     # Convert synthmix PDFs to images
+    convert_omnidocbench.py # Convert OmniDocBench JSON to markdown GT
   models/
     push_to_hub.py          # Push trained models/checkpoints to HF Hub
     pull_from_hub.py        # Download models from HF Hub
@@ -74,12 +79,13 @@ All SLURM scripts source `scripts/slurm/slurm_essentials.sh` which provides:
 - Resume: Automatic via `.incomplete_jobs` JSON + `sbatch`
 - State: HuggingFace Trainer checkpoints + `training_state.json`
 
-### Evaluation (`slurm/run_olmocr_bench.sh`)
+### Evaluation (`slurm/run_bench.sh`)
 
 - Signal: `SIGUSR1@120`
 - Shell kills background Python on SIGUSR1 (C extensions block signal handlers)
 - Resume: Automatic via `.incomplete_jobs` JSON + `sbatch`
 - State: Per-page atomic writes (temp file + rename), skip existing on resume
+- Supports both olmOCR-Bench and OmniDocBench via first arg (`olmocr` or `omnidoc`)
 
 ### Writing New SLURM Scripts
 
@@ -89,4 +95,4 @@ All SLURM scripts source `scripts/slurm/slurm_essentials.sh` which provides:
 4. Register a Python signal handler that sets a shutdown flag
 5. Check the flag at safe points in the main loop (between units of work)
 6. Write to `.incomplete_jobs` before exiting for auto-resubmit
-7. Use atomic writes for output files (write to `.tmp`, then `os.rename`)
+7. Use atomic writes for output files (write to `.tmp`, then `os.replace`)

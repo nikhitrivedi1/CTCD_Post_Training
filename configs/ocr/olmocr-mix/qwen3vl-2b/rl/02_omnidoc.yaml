@@ -5,9 +5,9 @@
 #
 # Run:
 #   python forge.py \
-#     --config configs/ocr/olmocr-mix/qwen3vl-2b/rl/02_omnidocbench.yaml \
+#     --config configs/ocr/olmocr-mix/qwen3vl-2b/rl/02_omnidoc.yaml \
 #     --adapter outputs/<previous_stage>/ \
-#     --run-name omnidocbench_grpo_01
+#     --run-name omnidoc_grpo
 
 inherit: ../base.yaml
 
@@ -20,11 +20,17 @@ data:
 training:
   num_epochs: 1
   learning_rate: 1e-6
+  batch_size: 1                    # base: 2, reduced to avoid OOM on doc scans
+  gradient_accumulation_steps: 32  # base: 16, doubled to keep effective batch=32
+
+evaluation:
+  eval_strategy: "no"
 
 rl:
   algorithm: grpo
   reward: [edit_similarity, format, table_cell_f1, formula_cdm, reading_order]
   num_generations: 4
+  generation_batch_size: 4         # 1 prompt x 4 generations (minimum, avoids batching multiple prompts)
   max_completion_length: 1024
   temperature: 0.8
   beta: 0.0

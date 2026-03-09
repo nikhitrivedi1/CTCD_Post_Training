@@ -7,7 +7,7 @@
 #   bash scripts/data/download_rl_datasets.sh omnidocbench # OmniDocBench only
 #
 # SLURM:
-#   sbatch scripts/slurm/run_rl_data_prep.sh
+#   sbatch scripts/slurm/run_data_prep.sh rl
 
 set -euo pipefail
 

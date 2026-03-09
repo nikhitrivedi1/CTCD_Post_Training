@@ -1,6 +1,6 @@
 """Training modules for knowledge distillation."""
 
-from .callbacks import SLURMSignalCallback
+from .callbacks import SLURMSignalCallback, StepMetricsCallback
 from .losses import (
     DistillationLossStrategy,
     KLDistillationLoss,
@@ -64,4 +64,5 @@ __all__ = [
     "PROJECTION_REGISTRY",
     # Callbacks
     "SLURMSignalCallback",
+    "StepMetricsCallback",
 ]

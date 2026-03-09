@@ -5,11 +5,63 @@ Each function follows trl's reward function signature:
 
 The trainer passes all dataset columns as kwargs, plus `prompts`,
 `completion_ids`, and `trainer_state`.
+
+When multiple rewards are used, they are wrapped in a ParallelRewardGroup
+that precomputes all rewards concurrently on the first call per batch,
+then returns cached results for subsequent calls. This eliminates
+sequential GPU idle time during reward scoring.
 """
 
 import logging
-
+from concurrent.futures import ThreadPoolExecutor
 logger = logging.getLogger(__name__)
+
+# Lazy-initialized pool for within-function parallelism
+_reward_pool = None
+
+
+def _get_reward_pool():
+    """Get or create the shared thread pool for parallel scoring."""
+    global _reward_pool
+    if _reward_pool is None:
+        _reward_pool = ThreadPoolExecutor(max_workers=8)
+    return _reward_pool
+
+
+def _unwrap_completion(completion):
+    """Extract text from conversational format if needed."""
+    if isinstance(completion, list):
+        return completion[-1]["content"]
+    return completion
+
+
+def _score_parallel(score_fn, completions, references=None):
+    """Score completions in parallel using threads.
+
+    Args:
+        score_fn: Function that scores a single (completion,) or (completion, reference) pair.
+        completions: List of generated strings.
+        references: Optional list of reference strings (zipped with completions).
+
+    Returns:
+        List of float rewards.
+    """
+    completions = [_unwrap_completion(c) for c in completions]
+    if references is not None:
+        items = list(zip(completions, references))
+        return list(_get_reward_pool().map(lambda args: score_fn(*args), items))
+    return list(_get_reward_pool().map(score_fn, completions))
+
+
+def _score_translation(completion, reference):
+    """Score a single completion-reference pair for BLEU."""
+    import sacrebleu
+
+    try:
+        bleu = sacrebleu.sentence_bleu(completion, [reference])
+        return bleu.score / 100.0
+    except Exception:
+        return 0.0
 
 
 def translation_reward(completions, ground_truth, **kwargs):
@@ -22,19 +74,18 @@ def translation_reward(completions, ground_truth, **kwargs):
     Returns:
         List of float rewards in [0, 1].
     """
-    import sacrebleu
+    return _score_parallel(_score_translation, completions, ground_truth)
 
-    rewards = []
-    for completion, reference in zip(completions, ground_truth):
-        # Handle conversational format (list of message dicts)
-        if isinstance(completion, list):
-            completion = completion[-1]["content"]
-        try:
-            bleu = sacrebleu.sentence_bleu(completion, [reference])
-            rewards.append(bleu.score / 100.0)  # Normalize to [0, 1]
-        except Exception:
-            rewards.append(0.0)
-    return rewards
+
+def _score_ocr(completion, reference):
+    """Score a single completion-reference pair for edit similarity."""
+    from rapidfuzz.distance import Levenshtein
+
+    if not reference:
+        return 1.0 if not completion else 0.0
+    distance = Levenshtein.distance(completion, reference)
+    max_len = max(len(completion), len(reference))
+    return max(0.0, 1.0 - (distance / max_len)) if max_len > 0 else 1.0
 
 
 def ocr_reward(completions, ground_truth, **kwargs):
@@ -49,20 +100,7 @@ def ocr_reward(completions, ground_truth, **kwargs):
     Returns:
         List of float rewards in [0, 1].
     """
-    from rapidfuzz.distance import Levenshtein
-
-    rewards = []
-    for completion, reference in zip(completions, ground_truth):
-        if isinstance(completion, list):
-            completion = completion[-1]["content"]
-        if not reference:
-            rewards.append(0.0)
-            continue
-        distance = Levenshtein.distance(completion, reference)
-        max_len = max(len(completion), len(reference))
-        similarity = 1.0 - (distance / max_len) if max_len > 0 else 1.0
-        rewards.append(max(0.0, similarity))
-    return rewards
+    return _score_parallel(_score_ocr, completions, ground_truth)
 
 
 def unit_test_reward(completions, tests, **kwargs):
@@ -144,6 +182,24 @@ def _fallback_unit_test(test: dict, text: str) -> bool:
     return False
 
 
+def _score_format(completion):
+    """Score a single completion for markdown structure."""
+    import re
+
+    score = 0.0
+    if completion.strip():
+        score += 0.2
+    if re.search(r"^#{1,6}\s", completion, re.MULTILINE):
+        score += 0.2
+    if re.search(r"^[\-\*]\s|^\d+\.\s", completion, re.MULTILINE):
+        score += 0.2
+    if "|" in completion and "-|-" in completion.replace(" ", ""):
+        score += 0.2
+    if len(completion.strip()) > 50:
+        score += 0.2
+    return min(1.0, score)
+
+
 def format_reward(completions, **kwargs):
     """Reward for well-structured markdown output (OCR tasks).
 
@@ -156,32 +212,26 @@ def format_reward(completions, **kwargs):
     Returns:
         List of float rewards in [0, 1].
     """
-    import re
+    return _score_parallel(_score_format, completions)
 
-    rewards = []
-    for completion in completions:
-        if isinstance(completion, list):
-            completion = completion[-1]["content"]
 
-        score = 0.0
-        # Has any content at all
-        if completion.strip():
-            score += 0.2
-        # Contains markdown headings
-        if re.search(r"^#{1,6}\s", completion, re.MULTILINE):
-            score += 0.2
-        # Contains lists
-        if re.search(r"^[\-\*]\s|^\d+\.\s", completion, re.MULTILINE):
-            score += 0.2
-        # Contains tables
-        if "|" in completion and "-|-" in completion.replace(" ", ""):
-            score += 0.2
-        # Not excessively short relative to a reasonable document
-        if len(completion.strip()) > 50:
-            score += 0.2
-
-        rewards.append(min(1.0, score))
-    return rewards
+def _score_table_cell_f1(completion, reference):
+    """Score a single completion-reference pair for table cell F1."""
+    if not reference:
+        return 0.0
+    gt_tables = _extract_markdown_tables(reference)
+    if not gt_tables:
+        return 0.5
+    pred_tables = _extract_markdown_tables(completion)
+    if not pred_tables:
+        return 0.0
+    scores = []
+    for i, gt_table in enumerate(gt_tables):
+        if i < len(pred_tables):
+            scores.append(_compute_table_similarity(pred_tables[i], gt_table))
+        else:
+            scores.append(0.0)
+    return sum(scores) / len(scores)
 
 
 def table_cell_f1_reward(completions, ground_truth, **kwargs):
@@ -198,35 +248,7 @@ def table_cell_f1_reward(completions, ground_truth, **kwargs):
     Returns:
         List of float rewards in [0, 1].
     """
-    rewards = []
-    for completion, reference in zip(completions, ground_truth):
-        if isinstance(completion, list):
-            completion = completion[-1]["content"]
-        if not reference:
-            rewards.append(0.0)
-            continue
-
-        gt_tables = _extract_markdown_tables(reference)
-        if not gt_tables:
-            # No tables in GT, skip this reward (neutral)
-            rewards.append(0.5)
-            continue
-
-        pred_tables = _extract_markdown_tables(completion)
-        if not pred_tables:
-            rewards.append(0.0)
-            continue
-
-        # Match tables by order and compute TEDS for each pair
-        scores = []
-        for i, gt_table in enumerate(gt_tables):
-            if i < len(pred_tables):
-                scores.append(_compute_table_similarity(pred_tables[i], gt_table))
-            else:
-                scores.append(0.0)
-
-        rewards.append(sum(scores) / len(scores))
-    return rewards
+    return _score_parallel(_score_table_cell_f1, completions, ground_truth)
 
 
 def _extract_markdown_tables(text: str) -> list[list[list[str]]]:
@@ -309,6 +331,25 @@ def _compute_table_similarity(pred: list[list[str]], gt: list[list[str]]) -> flo
     return 2 * precision * recall / (precision + recall)
 
 
+def _score_formula_cdm(completion, reference):
+    """Score a single completion-reference pair for formula similarity."""
+    if not reference:
+        return 0.0
+    gt_formulas = _extract_latex(reference)
+    if not gt_formulas:
+        return 0.5
+    pred_formulas = _extract_latex(completion)
+    if not pred_formulas:
+        return 0.0
+    scores = []
+    for i, gt_f in enumerate(gt_formulas):
+        if i < len(pred_formulas):
+            scores.append(_latex_similarity(pred_formulas[i], gt_f))
+        else:
+            scores.append(0.0)
+    return sum(scores) / len(scores)
+
+
 def formula_cdm_reward(completions, ground_truth, **kwargs):
     """Reward based on formula similarity between completion and GT.
 
@@ -323,33 +364,7 @@ def formula_cdm_reward(completions, ground_truth, **kwargs):
     Returns:
         List of float rewards in [0, 1].
     """
-    rewards = []
-    for completion, reference in zip(completions, ground_truth):
-        if isinstance(completion, list):
-            completion = completion[-1]["content"]
-        if not reference:
-            rewards.append(0.0)
-            continue
-
-        gt_formulas = _extract_latex(reference)
-        if not gt_formulas:
-            rewards.append(0.5)
-            continue
-
-        pred_formulas = _extract_latex(completion)
-        if not pred_formulas:
-            rewards.append(0.0)
-            continue
-
-        scores = []
-        for i, gt_f in enumerate(gt_formulas):
-            if i < len(pred_formulas):
-                scores.append(_latex_similarity(pred_formulas[i], gt_f))
-            else:
-                scores.append(0.0)
-
-        rewards.append(sum(scores) / len(scores))
-    return rewards
+    return _score_parallel(_score_formula_cdm, completions, ground_truth)
 
 
 def _extract_latex(text: str) -> list[str]:
@@ -411,6 +426,24 @@ def _latex_similarity(pred: str, gt: str) -> float:
     return 1.0 - (dist / max_len) if max_len > 0 else 1.0
 
 
+def _score_reading_order(completion, reference):
+    """Score a single completion-reference pair for reading order."""
+    if not reference:
+        return 0.0
+    gt_blocks = _extract_text_blocks(reference)
+    if not gt_blocks:
+        return 0.5
+    pred_blocks = _extract_text_blocks(completion)
+    if not pred_blocks:
+        return 0.0
+    gt_order = list(range(len(gt_blocks)))
+    pred_order = _match_block_order(pred_blocks, gt_blocks)
+    if not pred_order:
+        return 0.0
+    lcs_len = _lcs_length(pred_order, gt_order)
+    return lcs_len / len(gt_blocks)
+
+
 def reading_order_reward(completions, ground_truth, **kwargs):
     """Reward based on reading order correctness.
 
@@ -425,36 +458,7 @@ def reading_order_reward(completions, ground_truth, **kwargs):
     Returns:
         List of float rewards in [0, 1].
     """
-    rewards = []
-    for completion, reference in zip(completions, ground_truth):
-        if isinstance(completion, list):
-            completion = completion[-1]["content"]
-        if not reference:
-            rewards.append(0.0)
-            continue
-
-        gt_blocks = _extract_text_blocks(reference)
-        pred_blocks = _extract_text_blocks(completion)
-
-        if not gt_blocks:
-            rewards.append(0.5)
-            continue
-        if not pred_blocks:
-            rewards.append(0.0)
-            continue
-
-        # Match pred blocks to GT blocks by content similarity
-        gt_order = list(range(len(gt_blocks)))
-        pred_order = _match_block_order(pred_blocks, gt_blocks)
-
-        if not pred_order:
-            rewards.append(0.0)
-            continue
-
-        # LCS ratio measures how well the predicted order preserves GT order
-        lcs_len = _lcs_length(pred_order, gt_order)
-        rewards.append(lcs_len / len(gt_blocks))
-    return rewards
+    return _score_parallel(_score_reading_order, completions, ground_truth)
 
 
 def _extract_text_blocks(text: str) -> list[str]:
@@ -464,13 +468,13 @@ def _extract_text_blocks(text: str) -> list[str]:
         text: Markdown text.
 
     Returns:
-        List of non-empty text blocks (first 50 chars for matching).
+        List of non-empty text blocks.
     """
     blocks = []
     for block in text.split("\n\n"):
         block = block.strip()
         if block and len(block) > 10:
-            blocks.append(block[:50])
+            blocks.append(block)
     return blocks
 
 
@@ -478,20 +482,24 @@ def _match_block_order(pred_blocks: list[str], gt_blocks: list[str]) -> list[int
     """Match predicted blocks to GT blocks and return GT indices in pred order.
 
     Args:
-        pred_blocks: List of predicted text block prefixes.
-        gt_blocks: List of GT text block prefixes.
+        pred_blocks: List of predicted text blocks.
+        gt_blocks: List of GT text blocks.
 
     Returns:
         List of GT indices that matched, in the order they appear in pred.
     """
     from rapidfuzz.distance import Levenshtein
 
+    # Use prefixes for matching (full blocks are too expensive for Levenshtein)
+    pred_prefixes = [b[:50] for b in pred_blocks]
+    gt_prefixes = [b[:50] for b in gt_blocks]
+
     order = []
     used = set()
-    for pred_b in pred_blocks:
+    for pred_b in pred_prefixes:
         best_sim = 0.0
         best_idx = -1
-        for j, gt_b in enumerate(gt_blocks):
+        for j, gt_b in enumerate(gt_prefixes):
             if j in used:
                 continue
             dist = Levenshtein.distance(pred_b, gt_b)
@@ -528,6 +536,49 @@ def _lcs_length(a: list[int], b: list[int]) -> int:
                 dp[j + 1] = max(dp[j + 1], dp[j])
             prev = temp
     return dp[n]
+
+
+class ParallelRewardGroup:
+    """Runs multiple reward functions concurrently to minimize GPU idle time.
+
+    trl calls each reward function sequentially. This wrapper detects when
+    a new batch arrives, runs all reward functions in parallel via threads,
+    caches results, and returns the cached result for each function.
+
+    Thread-based parallelism works here because the heavy operations
+    (rapidfuzz Levenshtein) are C extensions that release the GIL.
+    """
+
+    def __init__(self, funcs):
+        self._funcs = funcs
+        self._cache = {}
+        self._last_completions = None
+
+    def _run_all(self, **kwargs):
+        completions = kwargs.get("completions")
+        if completions is self._last_completions:
+            return
+        with ThreadPoolExecutor(max_workers=len(self._funcs)) as pool:
+            futures = {f.__name__: pool.submit(f, **kwargs) for f in self._funcs}
+            self._cache = {name: fut.result() for name, fut in futures.items()}
+        self._last_completions = completions
+
+    def wrap(self):
+        """Return list of wrapper functions that trl calls individually.
+
+        Returns:
+            List of callables with the same names as the original functions.
+        """
+        wrappers = []
+        for func in self._funcs:
+            def _make(f):
+                def wrapper(**kwargs):
+                    self._run_all(**kwargs)
+                    return self._cache[f.__name__]
+                wrapper.__name__ = f.__name__
+                return wrapper
+            wrappers.append(_make(func))
+        return wrappers
 
 
 # Registry mapping reward names to functions
@@ -581,6 +632,9 @@ def get_reward_funcs(config):
                 raise ValueError(f"Unknown reward: {name}. Available: {list(REWARD_REGISTRY.keys())}")
             funcs.append(REWARD_REGISTRY[name])
         logger.info(f"Using reward functions: {reward_spec}")
+        if len(funcs) > 1:
+            logger.info("Wrapping in ParallelRewardGroup for concurrent scoring")
+            funcs = ParallelRewardGroup(funcs).wrap()
         return funcs
 
     # Single reward name

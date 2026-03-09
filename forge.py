@@ -97,7 +97,7 @@ from src.evaluation import get_compute_metrics, run_evaluation
 from src.tasks import get_num_labels, get_primary_metric, is_ocr_task
 from src.models import load_models
 from src.training.callbacks import (
-    SLURMSignalCallback, CheckpointMarkerCallback,
+    SLURMSignalCallback, CheckpointMarkerCallback, StepMetricsCallback,
     TeacherEvalCallback, TranslationMetricsCallback, PeakMetricsCallback,
 )
 from src.training.trainer import FinetuningTrainer, DistillationTrainer
@@ -469,11 +469,182 @@ def load_config_snapshot(output_dir: Path) -> dict | None:
     return None
 
 
+def _save_base_ref(output_dir: Path, model_name: str, revision: str = None):
+    """Save base model reference to base/ directory.
+
+    For HF Hub models, saves a model_ref.json with the model path and
+    commit revision. HF Hub weights are immutable per revision, so this
+    is a complete reproducible reference without duplicating weights locally.
+
+    For custom bases (e.g., merged from --adapter), the caller saves full
+    weights to base/ directly instead of calling this function.
+
+    Args:
+        output_dir: Run output directory
+        model_name: HF Hub model ID
+        revision: Git commit hash from HF Hub
+    """
+    base_dir = output_dir / "base"
+    base_dir.mkdir(exist_ok=True)
+    ref = {"model_name_or_path": model_name}
+    if revision:
+        ref["revision"] = revision
+    with open(base_dir / "model_ref.json", 'w') as f:
+        json.dump(ref, f, indent=2)
+    logger.info(f"Base ref saved: {model_name} (rev: {revision or 'unknown'})")
+
+
+def _resolve_adapter(config, output_dir, task, processor=None, tokenizer=None):
+    """Resolve --adapter into a base model for training.
+
+    If adapter_path is set in config, loads the HF base model, merges the
+    adapter, and caches the result in base/. On resume, loads from base/
+    directly (skips re-download and re-merge).
+
+    Args:
+        config: Full config dict (reads model.name and model.adapter_path)
+        output_dir: Run output directory (base/ is created here)
+        task: Task string (determines VLM vs causal LM loading)
+        processor: AutoProcessor for VLMs
+        tokenizer: Tokenizer for causal LMs
+
+    Returns:
+        Model object (if adapter was merged) or model name string (if no adapter).
+    """
+    model_name = config["model"]["name"]
+    adapter_path = config["model"].get("adapter_path")
+
+    if not adapter_path:
+        return model_name
+
+    from transformers import AutoModelForImageTextToText, AutoModelForCausalLM
+    base_dir = output_dir / "base"
+
+    # Resume: base/ already has merged weights from first run
+    if (base_dir / "config.json").exists():
+        logger.info(f"Loading base model from {base_dir} (cached from prior run)")
+        if is_ocr_task(task):
+            return AutoModelForImageTextToText.from_pretrained(
+                str(base_dir), torch_dtype="auto", attn_implementation="sdpa",
+            )
+        else:
+            return AutoModelForCausalLM.from_pretrained(
+                str(base_dir), torch_dtype="auto", attn_implementation="sdpa",
+            )
+
+    # First run: download base, merge adapter, save to base/
+    from peft import PeftModel
+
+    logger.info(f"Loading base model: {model_name}")
+    if is_ocr_task(task):
+        base_model = AutoModelForImageTextToText.from_pretrained(
+            model_name, torch_dtype="auto", attn_implementation="sdpa",
+        )
+    else:
+        base_model = AutoModelForCausalLM.from_pretrained(
+            model_name, torch_dtype="auto", attn_implementation="sdpa",
+        )
+
+    logger.info(f"Loading and merging adapter: {adapter_path}")
+    model = PeftModel.from_pretrained(base_model, adapter_path)
+    model = model.merge_and_unload()
+    logger.info("Adapter merged into base model")
+
+    logger.info(f"Saving base model to {base_dir}")
+    model.save_pretrained(base_dir)
+    if processor is not None:
+        processor.save_pretrained(base_dir)
+    elif tokenizer is not None:
+        tokenizer.save_pretrained(base_dir)
+    logger.info("Base model saved")
+
+    return model
+
+
+def _sync_wandb(config, task, metadata, output_dir):
+    """Sync config and metadata to W&B after training.
+
+    Args:
+        config: Full config dict
+        task: Task string (for primary metric lookup)
+        metadata: Run metadata dict (updated in-place if W&B ID changes)
+        output_dir: Run output directory
+    """
+    try:
+        import wandb
+        if wandb.run:
+            wandb.config.update(config, allow_val_change=True)
+            primary = get_primary_metric(task)
+            if primary:
+                wandb.config.update({"primary_metric": primary}, allow_val_change=True)
+            if wandb.run.id != metadata.get("wandb_run_id"):
+                old_id = metadata.get("wandb_run_id")
+                metadata["wandb_run_id"] = wandb.run.id
+                metadata.setdefault("wandb_run_id_history", []).append(old_id)
+                save_run_metadata(output_dir, metadata)
+                logger.info(f"W&B ID changed: {old_id} -> {wandb.run.id}")
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.debug(f"W&B config update failed: {e}")
+
+
+def _save_final_model(trainer, config, output_dir, processor=None, tokenizer=None):
+    """Save final model with unified structure (merged model + adapter + base ref).
+
+    For LoRA: saves adapter, base reference, then merges and saves merged model.
+    For Full FT: saves full model and base reference.
+    Always saves processor/tokenizer.
+
+    Args:
+        trainer: HF Trainer instance (model accessible via trainer.model)
+        config: Full config dict
+        output_dir: Run output directory
+        processor: AutoProcessor for VLMs (optional)
+        tokenizer: Tokenizer for causal LMs (optional)
+    """
+    if hasattr(trainer.model, "merge_and_unload"):
+        # LoRA: save adapter first (merge is destructive)
+        logger.info("Saving LoRA adapter to output dir...")
+        trainer.model.save_pretrained(output_dir)
+
+        # Save base ref if not already saved with full weights (--adapter case)
+        if not (output_dir / "base" / "config.json").exists():
+            base_config = trainer.model.get_base_model().config
+            _save_base_ref(
+                output_dir,
+                model_name=base_config._name_or_path,
+                revision=getattr(base_config, "_commit_hash", None),
+            )
+
+        logger.info("Merging LoRA and saving merged model...")
+        merged = trainer.model.merge_and_unload()
+        merged.save_pretrained(output_dir)
+    else:
+        # Full FT: save complete model
+        logger.info("Saving final model to output dir...")
+        trainer.save_model(output_dir)
+        # Save base ref if not already saved with full weights (--adapter case)
+        if not (output_dir / "base" / "config.json").exists():
+            _save_base_ref(
+                output_dir,
+                model_name=config["model"]["name"],
+                revision=getattr(trainer.model.config, "_commit_hash", None),
+            )
+
+    # Save processor/tokenizer
+    if processor is not None:
+        processor.save_pretrained(output_dir)
+    elif tokenizer is not None:
+        tokenizer.save_pretrained(output_dir)
+    logger.info("Final model saved")
+
+
 def _train(
     config, device, tokenizer, num_labels, task,
     train_dataset, eval_dataset, compute_metrics, data_collator,
     output_dir, run_name, args, state, resume_checkpoint,
-    env, report_to, metadata,
+    env, report_to, metadata, processor=None,
 ):
     """Run the training phase with models scoped locally.
 
@@ -498,6 +669,7 @@ def _train(
         env: Environment string ('local', 'slurm', etc.)
         report_to: Logging target ('wandb', 'none', etc.)
         metadata: Run metadata dict
+        processor: AutoProcessor for VLMs (optional)
     """
     # Load teacher and student models
     logger.info("Loading models...")
@@ -581,6 +753,9 @@ def _train(
             data_collator=data_collator,
         )
 
+    # Log metrics to output.log in grep-friendly format
+    trainer.add_callback(StepMetricsCallback())
+
     # Add SLURM signal handler
     if env == "slurm":
         logger.info("Adding SLURM signal handler...")
@@ -626,27 +801,7 @@ def _train(
 
     trainer.train(resume_from_checkpoint=resume_checkpoint)
 
-    # Update W&B with full config and sync metadata
-    try:
-        import wandb
-        if wandb.run:
-            # Log full config to W&B for dashboard visibility
-            wandb.config.update(config, allow_val_change=True)
-            # Log primary metric (metric_for_best_model is set automatically by HF Trainer)
-            wandb.config.update({
-                "primary_metric": get_primary_metric(task) or "loss",
-            }, allow_val_change=True)
-            # Sync metadata if W&B assigned a different ID (e.g., original was deleted)
-            if wandb.run.id != metadata.get("wandb_run_id"):
-                old_id = metadata.get("wandb_run_id")
-                metadata["wandb_run_id"] = wandb.run.id
-                metadata.setdefault("wandb_run_id_history", []).append(old_id)
-                save_run_metadata(output_dir, metadata)
-                logger.info(f"W&B ID changed: {old_id} → {wandb.run.id}")
-    except ImportError:
-        pass  # W&B not installed
-    except Exception as e:
-        logger.debug(f"W&B config update failed: {e}")
+    _sync_wandb(config, task, metadata, output_dir)
 
     # Update state
     state.save(
@@ -656,8 +811,7 @@ def _train(
 
     # Save final model (skip if training was interrupted - checkpoint already saved)
     if state.is_complete():
-        logger.info("Saving final model...")
-        trainer.save_model()
+        _save_final_model(trainer, config, output_dir, processor=processor, tokenizer=tokenizer)
 
         # Save co-trained teacher (weights changed during training)
         if teacher is not None and not config["model"].get("teacher", {}).get("freeze", True):
@@ -692,6 +846,7 @@ def _build_grpo_config(config, output_dir, run_name, args, device, report_to):
         output_dir=str(output_dir),
         # GRPO-specific
         num_generations=rl.get("num_generations", 8),
+        generation_batch_size=rl.get("generation_batch_size"),
         max_completion_length=rl.get("max_completion_length", 256),
         beta=rl.get("beta", 0.0),
         temperature=rl.get("temperature", 1.0),
@@ -766,42 +921,8 @@ def _train_rl(
                 f"max_completion_length={grpo_config.max_completion_length}, "
                 f"beta={grpo_config.beta}, loss_type={grpo_config.loss_type}")
 
-    # Model loading
-    model_name = config["model"]["name"]
-    adapter_path = config["model"].get("adapter_path")
-
-    # If adapter_path is set, load the base model + SFT adapter and merge them.
-    # GRPO then trains a fresh LoRA on top of the merged model.
-    if adapter_path:
-        from transformers import AutoModelForImageTextToText, AutoModelForCausalLM
-        from peft import PeftModel
-
-        logger.info(f"Loading base model: {model_name}")
-        if is_ocr_task(task):
-            base_model = AutoModelForImageTextToText.from_pretrained(
-                model_name, torch_dtype="auto", attn_implementation="sdpa",
-            )
-        else:
-            base_model = AutoModelForCausalLM.from_pretrained(
-                model_name, torch_dtype="auto", attn_implementation="sdpa",
-            )
-
-        logger.info(f"Loading and merging SFT adapter: {adapter_path}")
-        model = PeftModel.from_pretrained(base_model, adapter_path)
-        model = model.merge_and_unload()
-        logger.info("SFT adapter merged into base model")
-
-        # Save base model for this stage (eval loads base/ + checkpoint LoRA)
-        base_dir = output_dir / "base"
-        logger.info(f"Saving base model to {base_dir}")
-        model.save_pretrained(base_dir)
-        if processor is not None:
-            processor.save_pretrained(base_dir)
-        elif tokenizer is not None:
-            tokenizer.save_pretrained(base_dir)
-        logger.info("Base model saved")
-    else:
-        model = model_name
+    # Model loading (resolves --adapter if set, with base/ caching for resume)
+    model = _resolve_adapter(config, output_dir, task, processor, tokenizer)
 
     # LoRA config (if enabled)
     peft_config = None
@@ -830,6 +951,9 @@ def _train_rl(
         peft_config=peft_config,
     )
 
+    # Log metrics to output.log in grep-friendly format
+    trainer.add_callback(StepMetricsCallback())
+
     # Add SLURM signal handler
     if env == "slurm":
         logger.info("Adding SLURM signal handler...")
@@ -845,21 +969,7 @@ def _train_rl(
 
     trainer.train(resume_from_checkpoint=resume_checkpoint)
 
-    # Update W&B with full config
-    try:
-        import wandb
-        if wandb.run:
-            wandb.config.update(config, allow_val_change=True)
-            if wandb.run.id != metadata.get("wandb_run_id"):
-                old_id = metadata.get("wandb_run_id")
-                metadata["wandb_run_id"] = wandb.run.id
-                metadata.setdefault("wandb_run_id_history", []).append(old_id)
-                save_run_metadata(output_dir, metadata)
-                logger.info(f"W&B ID changed: {old_id} -> {wandb.run.id}")
-    except ImportError:
-        pass
-    except Exception as e:
-        logger.debug(f"W&B config update failed: {e}")
+    _sync_wandb(config, task, metadata, output_dir)
 
     # Update state
     state.save(
@@ -869,20 +979,7 @@ def _train_rl(
 
     # Save final model (skip if training was interrupted)
     if state.is_complete():
-        # Save final model to output dir root
-        # (adapter is already saved in checkpoint-XXX/ dirs)
-        if hasattr(trainer.model, "merge_and_unload"):
-            logger.info("Merging LoRA and saving final model to output dir...")
-            merged = trainer.model.merge_and_unload()
-            merged.save_pretrained(output_dir)
-        else:
-            logger.info("Saving final model to output dir...")
-            trainer.save_model(output_dir)
-        if processor is not None:
-            processor.save_pretrained(output_dir)
-        elif tokenizer is not None:
-            tokenizer.save_pretrained(output_dir)
-        logger.info("Final merged model saved")
+        _save_final_model(trainer, config, output_dir, processor=processor, tokenizer=tokenizer)
     else:
         logger.info("Training interrupted - skipping final model save (checkpoint already saved)")
 
@@ -903,7 +1000,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=None, help="Override num_epochs from config")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--adapter", type=str, default=None,
-                        help="Path to SFT adapter to merge before RL training (e.g. outputs/my_sft_run/)")
+                        help="Path to adapter to merge before training (e.g. outputs/my_sft_run/)")
     parser.add_argument("--debug", action="store_true",
                         help="Enable DEBUG level logging for verbose output")
     args = parser.parse_args()
@@ -1100,7 +1197,10 @@ def main():
 
     # Initialize state tracking for SLURM job chaining
     state = TrainingState(args.output_dir)
-    state.set_targets(epochs=config["training"]["num_epochs"])
+    if args.max_steps > 0:
+        state.set_targets(steps=args.max_steps)
+    else:
+        state.set_targets(epochs=config["training"]["num_epochs"])
 
     if state.is_pipeline_complete():
         logger.info("Training pipeline already complete!")
@@ -1211,6 +1311,11 @@ def main():
             from transformers import AutoProcessor
             processor_name = config["model"].get("processor", config["model"]["name"])
             processor = AutoProcessor.from_pretrained(processor_name)
+            max_visual_tokens = config.get("data", {}).get("max_visual_tokens")
+            if max_visual_tokens:
+                ip = processor.image_processor
+                pixels_per_token = (ip.patch_size * ip.merge_size) ** 2
+                ip.max_pixels = max_visual_tokens * pixels_per_token
             tokenizer = processor.tokenizer
         else:
             from transformers import AutoTokenizer
@@ -1248,6 +1353,14 @@ def main():
             tokenizer = processor.tokenizer
         else:
             tokenizer = tokenizer_or_processor
+
+        # Resolve --adapter: merge into base/ on first run, reuse on resume
+        adapter_path = config["model"].get("adapter_path")
+        if adapter_path:
+            base_dir = output_dir / "base"
+            if not (base_dir / "config.json").exists():
+                _resolve_adapter(config, output_dir, task, processor, tokenizer)
+            config["model"]["name"] = str(base_dir)
 
         logger.info(f"Train size: {len(train_dataset)}")
         logger.info(f"Eval size: {len(eval_dataset) if eval_dataset is not None else 0}")
@@ -1289,7 +1402,7 @@ def main():
             config, device, tokenizer, num_labels, task,
             train_dataset, eval_dataset, compute_metrics, data_collator,
             output_dir, display_name, args, state, resume_checkpoint,
-            env, report_to, metadata,
+            env, report_to, metadata, processor=processor,
         )
 
         # Post-training evaluation (skip if training was interrupted to save time for W&B sync)
@@ -1316,7 +1429,10 @@ def main():
         logger.info("=" * 60)
     else:
         logger.info("=" * 60)
-        logger.info(f"Training interrupted (epoch {state.state['completed_epochs']}/{state.state['target_epochs']})")
+        if state.state.get("target_steps"):
+            logger.info(f"Training interrupted (step {state.state['completed_steps']}/{state.state['target_steps']})")
+        else:
+            logger.info(f"Training interrupted (epoch {state.state['completed_epochs']}/{state.state['target_epochs']})")
         logger.info("Job remains in incomplete registry for resubmission")
         logger.info("=" * 60)
 

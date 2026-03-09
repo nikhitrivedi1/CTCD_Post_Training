@@ -113,7 +113,7 @@ Registry: `REWARD_REGISTRY = {"bleu": ..., "edit_similarity": ocr_reward, "forma
 | `scripts/data/convert_synthmix.py` | PDF-to-image conversion for synthmix (cluster) |
 | `scripts/data/convert_omnidocbench.py` | JSON-to-markdown GT conversion for OmniDocBench (cluster) |
 | `configs/ocr/olmocr-mix/qwen3vl-2b/rl/01_synthmix.yaml` | GRPO config: synthmix + unit_test reward |
-| `configs/ocr/olmocr-mix/qwen3vl-2b/rl/02_omnidocbench.yaml` | GRPO config: OmniDocBench + 5 rewards |
+| `configs/ocr/olmocr-mix/qwen3vl-2b/rl/02_omnidoc.yaml` | GRPO config: OmniDocBench + 5 rewards |
 | `configs/ocr/olmocr-mix/qwen3vl-2b/base.yaml` | Model config (Qwen3-VL-2B) |
 | `configs/ocr/olmocr-mix/base.yaml` | Dataset + training config (LoRA, batch, etc.) |
 | `scripts/eval/olmocr_bench.py` | olmOCR-Bench eval script |
@@ -245,7 +245,7 @@ python forge.py \
 |:-:|------|---------|----------------------|:------:|
 | 1 | Add TEDS reward | Cell-level F1 on markdown tables. Uses rapidfuzz for cell matching. Returns 0.5 if no tables in GT. | `src/training/rewards.py` (`table_teds_reward`) | Done |
 | 2 | Add CDM reward | Normalized edit distance on cleaned LaTeX ($...$ and $$...$$). Strips \left, \right, \displaystyle. Returns 0.5 if no formulas in GT. | `src/training/rewards.py` (`formula_cdm_reward`) | Done |
-| 3 | Create config | `reward: [edit_similarity, format]` (add TEDS/CDM when ready), `dataset: omnidocbench`, `data_dir: data/ocr/omnidocbench` | `configs/ocr/olmocr-mix/qwen3vl-2b/rl/02_omnidocbench.yaml` | Done |
+| 3 | Create config | `reward: [edit_similarity, format]` (add TEDS/CDM when ready), `dataset: omnidocbench`, `data_dir: data/ocr/omnidocbench` | `configs/ocr/olmocr-mix/qwen3vl-2b/rl/02_omnidoc.yaml` | Done |
 | 4 | Run GRPO | Train from synthmix GRPO output (stacked: Base -> SFT -> GRPO-synthmix -> GRPO-omnidoc). Or from SFT directly for comparison. | - | TODO |
 | 5 | Ablate rewards | Compare reward combinations: `[edit_similarity]` only, `[edit_similarity, format]`, all four. Track which rewards drive which improvements. | - | TODO |
 | 6 | Eval on both benchmarks | olmOCR-Bench (extraction) + OmniDocBench (formatting). Check if formatting GRPO hurts extraction or helps both. | - | TODO |

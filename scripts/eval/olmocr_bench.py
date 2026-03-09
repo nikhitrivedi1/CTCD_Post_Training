@@ -8,16 +8,16 @@ Usage:
     python scripts/eval/olmocr_bench.py --model allenai/olmOCR-2-7B-1025-FP8
 
     # New run with explicit output dir
-    python scripts/eval/olmocr_bench.py --model Qwen/Qwen3-VL-2B-Instruct --output_dir outputs/bench/my-run
+    python scripts/eval/olmocr_bench.py --model Qwen/Qwen3-VL-2B-Instruct --output_dir outputs/bench/olmocr/my-run
 
     # Resume (model loaded from metadata.json)
-    python scripts/eval/olmocr_bench.py --output_dir outputs/bench/my-run
+    python scripts/eval/olmocr_bench.py --output_dir outputs/bench/olmocr/my-run
 
     # Sharded run
     python scripts/eval/olmocr_bench.py --model X --output_dir D --shard 1/4
 
     # Score only (after all shards complete)
-    python scripts/eval/olmocr_bench.py --score_only --output_dir outputs/bench/my-run
+    python scripts/eval/olmocr_bench.py --score_only --output_dir outputs/bench/olmocr/my-run
 
 """
 
@@ -28,7 +28,7 @@ import logging
 import os
 import signal
 import sys
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 DEFAULT_BENCH_DIR = "data/olmocr-bench"
-DEFAULT_OUTPUT_BASE = "outputs/bench"
+DEFAULT_OUTPUT_BASE = "outputs/bench/olmocr"
 DEFAULT_MAX_NEW_TOKENS = 2048
 DEFAULT_DPI = 150
 OCR_PROMPT = "Extract all text from this document page. Output clean markdown."
@@ -712,6 +712,7 @@ def main():
                 "model_id": args.model or f"local:{args.checkpoint}",
                 "model_name": engine.model_name,
                 "commit_hash": engine.commit_hash,
+                "benchmark": "olmocr",
                 "generation_params": {
                     "max_new_tokens": args.max_new_tokens,
                     "do_sample": False,
@@ -750,31 +751,51 @@ def main():
         generated = 0
         errors = 0
 
-        pbar = tqdm(total=len(unique_pages), desc="Generating", unit="pg", initial=already_done)
-        first_generate = True
+        # Build work list (skip already done and missing PDFs)
+        pending = []
         for pdf_rel, page_num in unique_pages:
             md_name = pdf_to_md_name(pdf_rel, page_num)
             md_path = os.path.join(markdowns_dir, md_name)
-
-            if _shutdown_requested:
-                logger.info(f"Shutting down gracefully. Generated {generated} this session.")
-                break
-
             if os.path.exists(md_path):
                 continue
-
             pdf_abs = os.path.join(pdf_base_dir, pdf_rel)
             if not os.path.exists(pdf_abs):
                 logger.warning(f"PDF not found: {pdf_abs}")
                 errors += 1
-                pbar.set_postfix(gen=generated, err=errors)
-                pbar.update(1)
                 continue
+            pending.append((pdf_rel, page_num, pdf_abs, md_path))
+
+        def _render_page(pdf_abs, page_num):
+            """Render PDF page to image (runs in background thread)."""
+            return render_pdf_page(pdf_abs, page_num, dpi=args.dpi)
+
+        pbar = tqdm(total=len(unique_pages), desc="Generating", unit="pg", initial=already_done + errors)
+        first_generate = True
+
+        # Prefetch: render next page while GPU generates current one
+        prefetch_pool = ThreadPoolExecutor(max_workers=1)
+        prefetch_future = None
+
+        for idx, (pdf_rel, page_num, pdf_abs, md_path) in enumerate(pending):
+            if _shutdown_requested:
+                logger.info(f"Shutting down gracefully. Generated {generated} this session.")
+                break
 
             try:
-                image = render_pdf_page(pdf_abs, page_num, dpi=args.dpi)
+                # Get current image (from prefetch or direct render)
+                if prefetch_future is not None:
+                    image = prefetch_future.result()
+                else:
+                    image = _render_page(pdf_abs, page_num)
+
+                # Start prefetching next page
+                if idx + 1 < len(pending):
+                    next_pdf_abs, next_page_num = pending[idx + 1][2], pending[idx + 1][1]
+                    prefetch_future = prefetch_pool.submit(_render_page, next_pdf_abs, next_page_num)
+                else:
+                    prefetch_future = None
+
                 if first_generate:
-                    # Pause tqdm so transformers warnings don't clobber the bar
                     pbar.clear()
                 results = engine.generate(
                     [(image, OCR_PROMPT)], max_new_tokens=args.max_new_tokens
@@ -792,13 +813,16 @@ def main():
 
             except Exception as e:
                 if _shutdown_requested:
-                    logger.info(f"Interrupted on {pdf_rel} page {page_num} — will retry on resume")
+                    logger.info(f"Interrupted on {pdf_rel} page {page_num} - will retry on resume")
                     break
                 logger.error(f"Failed on {pdf_rel} page {page_num}: {e}")
                 errors += 1
+                prefetch_future = None
 
             pbar.set_postfix(gen=generated, err=errors)
             pbar.update(1)
+
+        prefetch_pool.shutdown(wait=False)
 
         pbar.close()
 

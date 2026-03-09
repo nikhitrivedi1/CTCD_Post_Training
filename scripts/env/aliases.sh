@@ -15,10 +15,10 @@ _FORGE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)"
 # =========================================================================
 
 # My jobs with GRES info
-alias sq='squeue -u $USER -o "%10i %20j %10T %15M %5D %25R %25b"'
+alias sq='squeue -u $USER -o "%10i %20a %20j %10T %15M %5D %25R %25b"'
 
 # Watch my jobs (refresh every 5s)
-sqw() { watch -n 5 "squeue -u $USER -o '%10i %20j %10T %15M %5D %25R %25b'"; }
+sqw() { watch -n 5 "squeue -u $USER -o '%10i %20a %20j %10T %15M %5D %25R %25b'"; }
 
 # All GPU jobs with user, state, runtime, node, GRES
 alias sqall='squeue -p gpu -o "%10i %20u %10T %15M %5D %25R %25b"'

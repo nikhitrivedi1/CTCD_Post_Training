@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=forge
+#SBATCH --job-name=forge-train
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:h200:1
 #SBATCH --time=08:00:00

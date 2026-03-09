@@ -42,6 +42,59 @@ def _detect_attn_impl():
     return None
 
 
+def _resolve_base_model(checkpoint_path: Path) -> tuple:
+    """Resolve base model path for adapter loading.
+
+    Checks in order:
+    1. base/ with full weights (custom merged model from --adapter)
+    2. base/model_ref.json (HF Hub reference with revision)
+    3. adapter_config.json's base_model_name_or_path (legacy fallback)
+
+    Args:
+        checkpoint_path: Path to checkpoint-N/ or run root dir
+
+    Returns:
+        (model_path, revision) tuple. revision is None for local paths.
+    """
+    run_dir = checkpoint_path.parent if checkpoint_path.name.startswith("checkpoint-") else checkpoint_path
+    base_dir = run_dir / "base"
+
+    # Full weights in base/ (custom model, e.g., merged from --adapter)
+    if (base_dir / "config.json").exists():
+        logger.info(f"Using base model from {base_dir}")
+        return str(base_dir), None
+
+    # HF Hub reference
+    ref_path = base_dir / "model_ref.json"
+    if ref_path.exists():
+        with open(ref_path) as f:
+            ref = json.load(f)
+        model_id = ref["model_name_or_path"]
+        revision = ref.get("revision")
+        logger.info(f"Using base model ref: {model_id} (rev: {revision or 'latest'})")
+        return model_id, revision
+
+    # Legacy fallback: read from adapter_config.json
+    adapter_cfg = checkpoint_path / "adapter_config.json"
+    if adapter_cfg.exists():
+        with open(adapter_cfg) as f:
+            model_id = json.load(f)["base_model_name_or_path"]
+        logger.info(f"Using base model from adapter_config.json: {model_id}")
+        return model_id, None
+
+    raise FileNotFoundError(f"Cannot resolve base model for {checkpoint_path}")
+
+
+def _has_merged_model(path: Path) -> bool:
+    """Check if a directory contains a merged/full model (not just adapter)."""
+    return (
+        (path / "model.safetensors").exists()
+        or (path / "model.safetensors.index.json").exists()
+        or (path / "pytorch_model.bin").exists()
+        or (path / "pytorch_model.bin.index.json").exists()
+    )
+
+
 class InferenceEngine:
     """Unified inference engine with auto SDPA attention.
 
@@ -194,22 +247,36 @@ class InferenceEngine:
 
         if checkpoint_path:
             checkpoint_path = Path(checkpoint_path)
-            adapter_config_path = checkpoint_path / "adapter_config.json"
-            if not adapter_config_path.exists():
-                raise FileNotFoundError(f"No adapter_config.json in {checkpoint_path}")
 
-            with open(adapter_config_path) as f:
-                base_model_id = json.load(f)["base_model_name_or_path"]
+            if _has_merged_model(checkpoint_path):
+                # Direct load: merged model at run root
+                logger.info(f"Loading merged model: {checkpoint_path}")
+                model = AutoModelForImageTextToText.from_pretrained(
+                    str(checkpoint_path), **load_kwargs
+                )
+                processor = AutoProcessor.from_pretrained(str(checkpoint_path))
+            else:
+                # Adapter-only: load base + adapter and merge
+                adapter_config_path = checkpoint_path / "adapter_config.json"
+                if not adapter_config_path.exists():
+                    raise FileNotFoundError(
+                        f"No model.safetensors or adapter_config.json in {checkpoint_path}"
+                    )
+                base_model_id, revision = _resolve_base_model(checkpoint_path)
+                base_kwargs = {**load_kwargs}
+                if revision:
+                    base_kwargs["revision"] = revision
 
-            logger.info(f"Loading base model: {base_model_id}")
-            model = AutoModelForImageTextToText.from_pretrained(
-                base_model_id, **load_kwargs
-            )
-            logger.info(f"Loading LoRA adapter: {checkpoint_path}")
-            model = PeftModel.from_pretrained(model, str(checkpoint_path))
-            model = model.merge_and_unload()
+                logger.info(f"Loading base model: {base_model_id}")
+                model = AutoModelForImageTextToText.from_pretrained(
+                    base_model_id, **base_kwargs
+                )
+                logger.info(f"Loading LoRA adapter: {checkpoint_path}")
+                model = PeftModel.from_pretrained(model, str(checkpoint_path))
+                model = model.merge_and_unload()
+                proc_kwargs = {"revision": revision} if revision else {}
+                processor = AutoProcessor.from_pretrained(base_model_id, **proc_kwargs)
 
-            processor = AutoProcessor.from_pretrained(base_model_id)
             if checkpoint_path.name.startswith("checkpoint-"):
                 model_name = checkpoint_path.parent.name
             else:
@@ -253,23 +320,37 @@ class InferenceEngine:
 
         if checkpoint_path:
             checkpoint_path = Path(checkpoint_path)
-            adapter_config_path = checkpoint_path / "adapter_config.json"
-            if not adapter_config_path.exists():
-                raise FileNotFoundError(f"No adapter_config.json in {checkpoint_path}")
 
-            with open(adapter_config_path) as f:
-                base_model_id = json.load(f)["base_model_name_or_path"]
+            if _has_merged_model(checkpoint_path):
+                # Direct load: merged model at run root
+                logger.info(f"Loading merged model: {checkpoint_path}")
+                model = AutoModelForCausalLM.from_pretrained(
+                    str(checkpoint_path), **load_kwargs
+                )
+                tokenizer = AutoTokenizer.from_pretrained(str(checkpoint_path))
+            else:
+                # Adapter-only: load base + adapter and merge
+                adapter_config_path = checkpoint_path / "adapter_config.json"
+                if not adapter_config_path.exists():
+                    raise FileNotFoundError(
+                        f"No model.safetensors or adapter_config.json in {checkpoint_path}"
+                    )
+                base_model_id, revision = _resolve_base_model(checkpoint_path)
+                base_kwargs = {**load_kwargs}
+                if revision:
+                    base_kwargs["revision"] = revision
 
-            from peft import PeftModel
-            logger.info(f"Loading base model: {base_model_id}")
-            model = AutoModelForCausalLM.from_pretrained(
-                base_model_id, **load_kwargs
-            )
-            logger.info(f"Loading LoRA adapter: {checkpoint_path}")
-            model = PeftModel.from_pretrained(model, str(checkpoint_path))
-            model = model.merge_and_unload()
+                from peft import PeftModel
+                logger.info(f"Loading base model: {base_model_id}")
+                model = AutoModelForCausalLM.from_pretrained(
+                    base_model_id, **base_kwargs
+                )
+                logger.info(f"Loading LoRA adapter: {checkpoint_path}")
+                model = PeftModel.from_pretrained(model, str(checkpoint_path))
+                model = model.merge_and_unload()
+                tok_kwargs = {"revision": revision} if revision else {}
+                tokenizer = AutoTokenizer.from_pretrained(base_model_id, **tok_kwargs)
 
-            tokenizer = AutoTokenizer.from_pretrained(base_model_id)
             if checkpoint_path.name.startswith("checkpoint-"):
                 model_name = checkpoint_path.parent.name
             else:

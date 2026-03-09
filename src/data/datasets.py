@@ -446,6 +446,11 @@ def load_dataset_for_task(config: dict):
         processor_name = config["model"].get("processor", config["model"]["name"])
         _logger.info(f"Loading processor: {processor_name}...")
         processor = AutoProcessor.from_pretrained(processor_name)
+        max_visual_tokens = config.get("data", {}).get("max_visual_tokens")
+        if max_visual_tokens:
+            ip = processor.image_processor
+            pixels_per_token = (ip.patch_size * ip.merge_size) ** 2
+            ip.max_pixels = max_visual_tokens * pixels_per_token
         return load_ocr(
             processor=processor,
             data_dir=config.get("data", {}).get("data_dir", "data/ocr/documents"),

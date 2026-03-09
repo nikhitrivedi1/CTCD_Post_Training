@@ -41,6 +41,15 @@
 ## Dates
 - The current year is 2026. Use this when writing dates in docs, logs, etc.
 
+## Cluster Workflow
+- Cluster: explorer (login.explorer.northeastern.edu), work dir: /scratch/ravi.ka/Forge
+- **Always use tmux sessions for cluster commands, never one-shot `ssh` commands.**
+  - Create session: `tmux new-session -d -s cluster 'ssh -t explorer "cd /scratch/ravi.ka/Forge && bash"'`
+  - Run commands: `tmux send-keys -t cluster 'command' Enter`
+  - Read output: `sleep N && tmux capture-pane -t cluster -p | tail -M`
+  - Only exception: simple, fast, non-interactive commands like `git pull` can use direct ssh.
+- Use `python` not `python3` on the cluster
+
 ## Testing
 - GPU clusters: H200 (140GB), A100 (40GB).
 - Watch for OOM during evaluation - hidden states/attentions accumulate.
