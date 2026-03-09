@@ -10,7 +10,8 @@ from pathlib import Path
 OCR_SYSTEM_PROMPT = (
     "Below is an image of a document page. Extract all text content "
     "and output it in clean markdown format, preserving the document's "
-    "structure (headings, lists, tables, etc.)."
+    "structure (headings, lists, tables) and inline formatting "
+    "(bold, italic, strikethrough) exactly as shown."
 )
 
 

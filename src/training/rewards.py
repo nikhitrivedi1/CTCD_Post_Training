@@ -183,7 +183,7 @@ def _fallback_unit_test(test: dict, text: str) -> bool:
 
 
 def _score_format(completion):
-    """Score a single completion for markdown structure."""
+    """Score a single completion for markdown structure and formatting."""
     import re
 
     score = 0.0
@@ -196,6 +196,9 @@ def _score_format(completion):
     if "|" in completion and "-|-" in completion.replace(" ", ""):
         score += 0.2
     if len(completion.strip()) > 50:
+        score += 0.2
+    # Inline formatting: bold or italic markers present
+    if re.search(r"\*\*[^*]+\*\*", completion) or re.search(r"(?<!\*)\*(?!\*)[^*]+(?<!\*)\*(?!\*)", completion):
         score += 0.2
     return min(1.0, score)
 
@@ -538,6 +541,116 @@ def _lcs_length(a: list[int], b: list[int]) -> int:
     return dp[n]
 
 
+def _extract_formatting_spans(text: str) -> dict[str, set[str]]:
+    """Extract inline formatting spans from markdown text.
+
+    Args:
+        text: Markdown text.
+
+    Returns:
+        Dict with keys 'bold', 'italic', 'strikethrough', each a set of
+        the text content within those markers.
+    """
+    import re
+
+    bold = set(re.findall(r"\*\*(.+?)\*\*", text))
+    italic = set(re.findall(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", text))
+    strikethrough = set(re.findall(r"~~(.+?)~~", text))
+    return {"bold": bold, "italic": italic, "strikethrough": strikethrough}
+
+
+def _fuzzy_set_f1(pred_spans: set[str], gt_spans: set[str], threshold: float = 0.5) -> float:
+    """Compute F1 between two sets of text spans using fuzzy matching.
+
+    Args:
+        pred_spans: Predicted formatting spans.
+        gt_spans: Ground truth formatting spans.
+        threshold: Minimum similarity to count as a match.
+
+    Returns:
+        F1 score in [0, 1].
+    """
+    from rapidfuzz.distance import Levenshtein
+
+    if not gt_spans:
+        return 1.0 if not pred_spans else 0.0
+    if not pred_spans:
+        return 0.0
+
+    matched = 0.0
+    used = set()
+    for gt_s in gt_spans:
+        best_sim = 0.0
+        best_idx = -1
+        for j, pred_s in enumerate(pred_spans):
+            if j in used:
+                continue
+            dist = Levenshtein.distance(gt_s.lower(), pred_s.lower())
+            max_len = max(len(gt_s), len(pred_s))
+            sim = 1.0 - (dist / max_len) if max_len > 0 else 1.0
+            if sim > best_sim:
+                best_sim = sim
+                best_idx = j
+        if best_idx >= 0 and best_sim >= threshold:
+            matched += best_sim
+            used.add(best_idx)
+
+    precision = matched / len(pred_spans)
+    recall = matched / len(gt_spans)
+    if precision + recall == 0:
+        return 0.0
+    return 2 * precision * recall / (precision + recall)
+
+
+def _score_inline_formatting(completion, reference):
+    """Score inline formatting preservation between completion and reference.
+
+    Extracts bold, italic, and strikethrough spans from both texts and
+    computes F1 using fuzzy matching. Returns 0.5 (neutral) if ground
+    truth has no formatting.
+
+    Args:
+        completion: Generated markdown string.
+        reference: Ground truth markdown string.
+
+    Returns:
+        Float in [0, 1].
+    """
+    if not reference:
+        return 0.0
+
+    gt = _extract_formatting_spans(reference)
+    all_gt = gt["bold"] | gt["italic"] | gt["strikethrough"]
+
+    if not all_gt:
+        return 0.5  # No formatting in GT, neutral
+
+    pred = _extract_formatting_spans(completion)
+    all_pred = pred["bold"] | pred["italic"] | pred["strikethrough"]
+
+    if not all_pred:
+        return 0.0
+
+    return _fuzzy_set_f1(all_pred, all_gt)
+
+
+def inline_formatting_reward(completions, ground_truth, **kwargs):
+    """Reward based on inline formatting preservation (bold, italic, strikethrough).
+
+    Compares formatting markers between generated and reference markdown.
+    Returns 0.5 (neutral) for pages with no formatting in ground truth,
+    so it doesn't penalize or reward when formatting isn't expected.
+
+    Args:
+        completions: List of generated markdown strings.
+        ground_truth: List of reference markdown strings.
+
+    Returns:
+        List of float rewards in [0, 1].
+    """
+    return _score_parallel(_score_inline_formatting, completions, ground_truth)
+
+
 class ParallelRewardGroup:
     """Runs multiple reward functions concurrently to minimize GPU idle time.
 
@@ -591,6 +704,7 @@ REWARD_REGISTRY = {
     "table_teds": table_cell_f1_reward,  # backward compat alias
     "formula_cdm": formula_cdm_reward,
     "reading_order": reading_order_reward,
+    "inline_formatting": inline_formatting_reward,
 }
 
 # Default reward function per task (used by reward: verifiable)

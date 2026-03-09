@@ -7,9 +7,12 @@ from src.training.rewards import (
     _score_table_cell_f1,
     _score_formula_cdm,
     _score_reading_order,
+    _score_inline_formatting,
     _extract_text_blocks,
     _extract_markdown_tables,
     _extract_latex,
+    _extract_formatting_spans,
+    _fuzzy_set_f1,
     _match_block_order,
     _lcs_length,
     _score_parallel,
@@ -18,6 +21,7 @@ from src.training.rewards import (
     table_cell_f1_reward,
     formula_cdm_reward,
     reading_order_reward,
+    inline_formatting_reward,
     ParallelRewardGroup,
 )
 
@@ -114,6 +118,18 @@ class TestScoreFormat:
         md = "# Just a heading\n\nSome longer text that passes the length threshold easily."
         score = _score_format(md)
         assert 0.4 <= score <= 0.8
+
+    def test_inline_formatting_bonus(self):
+        """Bold/italic markers should contribute to the score."""
+        md = "This has **bold text** and some longer content to pass threshold."
+        score = _score_format(md)
+        # non-empty (0.2) + length (0.2) + inline formatting (0.2) = 0.6
+        assert score >= 0.6
+
+    def test_max_still_capped(self):
+        """Score should not exceed 1.0 even with all criteria met."""
+        md = "# Heading\n\n- **bold item**\n\n| col1 | col2 |\n| - | - |\n| a | b |\n\nSome longer text here."
+        assert _score_format(md) == 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -279,3 +295,106 @@ class TestRewardFunctionsE2E:
         text = "Block one is here.\n\nBlock two is here.\n\nBlock three is here."
         results = reading_order_reward(completions=[text], ground_truth=[text])
         assert results[0] == 1.0
+
+    def test_inline_formatting_reward(self):
+        text = "This has **bold** and *italic* formatting."
+        results = inline_formatting_reward(completions=[text], ground_truth=[text])
+        assert results[0] > 0.9
+
+
+# ---------------------------------------------------------------------------
+# _extract_formatting_spans
+# ---------------------------------------------------------------------------
+class TestExtractFormattingSpans:
+    def test_bold(self):
+        spans = _extract_formatting_spans("This is **bold** text.")
+        assert "bold" in spans["bold"]
+
+    def test_italic(self):
+        spans = _extract_formatting_spans("This is *italic* text.")
+        assert "italic" in spans["italic"]
+
+    def test_strikethrough(self):
+        spans = _extract_formatting_spans("This is ~~struck~~ text.")
+        assert "struck" in spans["strikethrough"]
+
+    def test_mixed(self):
+        text = "**bold** and *italic* and ~~strike~~"
+        spans = _extract_formatting_spans(text)
+        assert len(spans["bold"]) == 1
+        assert len(spans["italic"]) == 1
+        assert len(spans["strikethrough"]) == 1
+
+    def test_no_formatting(self):
+        spans = _extract_formatting_spans("Plain text with no formatting.")
+        assert not spans["bold"]
+        assert not spans["italic"]
+        assert not spans["strikethrough"]
+
+    def test_empty(self):
+        spans = _extract_formatting_spans("")
+        assert not spans["bold"]
+
+
+# ---------------------------------------------------------------------------
+# _fuzzy_set_f1
+# ---------------------------------------------------------------------------
+class TestFuzzySetF1:
+    def test_identical_sets(self):
+        score = _fuzzy_set_f1({"hello", "world"}, {"hello", "world"})
+        assert score == 1.0
+
+    def test_no_overlap(self):
+        score = _fuzzy_set_f1({"aaa"}, {"zzz"})
+        assert score == 0.0
+
+    def test_partial_overlap(self):
+        score = _fuzzy_set_f1({"hello", "extra"}, {"hello", "world"})
+        assert 0.3 < score < 0.8
+
+    def test_empty_gt(self):
+        assert _fuzzy_set_f1({"hello"}, set()) == 0.0
+
+    def test_empty_pred(self):
+        assert _fuzzy_set_f1(set(), {"hello"}) == 0.0
+
+    def test_both_empty(self):
+        assert _fuzzy_set_f1(set(), set()) == 1.0
+
+    def test_fuzzy_match(self):
+        """Slightly different spans should still match."""
+        score = _fuzzy_set_f1({"Introduction"}, {"Introductions"})
+        assert score > 0.5
+
+
+# ---------------------------------------------------------------------------
+# _score_inline_formatting
+# ---------------------------------------------------------------------------
+class TestScoreInlineFormatting:
+    def test_identical(self):
+        text = "This has **bold** and *italic* text."
+        score = _score_inline_formatting(text, text)
+        assert score > 0.9
+
+    def test_no_gt_formatting(self):
+        """GT without formatting returns 0.5 (neutral)."""
+        assert _score_inline_formatting("**bold**", "plain text") == 0.5
+
+    def test_missing_pred_formatting(self):
+        """Pred without formatting when GT has it returns 0.0."""
+        assert _score_inline_formatting("plain text", "**bold** text") == 0.0
+
+    def test_empty_reference(self):
+        assert _score_inline_formatting("**bold**", "") == 0.0
+
+    def test_partial_formatting(self):
+        """Pred has some but not all formatting."""
+        pred = "**bold** and plain"
+        gt = "**bold** and *italic*"
+        score = _score_inline_formatting(pred, gt)
+        assert 0.3 < score < 0.8
+
+    def test_strikethrough(self):
+        text = "This was ~~removed~~ from the doc."
+        score = _score_inline_formatting(text, text)
+        assert score > 0.9
