@@ -15,10 +15,14 @@ Output structure (matches load_omnidocbench_rl expectations):
       03_financial/  train/{images,markdown}/  eval/{images,markdown}/
       04_legal/      train/{images,markdown}/  eval/{images,markdown}/
       05_technical/  train/{images,markdown}/  eval/{images,markdown}/
+      06_books/      train/{images,markdown}/  eval/{images,markdown}/
+      07_slides/     train/{images,markdown}/  eval/{images,markdown}/
+      08_news/       train/{images,markdown}/  eval/{images,markdown}/
+      09_forms/      train/{images,markdown}/  eval/{images,markdown}/
       metadata.json
 
 Usage:
-    # Generate all categories (200 pages each, 1200 total)
+    # Generate all categories (200 pages each, 2000 total)
     python scripts/data/generate_formatting_data.py \\
         --output_dir data/ocr/formatting-synth --num_pages 200 --augment
 
@@ -191,6 +195,113 @@ CATEGORIES = {
         "italic_density": (0.1, 0.25),
         "strike_density": (0.15, 0.3),
     },
+    "06_books": {
+        "description": "Book pages with chapters, epigraphs, bold key terms, italic emphasis",
+        "paragraphs": [
+            "The concept of natural selection, first articulated by Charles Darwin, describes how organisms with favorable traits are more likely to survive and reproduce. Over many generations, this process drives the adaptation of species to their environments.",
+            "In the years following the Great War, the political landscape of Europe was irrevocably altered. Empires that had stood for centuries crumbled, replaced by a patchwork of nation-states grappling with the burden of reconstruction.",
+            "The theory of general relativity fundamentally changed our understanding of gravity. Rather than a force acting at a distance, Einstein showed that massive objects curve the fabric of spacetime, and objects follow the resulting geodesics.",
+            "Language acquisition in children follows a remarkably consistent pattern across cultures. Babbling gives way to single words around twelve months, followed by two-word combinations and eventually complex grammatical structures.",
+            "The invention of the printing press by Johannes Gutenberg around 1440 transformed the dissemination of knowledge. Books, previously copied by hand at great expense, could now be produced rapidly and affordably.",
+            "Feudalism organized medieval European society into a hierarchical system of mutual obligations. Lords granted land to vassals in exchange for military service, while serfs worked the land in return for protection.",
+            "The double helix structure of DNA, discovered by Watson and Crick in 1953, revealed how genetic information is stored and replicated. The complementary base pairing of adenine with thymine and guanine with cytosine ensures faithful copying.",
+            "Philosophical empiricism holds that all knowledge ultimately derives from sensory experience. John Locke argued that the mind begins as a blank slate, shaped entirely by perception and reflection.",
+            "The steam engine, perfected by James Watt in the late eighteenth century, powered the Industrial Revolution. Factories could now operate independently of water power, concentrating production in urban centers.",
+            "Cognitive dissonance theory, proposed by Leon Festinger, describes the discomfort people feel when holding contradictory beliefs. Individuals are motivated to reduce this tension by changing their attitudes or behaviors.",
+        ],
+        "headings": [
+            "Chapter One", "Chapter Two", "Chapter Three",
+            "Prologue", "Epilogue", "Part I", "Part II",
+            "The Beginning", "A New Era", "Foundations",
+            "Origins", "Consequences", "Reflections",
+        ],
+        "css_templates": ["textbook", "academic", "book"],
+        "bold_density": (0.2, 0.4),
+        "italic_density": (0.25, 0.5),
+        "strike_density": (0.02, 0.08),
+        "blockquote_probability": 0.4,
+        "numbered_list_probability": 0.15,
+    },
+    "07_slides": {
+        "description": "Presentation slides with large bold titles, bullet-heavy, minimal paragraphs",
+        "paragraphs": [
+            "Revenue grew 23% year-over-year, driven by expansion into three new markets and increased adoption of the enterprise tier across existing customers.",
+            "Our team has grown from 50 to 120 employees in the past twelve months, with key hires in engineering, product management, and customer success.",
+            "Customer satisfaction scores improved from 4.2 to 4.7 out of 5.0, reflecting investments in onboarding experience and dedicated support channels.",
+            "The platform now processes over 2 million requests per day, with 99.97% uptime achieved consistently across all production regions.",
+            "Competitive analysis reveals three primary differentiators: speed of deployment, depth of integrations, and total cost of ownership over a three-year period.",
+            "Next quarter priorities include launching the mobile application, expanding the partner ecosystem, and achieving SOC 2 Type II certification.",
+            "Market research indicates a total addressable market of $8.5 billion, growing at 15% annually through 2030 according to independent analyst estimates.",
+            "Technical debt reduction program delivered a 40% improvement in build times and reduced critical bug count from 47 to 12 over the past two sprints.",
+        ],
+        "headings": [
+            "Key Highlights", "Q4 Results", "Strategic Priorities",
+            "Product Roadmap", "Market Opportunity", "Team Update",
+            "Financial Overview", "Next Steps", "Action Items",
+            "Agenda", "Executive Summary", "Takeaways",
+        ],
+        "css_templates": ["slides", "modern"],
+        "bold_density": (0.4, 0.6),
+        "italic_density": (0.1, 0.2),
+        "strike_density": (0.05, 0.15),
+        "numbered_list_probability": 0.5,
+        "list_probability": 0.6,
+        "short_paragraphs": True,
+    },
+    "08_news": {
+        "description": "News articles with bold headlines, italic bylines, dense prose",
+        "paragraphs": [
+            "City officials announced plans to invest $2.4 billion in public transit infrastructure over the next decade, marking the largest transportation commitment in the region's history.",
+            "The biotechnology firm reported promising results from its Phase III clinical trial, with the experimental treatment showing a 34% reduction in disease progression compared to the standard of care.",
+            "International trade negotiations entered their fifth round as delegates from twelve nations gathered to discuss tariff reductions and intellectual property protections in the digital economy.",
+            "A magnitude 6.2 earthquake struck the coastal province early Tuesday morning, damaging hundreds of structures and displacing an estimated 15,000 residents. Emergency services were deployed within the hour.",
+            "The central bank held interest rates steady at 4.75%, citing persistent inflationary pressures despite recent signs of slowing economic growth in the manufacturing sector.",
+            "Researchers at the national laboratory unveiled a prototype quantum processor capable of performing specific calculations one million times faster than current supercomputers.",
+            "The education ministry released new guidelines requiring all secondary schools to integrate digital literacy and computational thinking into their core curricula by the 2027 academic year.",
+            "Voters in three states approved ballot measures to expand renewable energy mandates, setting targets of 80% clean electricity generation by 2035.",
+            "The technology giant agreed to a landmark settlement of $4.7 billion to resolve antitrust claims, the largest such penalty in the industry's history.",
+            "Police arrested twelve suspects in a coordinated operation spanning four countries, dismantling a network responsible for an estimated $500 million in financial fraud.",
+        ],
+        "headings": [
+            "Breaking News", "World", "Business", "Technology",
+            "Science", "Health", "Politics", "Economy",
+            "Local News", "Analysis", "Opinion", "Editorial",
+        ],
+        "css_templates": ["news", "compact", "modern"],
+        "bold_density": (0.3, 0.5),
+        "italic_density": (0.15, 0.35),
+        "strike_density": (0.05, 0.15),
+        "byline_probability": 0.6,
+    },
+    "09_forms": {
+        "description": "Forms and exams with numbered items, bold labels, italic instructions",
+        "paragraphs": [
+            "Please complete all sections of this form in black or blue ink. Incomplete applications will not be processed. Allow 4-6 weeks for review.",
+            "Provide your full legal name as it appears on your government-issued identification. If your name has changed, attach supporting documentation.",
+            "List all medications currently prescribed, including dosage and frequency. Include over-the-counter supplements and vitamins taken regularly.",
+            "Describe your relevant work experience in reverse chronological order, starting with your most recent position. Include dates of employment and key responsibilities.",
+            "Read each statement carefully and select the response that best describes your level of agreement. There are no right or wrong answers.",
+            "Calculate the total amount due by summing all line items and applying the applicable tax rate. Round to the nearest cent.",
+            "For each question, show your complete work in the space provided. Partial credit may be awarded for correct methodology even if the final answer is incorrect.",
+            "Sign and date this form to certify that all information provided is accurate and complete to the best of your knowledge.",
+            "Enter the reference number from your confirmation email in the space below. If you did not receive a confirmation, contact the support desk.",
+            "Rate your overall satisfaction with the service on a scale of 1 to 10, where 1 indicates very dissatisfied and 10 indicates very satisfied.",
+        ],
+        "headings": [
+            "Application Form", "Section A: Personal Information",
+            "Section B: Employment History", "Section C: Education",
+            "Part 1: Instructions", "Part 2: Questions",
+            "Patient Intake Form", "Registration",
+            "Exam: Final Assessment", "Survey Questions",
+            "Order Form", "Evaluation Criteria",
+        ],
+        "css_templates": ["compact", "technical", "forms"],
+        "bold_density": (0.35, 0.55),
+        "italic_density": (0.2, 0.4),
+        "strike_density": (0.05, 0.15),
+        "numbered_list_probability": 0.7,
+        "list_probability": 0.4,
+    },
 }
 
 
@@ -269,6 +380,52 @@ CSS_TEMPLATES = {
         h1 { font-size: 14pt; margin-top: 18pt; }
         h2 { font-size: 12pt; margin-top: 14pt; }
         h3 { font-size: 10pt; margin-top: 10pt; }
+    """,
+    "book": """
+        body { font-family: 'Palatino', 'Book Antiqua', serif; font-size: 11.5pt;
+               line-height: 1.65; max-width: 620px; margin: 50px auto;
+               color: #2a2a2a; background: #fffff8; padding: 45px; }
+        h1 { font-size: 24pt; font-weight: 400; margin-top: 36pt;
+             border-bottom: 1px solid #999; padding-bottom: 8px; }
+        h2 { font-size: 16pt; font-weight: 400; font-style: italic; margin-top: 24pt; }
+        h3 { font-size: 13pt; margin-top: 18pt; }
+        blockquote { border-left: 3px solid #999; margin-left: 20px;
+                     padding-left: 15px; font-style: italic; color: #555; }
+    """,
+    "slides": """
+        body { font-family: 'Helvetica Neue', 'Arial', sans-serif; font-size: 13pt;
+               line-height: 1.5; max-width: 760px; margin: 30px auto;
+               color: #1a1a1a; background: #fff; padding: 35px; }
+        h1 { font-size: 28pt; font-weight: 700; color: #003366;
+             margin-bottom: 16pt; margin-top: 30pt; }
+        h2 { font-size: 20pt; font-weight: 600; color: #0055aa; }
+        h3 { font-size: 16pt; font-weight: 500; color: #2277cc; }
+        ul, ol { font-size: 12pt; line-height: 1.7; }
+        li { margin-bottom: 6px; }
+    """,
+    "news": """
+        body { font-family: 'Georgia', 'Times New Roman', serif; font-size: 10.5pt;
+               line-height: 1.5; max-width: 700px; margin: 25px auto;
+               color: #1a1a1a; background: #fff; padding: 30px; }
+        h1 { font-size: 22pt; font-weight: 700; line-height: 1.2;
+             margin-bottom: 4pt; }
+        h2 { font-size: 16pt; font-weight: 700; }
+        h3 { font-size: 13pt; font-weight: 600; }
+        .byline { font-style: italic; color: #666; font-size: 9.5pt;
+                   margin-bottom: 12pt; }
+    """,
+    "forms": """
+        body { font-family: 'Arial', 'Helvetica', sans-serif; font-size: 10pt;
+               line-height: 1.4; max-width: 720px; margin: 20px auto;
+               color: #1a1a1a; background: #fff; padding: 30px;
+               border: 1px solid #ccc; }
+        h1 { font-size: 16pt; font-weight: 700; text-align: center;
+             border-bottom: 2px solid #333; padding-bottom: 8px; }
+        h2 { font-size: 13pt; font-weight: 700; background: #f0f0f0;
+             padding: 4px 8px; }
+        h3 { font-size: 11pt; font-weight: 600; }
+        ol { counter-reset: item; }
+        li { margin-bottom: 8px; }
     """,
 }
 
@@ -510,6 +667,59 @@ def generate_table_markdown(rng: random.Random, bold_density: float = 0.3,
 # Page generation (category-aware)
 # ---------------------------------------------------------------------------
 
+BLOCKQUOTE_POOL = [
+    "The only true wisdom is in knowing you know nothing.",
+    "In the middle of difficulty lies opportunity.",
+    "The measure of intelligence is the ability to change.",
+    "Education is not the filling of a pail, but the lighting of a fire.",
+    "Those who cannot remember the past are condemned to repeat it.",
+    "The unexamined life is not worth living.",
+    "Science is organized knowledge. Wisdom is organized life.",
+    "The important thing is not to stop questioning.",
+]
+
+BYLINE_POOL = [
+    "By **Sarah Chen**, Staff Reporter",
+    "By **James O'Brien** and **Maria Gonzalez**",
+    "By **Dr. Rachel Kim**, Science Correspondent",
+    "*Associated Press* | March 9, 2026",
+    "By **Thomas Wright**, Senior Analyst | *Financial Times*",
+    "*Reuters* | Updated 2:45 PM EST",
+    "By **Emily Park**, Technology Editor",
+    "Special Report by **David Nakamura**",
+]
+
+
+def _generate_list(rng: random.Random, paragraphs: list[str],
+                   numbered: bool = False, num_items: int = 0) -> str:
+    """Generate a formatted bullet or numbered list.
+
+    Args:
+        rng: Random number generator.
+        paragraphs: Content pool to draw from.
+        numbered: Use numbered list instead of bullets.
+        num_items: Number of items (0 = random 2-6).
+
+    Returns:
+        Markdown list string.
+    """
+    if num_items == 0:
+        num_items = rng.randint(2, 6)
+    items = []
+    for i in range(num_items):
+        item_text = rng.choice(BOLD_CANDIDATES + ITALIC_CANDIDATES)
+        fmt_roll = rng.random()
+        if fmt_roll < 0.4:
+            item_text = f"**{item_text}**"
+        elif fmt_roll < 0.65:
+            item_text = f"*{item_text}*"
+        elif fmt_roll < 0.75:
+            item_text = f"~~{item_text}~~"
+        prefix = f"{i + 1}." if numbered else "-"
+        items.append(f"{prefix} {item_text}: {rng.choice(paragraphs)[:80]}")
+    return "\n".join(items)
+
+
 def generate_page_markdown(rng: random.Random, page_id: int, category: dict) -> str:
     """Generate a single page of formatting-rich markdown for a given category.
 
@@ -527,19 +737,45 @@ def generate_page_markdown(rng: random.Random, page_id: int, category: dict) -> 
     italic_range = category["italic_density"]
     strike_range = category["strike_density"]
     table_prob = category.get("table_probability", 0.15)
+    list_prob = category.get("list_probability", 0.3)
+    numbered_prob = category.get("numbered_list_probability", 0.15)
+    blockquote_prob = category.get("blockquote_probability", 0.1)
+    byline_prob = category.get("byline_probability", 0.0)
+    short_paras = category.get("short_paragraphs", False)
 
     parts = []
     num_sections = rng.randint(2, 4)
 
-    for s in range(num_sections):
+    # Byline after first heading (news style)
+    if byline_prob > 0 and rng.random() < byline_prob:
+        heading = rng.choice(headings)
+        parts.append(f"# {heading}")
+        parts.append(rng.choice(BYLINE_POOL))
+    else:
         heading = rng.choice(headings)
         level = rng.choice(["##", "###"]) if rng.random() < 0.3 else "#"
         parts.append(f"{level} {heading}")
 
-        # 2-3 paragraphs per section
-        num_paras = rng.randint(2, 3)
+    for s in range(num_sections):
+        if s > 0:
+            heading = rng.choice(headings)
+            level = rng.choice(["##", "###"]) if rng.random() < 0.4 else "#"
+            parts.append(f"{level} {heading}")
+
+        # Blockquote (books, occasionally others)
+        if rng.random() < blockquote_prob:
+            quote = rng.choice(BLOCKQUOTE_POOL)
+            parts.append(f"> *{quote}*")
+
+        # 1-3 paragraphs per section (1-2 for slides)
+        num_paras = rng.randint(1, 2) if short_paras else rng.randint(2, 3)
         for _ in range(num_paras):
             para = rng.choice(paragraphs)
+
+            # Slides: sometimes truncate to a single sentence
+            if short_paras and rng.random() < 0.4:
+                sentences = para.split(". ")
+                para = sentences[0] + "."
 
             para = inject_formatting(
                 para, rng,
@@ -551,13 +787,13 @@ def generate_page_markdown(rng: random.Random, page_id: int, category: dict) -> 
             # Parenthetical formatted phrases
             sentences = para.split(". ")
             if len(sentences) > 1:
-                if rng.random() < 0.4:
+                if rng.random() < 0.35:
                     idx = rng.randint(0, len(sentences) - 1)
                     sentences[idx] += f" ({_random_formatted_phrase(rng, 'bold')})"
-                if rng.random() < 0.4:
+                if rng.random() < 0.35:
                     idx = rng.randint(0, len(sentences) - 1)
                     sentences[idx] += f" ({_random_formatted_phrase(rng, 'italic')})"
-                if rng.random() < 0.25:
+                if rng.random() < 0.2:
                     idx = rng.randint(0, len(sentences) - 1)
                     sentences[idx] += f" ({_random_formatted_phrase(rng, 'strikethrough')})"
                 para = ". ".join(sentences)
@@ -574,21 +810,13 @@ def generate_page_markdown(rng: random.Random, page_id: int, category: dict) -> 
             )
             parts.append(table)
 
-        # List insertion
-        if rng.random() < 0.3:
-            num_items = rng.randint(2, 5)
-            items = []
-            for _ in range(num_items):
-                item_text = rng.choice(BOLD_CANDIDATES + ITALIC_CANDIDATES)
-                fmt_roll = rng.random()
-                if fmt_roll < 0.4:
-                    item_text = f"**{item_text}**"
-                elif fmt_roll < 0.65:
-                    item_text = f"*{item_text}*"
-                elif fmt_roll < 0.75:
-                    item_text = f"~~{item_text}~~"
-                items.append(f"- {item_text}: {rng.choice(paragraphs)[:80]}")
-            parts.append("\n".join(items))
+        # Numbered list
+        if rng.random() < numbered_prob:
+            parts.append(_generate_list(rng, paragraphs, numbered=True))
+
+        # Bullet list
+        if rng.random() < list_prob:
+            parts.append(_generate_list(rng, paragraphs, numbered=False))
 
     return "\n\n".join(parts)
 
@@ -612,15 +840,20 @@ def markdown_to_html(md_text: str, css: str) -> str:
     lines = md_text.split("\n")
     html_parts = []
     in_list = False
+    list_tag = "ul"  # "ul" or "ol"
     in_table = False
+
+    def _close_list():
+        nonlocal in_list, list_tag
+        if in_list:
+            html_parts.append(f"</{list_tag}>")
+            in_list = False
 
     for line in lines:
         stripped = line.strip()
 
         if not stripped:
-            if in_list:
-                html_parts.append("</ul>")
-                in_list = False
+            _close_list()
             if in_table:
                 html_parts.append("</table>")
                 in_table = False
@@ -628,13 +861,9 @@ def markdown_to_html(md_text: str, css: str) -> str:
 
         # Table rows
         if stripped.startswith("|") and stripped.endswith("|"):
-            if in_list:
-                html_parts.append("</ul>")
-                in_list = False
-
+            _close_list()
             cells = [c.strip() for c in stripped.strip("|").split("|")]
 
-            # Skip separator rows (| --- | --- |)
             if all(re.match(r"^-+$", c) for c in cells):
                 continue
 
@@ -642,7 +871,6 @@ def markdown_to_html(md_text: str, css: str) -> str:
                 html_parts.append('<table style="border-collapse: collapse; width: 100%; '
                                   'margin: 12px 0;">')
                 in_table = True
-                # First row is header
                 html_parts.append("<tr>" + "".join(
                     f'<th style="border: 1px solid #ccc; padding: 6px 10px; '
                     f'background: #f5f5f5; text-align: left;">'
@@ -659,37 +887,45 @@ def markdown_to_html(md_text: str, css: str) -> str:
             html_parts.append("</table>")
             in_table = False
 
+        # Blockquotes
+        if stripped.startswith("> "):
+            _close_list()
+            html_parts.append(f"<blockquote>{_inline_format(stripped[2:])}</blockquote>")
         # Headings
-        if stripped.startswith("### "):
-            if in_list:
-                html_parts.append("</ul>")
-                in_list = False
+        elif stripped.startswith("### "):
+            _close_list()
             html_parts.append(f"<h3>{_inline_format(stripped[4:])}</h3>")
         elif stripped.startswith("## "):
-            if in_list:
-                html_parts.append("</ul>")
-                in_list = False
+            _close_list()
             html_parts.append(f"<h2>{_inline_format(stripped[3:])}</h2>")
         elif stripped.startswith("# "):
-            if in_list:
-                html_parts.append("</ul>")
-                in_list = False
+            _close_list()
             html_parts.append(f"<h1>{_inline_format(stripped[2:])}</h1>")
-        # List items
+        # Numbered list items
+        elif re.match(r"^\d+\.\s", stripped):
+            if in_list and list_tag != "ol":
+                _close_list()
+            if not in_list:
+                html_parts.append("<ol>")
+                in_list = True
+                list_tag = "ol"
+            content = re.sub(r"^\d+\.\s", "", stripped)
+            html_parts.append(f"<li>{_inline_format(content)}</li>")
+        # Bullet list items
         elif stripped.startswith("- "):
+            if in_list and list_tag != "ul":
+                _close_list()
             if not in_list:
                 html_parts.append("<ul>")
                 in_list = True
+                list_tag = "ul"
             html_parts.append(f"<li>{_inline_format(stripped[2:])}</li>")
         # Regular paragraph
         else:
-            if in_list:
-                html_parts.append("</ul>")
-                in_list = False
+            _close_list()
             html_parts.append(f"<p>{_inline_format(stripped)}</p>")
 
-    if in_list:
-        html_parts.append("</ul>")
+    _close_list()
     if in_table:
         html_parts.append("</table>")
 
