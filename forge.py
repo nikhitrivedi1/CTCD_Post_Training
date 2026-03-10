@@ -91,10 +91,11 @@ def set_reproducibility_seed(seed: int = 42):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-from src.data.datasets import load_dataset_for_task
+from src.data.handlers import get_handler
+from src.data.formatters import format_for_sft, format_for_rl
 from src.data.collators import VLMDataCollator
 from src.evaluation import get_compute_metrics, run_evaluation
-from src.tasks import get_num_labels, get_primary_metric, is_ocr_task
+from src.tasks import get_num_labels, get_primary_metric, get_task_type, is_ocr_task
 from src.models import load_models
 from src.training.callbacks import (
     SLURMSignalCallback, CheckpointMarkerCallback, StepMetricsCallback,
@@ -102,7 +103,6 @@ from src.training.callbacks import (
 )
 from src.training.trainer import FinetuningTrainer, DistillationTrainer
 from src.training.rewards import get_reward_funcs
-from src.data.rl_datasets import load_rl_dataset
 from src.training.losses import (
     get_loss_strategy,
     CombinedDistillationLoss,
@@ -1300,7 +1300,29 @@ def main():
         # RL TRAINING PATH (GRPO)
         # =================================================================
         logger.info("Loading RL dataset (prompt-based)...")
-        train_dataset, eval_dataset = load_rl_dataset(config)
+        dataset_name = config["data"].get("dataset", task)
+        handler = get_handler(dataset_name)
+        handler_kwargs = {}
+        if "data_dir" in config.get("data", {}):
+            handler_kwargs["data_dir"] = config["data"]["data_dir"]
+        else:
+            handler_kwargs["data_dir"] = f"data/{dataset_name}"
+        if "max_train_samples" in config.get("data", {}):
+            handler_kwargs["max_train_samples"] = config["data"]["max_train_samples"]
+        if "include_reasoning" in config.get("data", {}):
+            handler_kwargs["include_reasoning"] = config["data"]["include_reasoning"]
+        # Load extra kwargs for specific handlers
+        if "source_lang" in config.get("data", {}):
+            handler_kwargs["source_lang"] = config["data"]["source_lang"]
+        if "target_lang" in config.get("data", {}):
+            handler_kwargs["target_lang"] = config["data"]["target_lang"]
+        if "max_samples" in config.get("data", {}):
+            handler_kwargs["max_samples"] = config["data"]["max_samples"]
+        train_dataset, eval_dataset = handler.load(**handler_kwargs)
+        task_type = get_task_type(task)
+        train_dataset = format_for_rl(train_dataset, task_type)
+        if eval_dataset is not None:
+            eval_dataset = format_for_rl(eval_dataset, task_type)
         logger.info(f"Train size: {len(train_dataset)}")
         logger.info(f"Eval size: {len(eval_dataset) if eval_dataset is not None else 0}")
 
@@ -1337,22 +1359,60 @@ def main():
         # SUPERVISED TRAINING PATH (SFT / KD)
         # =================================================================
         logger.info("Loading dataset...")
-        train_dataset, eval_dataset, tokenizer_or_processor = load_dataset_for_task(config)
 
-        # Truncate training set if max_train_samples is set
-        max_train_samples = config.get("data", {}).get("max_train_samples")
-        if max_train_samples is not None and max_train_samples < len(train_dataset):
-            train_dataset = train_dataset.select(range(max_train_samples))
-            logger.info(f"Truncated training set to {max_train_samples} samples")
-
-        # For VLMs, load_dataset_for_task returns an AutoProcessor (which contains a tokenizer).
-        # Extract the tokenizer for use throughout the pipeline.
+        # Load tokenizer/processor first (needed by SFT formatters)
+        task_type = get_task_type(task)
         processor = None
-        if hasattr(tokenizer_or_processor, 'tokenizer'):
-            processor = tokenizer_or_processor
+        if is_ocr_task(task):
+            from transformers import AutoProcessor
+            processor_name = config["model"].get("processor", config["model"]["name"])
+            logger.info(f"Loading processor: {processor_name}...")
+            processor = AutoProcessor.from_pretrained(processor_name)
+            max_visual_tokens = config.get("data", {}).get("max_visual_tokens")
+            if max_visual_tokens:
+                ip = processor.image_processor
+                pixels_per_token = (ip.patch_size * ip.merge_size) ** 2
+                ip.max_pixels = max_visual_tokens * pixels_per_token
             tokenizer = processor.tokenizer
         else:
-            tokenizer = tokenizer_or_processor
+            from transformers import AutoTokenizer
+            teacher_cfg = config["model"].get("teacher", {})
+            teacher_model = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
+            if teacher_model is None:
+                teacher_model = config["model"]["name"]
+            tokenizer = AutoTokenizer.from_pretrained(teacher_model)
+            from src.tasks import is_translation_task
+            if "llama" in teacher_model.lower() or is_translation_task(task):
+                tokenizer.padding_side = "left"
+                if tokenizer.pad_token is None:
+                    tokenizer.pad_token = tokenizer.eos_token
+
+        # Load raw data via handler
+        dataset_name = config["data"].get("dataset", task)
+        handler = get_handler(dataset_name)
+        handler_kwargs = {}
+        if "data_dir" in config.get("data", {}):
+            handler_kwargs["data_dir"] = config["data"]["data_dir"]
+        elif dataset_name not in ("mnli", "qqp", "sst2", "cola", "europarl"):
+            handler_kwargs["data_dir"] = f"data/{dataset_name}"
+        if "max_train_samples" in config.get("data", {}):
+            handler_kwargs["max_train_samples"] = config["data"]["max_train_samples"]
+        if "include_reasoning" in config.get("data", {}):
+            handler_kwargs["include_reasoning"] = config["data"]["include_reasoning"]
+        if "source_lang" in config.get("data", {}):
+            handler_kwargs["source_lang"] = config["data"]["source_lang"]
+        if "target_lang" in config.get("data", {}):
+            handler_kwargs["target_lang"] = config["data"]["target_lang"]
+        if "max_samples" in config.get("data", {}):
+            handler_kwargs["max_samples"] = config["data"]["max_samples"]
+        train_dataset, eval_dataset = handler.load(**handler_kwargs)
+
+        # Format for SFT
+        max_length = config.get("data", {}).get("max_length", 1024)
+        tokenizer_or_processor = processor if processor else tokenizer
+        train_dataset = format_for_sft(train_dataset, task_type, tokenizer_or_processor, max_length)
+        if eval_dataset is not None:
+            eval_dataset = format_for_sft(eval_dataset, task_type, tokenizer_or_processor, max_length)
 
         # Resolve --adapter: merge into base/ on first run, reuse on resume
         adapter_path = config["model"].get("adapter_path")

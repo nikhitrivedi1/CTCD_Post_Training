@@ -61,7 +61,7 @@ def check_framework_imports() -> Tuple[bool, str]:
     """Test custom framework imports"""
     try:
         from src.utils import detect_environment, load_config
-        from src.data import load_dataset_for_task
+        from src.data import get_handler, format_for_sft
         from src.models import load_models
         from src.training import FinetuningTrainer, DistillationTrainer
 

@@ -1,15 +1,13 @@
-"""Data loading modules for GLUE tasks, Europarl translation, and OCR."""
+"""Data loading modules: handlers, formatters, and collators."""
 
-from .datasets import load_dataset_for_task, load_mnli, load_qqp, load_sst2, load_cola, load_europarl, load_ocr
 from .collators import VLMDataCollator
+from .formatters import format_for_sft, format_for_rl
+from .handlers import DATASET_REGISTRY, get_handler
 
 __all__ = [
-    "load_dataset_for_task",
-    "load_mnli",
-    "load_qqp",
-    "load_sst2",
-    "load_cola",
-    "load_europarl",
-    "load_ocr",
+    "DATASET_REGISTRY",
+    "get_handler",
+    "format_for_sft",
+    "format_for_rl",
     "VLMDataCollator",
 ]

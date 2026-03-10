@@ -15,10 +15,9 @@ scripts/
     olmocr_bench.py         # olmOCR-Bench scoring
     omnidoc_bench.py        # OmniDocBench formatting scoring
   data/
-    prepare_ocr_data.py     # Pre-process olmOCR-mix: download, render PDFs, build HF dataset
-    download_rl_datasets.sh # Download synthmix + OmniDocBench for RL
-    convert_synthmix.py     # Convert synthmix PDFs to images
-    convert_omnidocbench.py # Convert OmniDocBench JSON to markdown GT
+    prepare.py                  # Unified data prep CLI (all datasets)
+    olmocr_mix_pipeline.py      # Internal: olmOCR-mix download + render pipeline
+    formatting_generator.py     # Internal: synthetic formatting data generator
   models/
     push_to_hub.py          # Push trained models/checkpoints to HF Hub
     pull_from_hub.py        # Download models from HF Hub

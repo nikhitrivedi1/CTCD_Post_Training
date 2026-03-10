@@ -305,7 +305,7 @@ Markdown GT -> HTML+CSS -> Playwright/Chromium render -> PNG -> Augmentation -> 
 
 - **Single-pass span-based formatting injection**: picks word-boundary spans, assigns formatting types independently per span, applies right-to-left. No overlapping markers by construction.
 - **Combined formatting**: spans can receive any combination of bold, italic, strikethrough. Explicit 3% chance of triple-combo, 5% chance of double-combo, plus natural co-occurrence from independent rolls.
-- **6 CSS templates**: academic, textbook, technical, financial, modern, compact. Random per-page selection for visual diversity.
+- **10 CSS templates**: academic, textbook, technical, financial, modern, compact, book, slides, news, forms. Random per-page selection for visual diversity.
 - **18 built-in paragraphs** across domains (academic, financial, legal, technical, medical, educational). Optional wikitext content source.
 - **Augmentation**: rotation (0-2 deg), brightness/contrast variation, Gaussian blur, noise, JPEG compression, grayscale conversion. Simulates real scanned documents.
 
@@ -345,9 +345,156 @@ python scripts/data/generate_formatting_data.py --output_dir data/ocr/formatting
 | [rewards.py](src/training/rewards.py) | Reward functions | Done: `inline_formatting_reward`, updated `format_reward` |
 | [ocr_utils.py](src/data/ocr_utils.py) | System prompt | Done: updated `OCR_SYSTEM_PROMPT` |
 | [formatting_bench.py](workbench/formatting_bench.py) | Formatting benchmark | Standalone, do NOT modify omnidoc_bench.py |
-| [generate_formatting_data.py](scripts/data/generate_formatting_data.py) | Synthetic data gen | Done: full pipeline |
+| [formatting_generator.py](scripts/data/formatting_generator.py) | Synthetic data gen | Done: full pipeline |
 | [audit_formatting.py](workbench/audit_formatting.py) | Data auditing | Done: scans GT for formatting stats |
 | [probe_formatting.py](workbench/probe_formatting.py) | Model probing | Done: tests latent formatting capability |
-| [convert_omnidocbench.py](scripts/data/convert_omnidocbench.py) | GT conversion | Preserve formatting from source HTML |
-| [rl_datasets.py](src/data/rl_datasets.py) | Dataset loading | Support formatting-filtered datasets |
+| [src/data/handlers/](src/data/handlers/) | Dataset handlers | Done: unified prepare/validate/load per dataset |
+| [src/data/formatters.py](src/data/formatters.py) | SFT/RL formatting | Done: format_for_sft(), format_for_rl() |
+| [scripts/data/prepare.py](scripts/data/prepare.py) | Unified data CLI | Done: single entry point for all data prep |
 | configs/ocr/.../rl/ | GRPO configs | New config with formatting rewards |
+
+---
+
+## 8. Data Pipeline Standardization (2026-03-09)
+
+### Current State
+
+Every dataset has a different prep workflow, different scripts, and different loader conventions:
+
+| Dataset | Type | Download | Convert | Load | Scripts |
+|---------|------|----------|---------|------|---------|
+| olmOCR-mix | Public | HF Hub | `prepare_ocr_data.py` (PDF to PNG + HF) | `load_ocr_rl()` | 1 |
+| synthmix | Public | `download_rl_datasets.sh` | `convert_synthmix.py` (PDF to JPG) | `load_synthmix_rl()` | 2 |
+| OmniDocBench | Public | `download_rl_datasets.sh` | `convert_omnidocbench.py` (JSON to MD) | `load_omnidocbench_rl()` | 2 |
+| Europarl | Public | Inline at load time | None | `load_europarl_rl()` | 0 |
+| Formatting | Synthetic | N/A | N/A | Not written yet | 1 |
+
+### Problems
+
+1. **No unified entry point.** Each dataset has ad-hoc scripts in `scripts/data/`.
+2. **Download is fragmented.** Shell script for some, Python for others, inline HF Hub for Europarl.
+3. **`_sft` and `_rl` suffixes on loaders conflate two concerns.** A dataset is just data. How it's shaped for training (SFT vs RL) is a separate concern. "synthmix" isn't an "RL dataset" - it's a dataset that can be used for RL or SFT.
+4. **Two separate loader files for no reason.** `datasets.py` (SFT) and `rl_datasets.py` (RL) duplicate logic. Both load the same underlying data, just format it differently. With the handler pattern, both files become unnecessary - handlers load raw data, formatting is a separate concern.
+5. **The dispatcher** (`load_rl_dataset()`) is a growing if/elif chain. Each new dataset touches 3+ places.
+6. **Validation is ad-hoc.** Inline Python snippets inside the shell script, nothing reusable.
+7. **Output structure varies.** olmOCR-mix uses HF Dataset on disk, synthmix uses raw files, OmniDocBench uses raw files, formatting uses category subdirs.
+
+### Two-Track Model
+
+Data flows into training through two tracks. The distinction is about how data is sourced, not how it's consumed:
+
+| Track | Pipeline | Datasets |
+|-------|----------|----------|
+| **Public** | Download -> Convert -> Validate | olmOCR-mix, synthmix, OmniDocBench, Europarl |
+| **Synthetic** | Generate -> Validate | Formatting (and future synthetic datasets) |
+
+Both produce the same thing: samples on disk. The loader decides whether to format for SFT or RL based on the training config.
+
+### Solution: Handler Pattern
+
+Standardize the **process** (prepare -> validate -> load), not the **data format** (which is task-dependent: OCR = image + markdown, translation = source + target, classification = text + label).
+
+Each dataset gets a handler that implements a common interface:
+
+```python
+class DatasetHandler(ABC):
+    def prepare(self, data_dir: str):
+        """Download/generate + convert. Idempotent.
+
+        Public datasets: download from source + convert to standard format.
+        Synthetic datasets: invoke generator. If data already exists at
+        data_dir, skip (idempotent). If not, generate automatically.
+        """
+
+    def validate(self, data_dir: str) -> bool:
+        """Check integrity: files exist, stems match, counts are sane."""
+
+    def load(self, data_dir: str, **kwargs) -> tuple[Dataset, Dataset]:
+        """Read raw samples from disk. Returns (train, eval).
+
+        Returns raw, unformatted samples. SFT vs RL formatting is NOT
+        the handler's concern - that's done downstream.
+        """
+```
+
+The interface is identical for public and synthetic datasets. The only difference is what `prepare()` does internally:
+
+```
+Public handler:    prepare() = download + convert
+Synthetic handler: prepare() = generate (if data_dir doesn't exist or is empty)
+```
+
+For synthetic datasets, `prepare()` auto-invokes generation when the target directory is missing. No separate manual step needed. If pointed to an existing generation, it skips.
+
+Registry replaces the if/elif dispatcher:
+
+```python
+DATASET_REGISTRY = {
+    "omnidocbench": OmniDocBenchHandler,
+    "synthmix":     SynthmixHandler,
+    "formatting":   FormattingHandler,
+    "olmocr-mix":   OlmOCRMixHandler,
+    "europarl":     EuroparlHandler,
+    "mnli":         GLUEHandler,
+    "qqp":          GLUEHandler,
+    "sst2":         GLUEHandler,
+    "cola":         GLUEHandler,
+}
+```
+
+SFT vs RL formatting is a separate step, not baked into the handler or the loader. Two thin formatting functions handle the conversion:
+
+```
+Handler.prepare()  ->  data on disk (download/generate + convert)
+Handler.load()     ->  raw samples (image + text, or text + text, etc.)
+format_for_sft()   ->  chat-templated, tokenizer-ready
+format_for_rl()    ->  prompt dicts + ground_truth/tests
+```
+
+Unified CLI:
+
+```bash
+python scripts/data/prepare.py --dataset omnidocbench   # download + convert + validate
+python scripts/data/prepare.py --dataset formatting      # generate + validate
+python scripts/data/prepare.py --dataset all             # everything
+```
+
+### File Changes
+
+```
+NEW:
+  src/data/handlers/
+    __init__.py          # DATASET_REGISTRY, get_handler()
+    base.py              # DatasetHandler ABC: prepare(), validate(), load()
+    omnidocbench.py      # absorbs convert_omnidocbench.py + load_omnidocbench_rl
+    synthmix.py          # absorbs convert_synthmix.py + load_synthmix_rl
+    formatting.py        # absorbs generate_formatting_data.py + new loader
+    olmocr_mix.py        # absorbs prepare_ocr_data.py + load_ocr/load_ocr_rl
+    europarl.py          # absorbs load_europarl + load_europarl_rl
+    glue.py              # absorbs load_mnli, load_qqp, load_sst2, load_cola
+  src/data/formatters.py   # format_for_sft(), format_for_rl() - thin wrappers
+  scripts/data/prepare.py  # unified CLI: --dataset X --action prepare|validate|all
+
+MODIFIED:
+  forge.py                 # simplified: registry lookup replaces if/elif chains
+  src/data/__init__.py     # export registry + formatters
+
+DELETED (absorbed into handlers):
+  src/data/datasets.py           # -> handler.load() + formatters.format_for_sft()
+  src/data/rl_datasets.py        # -> handler.load() + formatters.format_for_rl()
+  scripts/data/convert_omnidocbench.py   # -> OmniDocBenchHandler.prepare()
+  scripts/data/convert_synthmix.py       # -> SynthmixHandler.prepare()
+  scripts/data/prepare_ocr_data.py       # -> OlmOCRMixHandler.prepare()
+  scripts/data/download_rl_datasets.sh   # -> prepare.py --dataset all
+  scripts/data/generate_formatting_data.py  # -> FormattingHandler.prepare()
+```
+
+### Benefits
+
+- **Adding a new dataset**: write one handler file, register it. One place, one interface.
+- **No `_sft`/`_rl` naming**: the dataset is the dataset. Training mode determines formatting.
+- **No two loader files**: `datasets.py` and `rl_datasets.py` merge into handlers + formatters.
+- **Synthetic auto-generation**: `prepare()` handles it. No separate manual invoke needed.
+- **Unified CLI**: one script to prepare any dataset, instead of remembering per-dataset commands.
+- **Consistent validation**: every handler implements `validate()`, no more inline Python in shell scripts.
+- **Clean `scripts/data/`**: standalone scripts absorbed into handlers. No dead code lingering.
