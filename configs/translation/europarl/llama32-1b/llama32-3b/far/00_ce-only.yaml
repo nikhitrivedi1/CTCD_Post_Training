@@ -2,7 +2,7 @@
 # R=0, F=0, A=0
 # Student learns from ground truth only - establishes baseline
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: meta-llama/Llama-3.2-1B-Instruct

@@ -1,5 +1,5 @@
 # 50K training samples (~1562 steps/epoch at batch 32)
-inherit: ../base.yaml
+inherit: base.yaml
 
 data:
   max_train_samples: 50000

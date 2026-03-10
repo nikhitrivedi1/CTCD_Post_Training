@@ -1,0 +1,37 @@
+# OmniDocBench dataset base configuration
+
+inherit: ../base.yaml
+
+data:
+  task: ocr
+  dataset: omnidocbench
+  data_dir: data/ocr/omnidocbench
+  max_length: 1024
+
+training:
+  num_epochs: 1
+  batch_size: 2
+  gradient_accumulation_steps: 16
+  learning_rate: 1e-6
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  use_lora: true
+
+  lora:
+    r: 16
+    alpha: 16
+    dropout: 0.05
+    target_modules:
+      - q_proj
+      - k_proj
+      - v_proj
+      - o_proj
+      - gate_proj
+      - up_proj
+      - down_proj
+
+checkpointing:
+  save_total_limit: 3
+
+logging:
+  report_to: wandb

@@ -3,17 +3,7 @@
 #
 # Pipeline: Qwen3-VL-2B -> SFT (5K olmOCR-mix) -> GRPO (edit_similarity + format)
 
-inherit: ../base.yaml
-
-data:
-  task: ocr
-  data_dir: data/ocr/olmocr-mix-full
-  max_train_samples: 5000
-  max_length: 1024
-
-training:
-  num_epochs: 1
-  learning_rate: 1e-6
+inherit: base.yaml
 
 rl:
   algorithm: grpo

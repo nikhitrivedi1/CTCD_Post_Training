@@ -1,7 +1,7 @@
 # Example: XLM-RoBERTa-Large → XLM-RoBERTa-Base
 # Multilingual model distillation
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: xlm-roberta-base

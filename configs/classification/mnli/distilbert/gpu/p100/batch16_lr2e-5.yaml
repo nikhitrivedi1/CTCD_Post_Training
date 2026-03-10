@@ -2,7 +2,7 @@
 # Batch size: 16, LR: 2e-5 - matches "Less is More" paper
 # Expected accuracy: ~82% (paper achieved 81.77%)
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

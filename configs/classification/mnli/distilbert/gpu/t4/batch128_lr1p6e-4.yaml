@@ -3,7 +3,7 @@
 # Expected memory: ~10 GB (leaves ~6 GB headroom)
 # Expected time: ~1 hour on T4
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

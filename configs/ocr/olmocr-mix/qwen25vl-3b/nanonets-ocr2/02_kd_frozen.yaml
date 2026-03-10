@@ -1,4 +1,4 @@
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   teacher:

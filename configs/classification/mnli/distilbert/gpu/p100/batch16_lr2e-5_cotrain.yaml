@@ -2,7 +2,7 @@
 # Batch size: 16, LR: 2e-5
 # Expected accuracy: ~82% (matching paper results)
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

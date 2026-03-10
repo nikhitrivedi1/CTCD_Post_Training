@@ -2,7 +2,7 @@
 # Both teacher and student train together
 # Teacher starts from fine-tuned checkpoint and continues training
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

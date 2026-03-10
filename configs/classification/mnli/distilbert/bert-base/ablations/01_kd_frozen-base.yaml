@@ -3,7 +3,7 @@
 # Tests: Does an untrained teacher provide useful soft labels?
 # Expected: ~60-65% (teacher gives random soft labels)
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

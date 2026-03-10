@@ -1,7 +1,7 @@
 # Example: RoBERTa-Large → RoBERTa-Base
 # Sentiment analysis distillation
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: roberta-base

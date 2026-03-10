@@ -2,7 +2,7 @@
 # Teacher (olmOCR 7B or Qwen3-VL-8B) provides soft labels via KL divergence
 # Requires tokenizer compatibility check before running
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   teacher:

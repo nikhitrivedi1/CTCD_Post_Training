@@ -3,7 +3,7 @@
 # Classic knowledge distillation via soft labels
 # Uses Adaptive Domain-Expert (best from L0)
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: meta-llama/Llama-3.2-1B-Instruct

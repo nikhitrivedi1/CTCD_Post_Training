@@ -3,7 +3,7 @@
 # LR: 1.6e-4 (8× base, linear scaling)
 # Use this for best training quality when speed isn't critical
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

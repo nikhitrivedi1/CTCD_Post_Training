@@ -2,7 +2,7 @@
 # Teacher is frozen bert-base-uncased (not fine-tuned on SST-2)
 # Tests whether pretrained knowledge alone helps distillation
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

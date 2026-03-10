@@ -3,7 +3,7 @@
 # Tests whether soft labels alone are sufficient for learning
 # Expected: Slightly lower than α=0.5 (missing hard label signal)
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

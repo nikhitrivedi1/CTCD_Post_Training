@@ -2,7 +2,7 @@
 # R=0, F=1, A=0
 # FitNets-style intermediate representation transfer
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

@@ -3,7 +3,7 @@
 # Tests: Does continued teacher training help when teacher already knows task?
 # Expected: ~82-83% (may slightly improve or match frozen SFT)
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

@@ -1,7 +1,7 @@
 # Example: Fine-tuned Domain Expert → Smaller Model
 # Demonstrates distilling domain-specific knowledge
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   # Use your own fine-tuned models

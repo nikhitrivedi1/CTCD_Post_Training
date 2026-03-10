@@ -1,0 +1,3 @@
+# KD base: olmOCR2-7B teacher -> Qwen3-VL-2B student
+
+inherit: ../base.yaml

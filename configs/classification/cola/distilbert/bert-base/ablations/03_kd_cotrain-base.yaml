@@ -2,7 +2,7 @@
 # Both teacher and student train together from pretrained weights
 # Teacher starts from bert-base-uncased (not fine-tuned)
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

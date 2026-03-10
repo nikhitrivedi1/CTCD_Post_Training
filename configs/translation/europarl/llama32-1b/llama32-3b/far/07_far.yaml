@@ -3,7 +3,7 @@
 # Full multi-level distillation
 # Note: May suffer from gradient conflict (observed in MNLI)
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: meta-llama/Llama-3.2-1B-Instruct

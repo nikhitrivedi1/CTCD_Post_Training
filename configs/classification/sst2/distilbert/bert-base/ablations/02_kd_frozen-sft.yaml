@@ -2,7 +2,7 @@
 # Teacher is bert-base-uncased fine-tuned on SST-2, then frozen
 # Standard distillation setup - teacher provides task-specific knowledge
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

@@ -3,7 +3,7 @@
 # Both models improve together - teacher's soft labels get better over time
 # Expected: ~82% (matches paper results)
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

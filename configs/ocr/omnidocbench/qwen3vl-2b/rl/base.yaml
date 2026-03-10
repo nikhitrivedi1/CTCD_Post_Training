@@ -1,0 +1,10 @@
+# OmniDocBench RL base: Qwen3-VL-2B
+
+inherit: ../base.yaml
+
+training:
+  batch_size: 1
+  gradient_accumulation_steps: 32
+
+evaluation:
+  eval_strategy: "no"

@@ -126,6 +126,72 @@ sdefault() {
     sacctmgr modify user "$USER" set DefaultAccount="$1"
 }
 
+# Auto-pick the account with the best fairshare and set it as default
+sbest() {
+    local current best_acct best_score
+
+    current=$(sacctmgr show user "$USER" withassoc format=DefaultAccount%30 \
+              --parsable2 --noheader | head -1 | xargs)
+
+    local share_data
+    share_data=$(sshare -u "$USER" -U -p --noheader)
+
+    if [ -z "$share_data" ]; then
+        echo "Could not read fairshare data" >&2
+        return 1
+    fi
+
+    # Pick account with highest FairShare
+    best_acct=$(echo "$share_data" \
+        | awk -F'|' 'NF>=7 && $7+0 > max { max=$7+0; acct=$1 } END { print acct }')
+
+    if [ -z "$best_acct" ]; then
+        echo "Could not determine best account" >&2
+        return 1
+    fi
+
+    # Show ranking
+    echo "Account ranking by FairShare:"
+    echo "$share_data" \
+        | awk -F'|' 'NF>=7 { printf "  %-30s  %.4f\n", $1, $7 }' \
+        | sort -t' ' -k2 -rn
+
+    local best_score
+    best_score=$(echo "$share_data" \
+        | awk -F'|' -v acct="$best_acct" '$1==acct { printf "%.4f", $7 }')
+
+    echo ""
+    if [ "$best_acct" = "$current" ]; then
+        echo "Already on best account: $best_acct ($best_score)"
+        return 0
+    fi
+
+    echo "Switching: $current -> $best_acct ($best_score)"
+    sacctmgr -i modify user "$USER" set DefaultAccount="$best_acct"
+}
+
+# Switch one or more jobs to the best fairshare account
+#   sbj 12345 12346
+sbj() {
+    if [ $# -eq 0 ]; then echo "Usage: sbj <job_id> [job_id ...]" >&2; return 1; fi
+
+    local best_acct
+    best_acct=$(sshare -u "$USER" -U -p --noheader \
+        | awk -F'|' 'NF>=7 && $7+0 > max { max=$7+0; acct=$1 } END { print acct }')
+
+    if [ -z "$best_acct" ]; then
+        echo "Could not determine best account" >&2
+        return 1
+    fi
+
+    echo "Best account: $best_acct"
+    for jid in "$@"; do
+        scontrol update JobId="$jid" Account="$best_acct" 2>&1 \
+            | sed "s/^/  $jid: /" || true
+        echo "  $jid: -> $best_acct"
+    done
+}
+
 # SSH into the node running a job
 snode() {
     local node

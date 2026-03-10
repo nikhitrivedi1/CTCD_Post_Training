@@ -2,7 +2,7 @@
 # R=0, F=0, A=1
 # Transfer attention patterns from teacher to student
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

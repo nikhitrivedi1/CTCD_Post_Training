@@ -3,7 +3,7 @@
 # LR: 3.2e-4 (linear scaling rule)
 # Expected time: ~15-20 min for 3 epochs
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

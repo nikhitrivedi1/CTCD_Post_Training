@@ -2,7 +2,7 @@
 # Batch size: 64 (4x base), LR: 8e-5 (linear scaling from 2e-5)
 # Expected accuracy: ~82%
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

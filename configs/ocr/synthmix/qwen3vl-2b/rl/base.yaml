@@ -1,0 +1,3 @@
+# Synthmix RL base: Qwen3-VL-2B
+
+inherit: ../base.yaml

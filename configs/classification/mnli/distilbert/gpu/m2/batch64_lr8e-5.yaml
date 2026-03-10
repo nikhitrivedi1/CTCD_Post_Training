@@ -3,7 +3,7 @@
 # Batch size: 64 (4× base) - conservative for unified memory
 # Expected time: ~2-3 hours (M2 is ~3-5x slower than T4)
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

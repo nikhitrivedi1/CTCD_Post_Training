@@ -4,27 +4,10 @@
 # Pipeline: Qwen3-VL-2B -> SFT -> [GRPO-synthmix] -> GRPO (OmniDocBench)
 #
 # Run:
-#   python forge.py \
-#     --config configs/ocr/olmocr-mix/qwen3vl-2b/rl/02_omnidoc.yaml \
-#     --adapter outputs/<previous_stage>/ \
-#     --run-name omnidoc_grpo
+#   ADAPTER=outputs/<previous_stage> \
+#     sbatch scripts/slurm/run_training.sh configs/ocr/omnidocbench/qwen3vl-2b/rl/00_grpo.yaml
 
-inherit: ../base.yaml
-
-data:
-  task: ocr
-  dataset: omnidocbench
-  data_dir: data/ocr/omnidocbench
-  max_length: 1024
-
-training:
-  num_epochs: 1
-  learning_rate: 1e-6
-  batch_size: 1                    # base: 2, reduced to avoid OOM on doc scans
-  gradient_accumulation_steps: 32  # base: 16, doubled to keep effective batch=32
-
-evaluation:
-  eval_strategy: "no"
+inherit: base.yaml
 
 rl:
   algorithm: grpo

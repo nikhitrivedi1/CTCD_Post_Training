@@ -1,7 +1,7 @@
 # GRPO with verifiable reward (BLEU) for EN-FR translation
 # Student generates translations, scored by sentence-level BLEU against reference
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 data:
   task: europarl

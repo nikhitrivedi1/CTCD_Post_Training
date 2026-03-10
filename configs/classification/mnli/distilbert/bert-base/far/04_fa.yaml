@@ -3,7 +3,7 @@
 # Combines hidden state matching with attention pattern transfer
 # Tests if intermediate representations alone can transfer knowledge
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

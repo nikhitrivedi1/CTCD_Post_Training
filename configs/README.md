@@ -33,9 +33,24 @@ configs/
 │               ├── far/                   # FAR factorial study (8 configs)
 │               └── staged/                # Staged distillation (4 configs)
 └── ocr/
-    └── olmocr-mix/
-        ├── qwen3vl-2b/                    # SFT + 1 KD config
-        └── qwen25vl-3b/                   # SFT + 2 KD configs
+    ├── base.yaml                          # OCR defaults (visual tokens, bfloat16, metrics)
+    ├── olmocr-mix/
+    │   ├── base.yaml                      # Dataset base (LoRA, training defaults)
+    │   ├── sizes/                         # Data size variants (5k, 25k, 50k, full)
+    │   ├── qwen3vl-2b/
+    │   │   ├── 00_sft.yaml               # SFT baseline
+    │   │   ├── rl/00_grpo.yaml           # GRPO on olmocr-mix data
+    │   │   └── olmocr2-7b/               # KD with olmocr2-7b teacher
+    │   └── qwen25vl-3b/                   # SFT + 2 KD configs
+    ├── synthmix/
+    │   └── qwen3vl-2b/
+    │       └── rl/00_grpo.yaml           # GRPO with unit test rewards
+    ├── omnidocbench/
+    │   └── qwen3vl-2b/
+    │       └── rl/00_grpo.yaml           # GRPO with 5 rewards
+    └── formatting/
+        └── qwen3vl-2b/
+            └── rl/00_grpo.yaml           # GRPO with inline formatting rewards
 ```
 
 ## Config Counts
@@ -52,6 +67,7 @@ configs/
 | Translation FAR | 8 |
 | Translation Staged | 4 |
 | OCR SFT + KD | 6 |
+| OCR GRPO | 4 (1 per dataset) |
 | Examples | 4 |
 | **Total Runnable** | **70** |
 
@@ -87,6 +103,34 @@ base.yaml                                    # Root defaults
 | `far/`       | FAR factorial: 8 combinations of F/A/R signals        |
 | `staged/`    | Curriculum: F→R, A→R, F→A→R progressions              |
 | `gpu/`       | Hardware-specific batch/LR scaling                    |
+
+## OCR Dataset Structure
+
+OCR configs are organized per-dataset, not per-pipeline. Each dataset that a model trains on gets its own directory, even if the RL run starts from an SFT checkpoint trained on a different dataset (e.g., olmocr-mix).
+
+```
+configs/ocr/{dataset}/{model}/
+    base.yaml         # Model config (inherits ../base.yaml)
+    rl/
+        base.yaml     # RL passthrough (inherits ../base.yaml)
+        00_grpo.yaml  # RL config (inherits base.yaml)
+```
+
+Inheritance chain (every level is `../base.yaml`):
+```
+configs/base.yaml
+    └── ocr/base.yaml                    # Visual tokens, bfloat16, OCR metrics
+        └── {dataset}/base.yaml          # Dataset data paths, LoRA, training defaults
+            └── {model}/base.yaml        # Model name/processor
+                └── rl/base.yaml         # RL passthrough
+                    └── 00_grpo.yaml     # Experiment-specific overrides
+```
+
+The SFT adapter is injected at runtime via the `ADAPTER` env var, not hardcoded in config:
+```bash
+ADAPTER=outputs/<sft_checkpoint> \
+    sbatch scripts/slurm/run_training.sh configs/ocr/formatting/qwen3vl-2b/rl/00_grpo.yaml
+```
 
 ## FAR Factorial Design
 

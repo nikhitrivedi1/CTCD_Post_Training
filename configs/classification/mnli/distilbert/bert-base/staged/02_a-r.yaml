@@ -2,7 +2,7 @@
 # Tests if attention patterns first, then response matching improves results
 # Completes the two-stage curriculum: F→R (01), A→R (this)
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

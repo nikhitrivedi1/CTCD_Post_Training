@@ -3,7 +3,7 @@
 # Complete knowledge transfer: soft labels + hidden states + attention patterns
 # Maximum knowledge transfer from teacher to student
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

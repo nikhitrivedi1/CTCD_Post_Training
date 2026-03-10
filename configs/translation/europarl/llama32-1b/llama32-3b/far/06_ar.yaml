@@ -2,7 +2,7 @@
 # R=1, F=0, A=1
 # Combines soft label transfer with attention pattern matching
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: meta-llama/Llama-3.2-1B-Instruct

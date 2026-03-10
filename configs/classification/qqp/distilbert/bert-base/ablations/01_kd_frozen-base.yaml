@@ -2,7 +2,7 @@
 # Tests if random soft labels provide useful regularization
 # Teacher: bert-base-uncased (not fine-tuned on QQP, ~50% accuracy)
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

@@ -2,7 +2,7 @@
 # Teacher starts with task knowledge but can adapt
 # Expected: Best performance - combines prior knowledge with adaptability
 
-inherit: ../base.yaml
+inherit: base.yaml
 
 model:
   name: distilbert-base-uncased

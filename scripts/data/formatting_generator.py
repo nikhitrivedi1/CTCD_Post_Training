@@ -623,7 +623,7 @@ def generate_table_markdown(rng: random.Random, bold_density: float = 0.3,
         Markdown table string.
     """
     headers = rng.choice(TABLE_HEADERS)
-    num_rows = rng.randint(3, 7)
+    num_rows = rng.randint(3, 6)
     gen = rng.choice(TABLE_DATA_TEMPLATES)
 
     # Header row (often bold)
@@ -704,7 +704,7 @@ def _generate_list(rng: random.Random, paragraphs: list[str],
         Markdown list string.
     """
     if num_items == 0:
-        num_items = rng.randint(2, 6)
+        num_items = rng.randint(2, 5)
     items = []
     for i in range(num_items):
         item_text = rng.choice(BOLD_CANDIDATES + ITALIC_CANDIDATES)
@@ -744,7 +744,7 @@ def generate_page_markdown(rng: random.Random, page_id: int, category: dict) -> 
     short_paras = category.get("short_paragraphs", False)
 
     parts = []
-    num_sections = rng.randint(2, 4)
+    num_sections = rng.randint(1, 3)
 
     # Byline after first heading (news style)
     if byline_prob > 0 and rng.random() < byline_prob:
@@ -768,7 +768,7 @@ def generate_page_markdown(rng: random.Random, page_id: int, category: dict) -> 
             parts.append(f"> *{quote}*")
 
         # 1-3 paragraphs per section (1-2 for slides)
-        num_paras = rng.randint(1, 2) if short_paras else rng.randint(2, 3)
+        num_paras = rng.randint(1, 2) if short_paras else rng.randint(1, 2)
         for _ in range(num_paras):
             para = rng.choice(paragraphs)
 
@@ -976,12 +976,18 @@ def render_batch(pages: list[tuple[str, str, str]], width: int = 800, height: in
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": width, "height": height})
 
-        for html, output_path, page_id in tqdm(pages, desc="Rendering", unit="pg"):
+        for i, (html, output_path, page_id) in enumerate(
+            tqdm(pages, desc="Rendering", unit="pg")
+        ):
             try:
                 page.set_content(html, wait_until="networkidle")
-                page.screenshot(path=output_path, full_page=False)
+                page.screenshot(path=output_path, full_page=True)
             except Exception as e:
                 logger.error(f"Failed to render page {page_id}: {e}")
+            # Recycle the page every 100 renders to prevent Chromium memory bloat
+            if (i + 1) % 100 == 0:
+                page.close()
+                page = browser.new_page(viewport={"width": width, "height": height})
 
         browser.close()
 
