@@ -17,6 +17,8 @@ annotated-types==0.7.0
     # via pydantic
 anyio==4.12.1
     # via httpx
+apted==1.0.3
+    # via forge (pyproject.toml)
 attrs==25.4.0
     # via
     #   aiohttp

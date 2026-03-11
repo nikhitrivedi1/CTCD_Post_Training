@@ -199,7 +199,7 @@ End-of-training only. Config-driven, script-based.
 
 ```yaml
 eval_hooks:
-  - script: scripts/eval/olmocr_bench.py
+  - script: scripts/benchmarks/olmocr_bench.py
     args:
       bench_dir: data/olmocr-bench
 ```

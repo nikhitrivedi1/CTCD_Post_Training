@@ -179,12 +179,12 @@ All three run through the same pipeline — same rendering, prompting, scoring.
 
 ### Implementation
 
-**Script:** `scripts/eval/olmocr_bench.py`
+**Script:** `scripts/benchmarks/olmocr_bench.py`
 
 ```
-python scripts/eval/olmocr_bench.py --model allenai/olmOCR-2-7B-1025-FP8
-python scripts/eval/olmocr_bench.py --model Qwen/Qwen3-VL-2B-Instruct
-python scripts/eval/olmocr_bench.py --checkpoint outputs/.../checkpoint-400
+python scripts/benchmarks/olmocr_bench.py --model allenai/olmOCR-2-7B-1025-FP8
+python scripts/benchmarks/olmocr_bench.py --model Qwen/Qwen3-VL-2B-Instruct
+python scripts/benchmarks/olmocr_bench.py --checkpoint outputs/.../checkpoint-400
 ```
 
 **Args:**

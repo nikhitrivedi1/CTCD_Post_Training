@@ -1,15 +1,15 @@
-# Formatting SFT: teach the model to produce inline formatting
-# Loads the olmocr-mix SFT adapter, then fine-tunes on formatting data
-#
-# Pipeline: Qwen3-VL-2B -> SFT (olmocr-mix) -> SFT (formatting) -> GRPO (formatting)
+# Formatting SFT: stronger formatting prior
+# Higher LR + more epochs to give the model a deeper formatting habit
 #
 # Run:
-#   ADAPTER=outputs/olmocr-mix_ablations_00_no-teacher_ce-only_20260225-0952Z \
-#     sbatch scripts/slurm/run_training.sh formatting_sft configs/ocr/formatting/qwen3vl-2b/00_sft.yaml
+#   ADAPTER=outputs/ocr_sft \
+#     sbatch scripts/slurm/run_training.sh fmt_sft configs/ocr/formatting/qwen3vl-2b/00_sft.yaml
 
 inherit: base.yaml
 
 training:
+  num_epochs: 5
+  learning_rate: 5e-6
   warmup_steps: 50
 
 distillation:

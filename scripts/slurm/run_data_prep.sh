@@ -5,6 +5,7 @@
 #SBATCH --time=08:00:00
 #SBATCH --mem=64G
 #SBATCH --output=logs/data_prep_%j.out
+#SBATCH --error=logs/data_prep_%j.out
 
 # Data preparation on SLURM (CPU-only)
 #

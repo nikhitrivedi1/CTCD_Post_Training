@@ -1,21 +1,21 @@
-# GRPO with inline formatting preservation via RL
-# Trains with inline_formatting reward on synthetic formatting data
-#
-# Pipeline: Qwen3-VL-2B -> SFT (olmocr-mix) -> GRPO (formatting rewards)
+# Formatting GRPO: upweighted formatting reward + higher temperature
+# Formatting reward gets 3x weight so it dominates the advantage signal.
+# Temperature 1.3 forces more diversity in formatting behavior across generations.
 #
 # Run:
-#   ADAPTER=outputs/<sft_checkpoint> \
-#     sbatch scripts/slurm/run_training.sh configs/ocr/formatting/qwen3vl-2b/rl/00_grpo.yaml
+#   ADAPTER=outputs/fmt_sft \
+#     sbatch scripts/slurm/run_training.sh fmt_grpo configs/ocr/formatting/qwen3vl-2b/rl/00_grpo.yaml
 
 inherit: base.yaml
 
 rl:
   algorithm: grpo
   reward: [edit_similarity, inline_formatting]
+  reward_weights: [1.0, 3.0]
   num_generations: 4
   generation_batch_size: 4
   max_completion_length: 1024
-  temperature: 1.0            # Higher than 0.8: encourage formatting exploration
+  temperature: 1.3
   beta: 0.0
   loss_type: grpo
   log_completions: true

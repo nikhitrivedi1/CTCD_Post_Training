@@ -163,7 +163,7 @@ Sources:
 - Textbooks (bold key terms, italic definitions)
 
 **E2. Standalone formatting benchmark.**
-Do NOT modify `omnidoc_bench.py` or `olmocr_bench.py` - those are standardized benchmarks with defined metrics. Instead, use the standalone `workbench/formatting_bench.py` which scores formatting F1 independently. It can re-use existing OmniDocBench predictions (score-only mode) or run live inference.
+Do NOT modify `omnidoc_bench.py` or `olmocr_bench.py` - those are standardized benchmarks with defined metrics. Instead, use the standalone `scripts/benchmarks/formatting_bench.py` which scores formatting F1 independently. It can re-use existing OmniDocBench predictions (score-only mode) or run live inference.
 
 **E3. Quick formatting probe on current model.**
 Before building anything, run a quick manual check: give the current model 10-20 pages with obvious formatting and see what it produces. This tells us if the model already has latent formatting capability from pre-training that just needs activation, or if it's truly absent.
@@ -344,7 +344,7 @@ python scripts/data/generate_formatting_data.py --output_dir data/ocr/formatting
 |------|------|----------------|
 | [rewards.py](src/training/rewards.py) | Reward functions | Done: `inline_formatting_reward`, updated `format_reward` |
 | [ocr_utils.py](src/data/ocr_utils.py) | System prompt | Done: updated `OCR_SYSTEM_PROMPT` |
-| [formatting_bench.py](workbench/formatting_bench.py) | Formatting benchmark | Standalone, do NOT modify omnidoc_bench.py |
+| [formatting_bench.py](scripts/benchmarks/formatting_bench.py) | Formatting benchmark | Standalone, do NOT modify omnidoc_bench.py |
 | [formatting_generator.py](scripts/data/formatting_generator.py) | Synthetic data gen | Done: full pipeline |
 | [audit_formatting.py](workbench/audit_formatting.py) | Data auditing | Done: scans GT for formatting stats |
 | [probe_formatting.py](workbench/probe_formatting.py) | Model probing | Done: tests latent formatting capability |

@@ -77,7 +77,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # (override=False means Colab/HPC env vars take precedence)
 from src.utils.environment import detect_environment, get_device
 
-from transformers import Trainer, TrainingArguments, set_seed, DataCollatorForSeq2Seq
+from transformers import Trainer, TrainingArguments, ProgressCallback, set_seed, DataCollatorForSeq2Seq
 
 
 def set_reproducibility_seed(seed: int = 42):
@@ -556,7 +556,12 @@ def _resolve_adapter(config, output_dir, task, processor=None, tokenizer=None):
         processor.save_pretrained(base_dir)
     elif tokenizer is not None:
         tokenizer.save_pretrained(base_dir)
-    logger.info("Base model saved")
+
+    # Write model_ref.json for lineage tracking (adapter source path)
+    ref = {"model_name_or_path": adapter_path}
+    with open(base_dir / "model_ref.json", 'w') as f:
+        json.dump(ref, f, indent=2)
+    logger.info(f"Base model saved (ref: {adapter_path})")
 
     return model
 
@@ -753,7 +758,8 @@ def _train(
             data_collator=data_collator,
         )
 
-    # Log metrics to output.log in grep-friendly format
+    # Replace HF's default dict-dump logging with our clean format
+    trainer.remove_callback(ProgressCallback)
     trainer.add_callback(StepMetricsCallback())
 
     # Add SLURM signal handler
@@ -819,6 +825,14 @@ def _train(
             logger.info(f"Saving co-trained teacher to {teacher_dir}...")
             teacher.save_pretrained(teacher_dir)
             tokenizer.save_pretrained(teacher_dir)
+            teacher_cfg = config["model"].get("teacher", {})
+            teacher_name = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
+            if teacher_name:
+                _save_base_ref(
+                    teacher_dir,
+                    model_name=teacher_name,
+                    revision=getattr(teacher.config, "_commit_hash", None),
+                )
     else:
         logger.info("Training interrupted - skipping final model save (checkpoint already saved)")
 
@@ -851,6 +865,7 @@ def _build_grpo_config(config, output_dir, run_name, args, device, report_to):
         beta=float(rl.get("beta", 0.0)),
         temperature=float(rl.get("temperature", 1.0)),
         loss_type=rl.get("loss_type", "grpo"),
+        reward_weights=rl.get("reward_weights"),
         num_iterations=int(rl.get("num_iterations", 1)),
         scale_rewards=rl.get("scale_rewards", "group"),
         # Training params from config
@@ -951,7 +966,8 @@ def _train_rl(
         peft_config=peft_config,
     )
 
-    # Log metrics to output.log in grep-friendly format
+    # Replace HF's default dict-dump logging with our clean format
+    trainer.remove_callback(ProgressCallback)
     trainer.add_callback(StepMetricsCallback())
 
     # Add SLURM signal handler

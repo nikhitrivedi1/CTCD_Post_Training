@@ -17,6 +17,9 @@ Usage:
     # Dry run (show what would be uploaded)
     python scripts/models/push_to_hub.py outputs/... --dry-run
 
+    # Repair missing base/model_ref.json (backfill from config.yaml)
+    python scripts/models/push_to_hub.py outputs/... --repair
+
     # List models on the Hub
     python scripts/models/push_to_hub.py --list
 
@@ -59,6 +62,8 @@ ADAPTER_FILES = {
 PROVENANCE_FILES = {
     "config.yaml",
     "run_metadata.json",
+    "generation_config.json",
+    "processor_config.json",
 }
 
 # Checkpoint-specific files needed for resume
@@ -134,6 +139,64 @@ def validate_model_dir(model_dir):
     return existing, False
 
 
+def _ensure_base_ref(model_dir):
+    """Create base/model_ref.json if missing, reconstructing from config.yaml.
+
+    For completed runs that predate model_ref.json tracking, this backfills
+    the reference from available metadata. No-op if the ref already exists
+    or if base/ contains full weights (from --adapter).
+
+    Args:
+        model_dir: Path to the model/checkpoint directory.
+
+    Returns:
+        True if a ref was created, False otherwise.
+    """
+    model_dir = Path(model_dir)
+    base_dir = model_dir / "base"
+    ref_path = base_dir / "model_ref.json"
+
+    # Already has ref or full weights in base/
+    if ref_path.exists() or (base_dir / "config.json").exists():
+        return False
+
+    # Find config.yaml (in run root, or parent for checkpoint dirs)
+    config_path = model_dir / "config.yaml"
+    if not config_path.exists():
+        config_path = model_dir.parent / "config.yaml"
+    if not config_path.exists():
+        return False
+
+    try:
+        import yaml
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+    except Exception:
+        return False
+
+    model_name = config.get("model", {}).get("name")
+    if not model_name:
+        return False
+
+    # Try to get commit hash from HF config.json
+    revision = None
+    hf_config = model_dir / "config.json"
+    if hf_config.exists():
+        try:
+            revision = json.loads(hf_config.read_text()).get("_commit_hash")
+        except Exception:
+            pass
+
+    base_dir.mkdir(exist_ok=True)
+    ref = {"model_name_or_path": model_name}
+    if revision:
+        ref["revision"] = revision
+    with open(ref_path, 'w') as f:
+        json.dump(ref, f, indent=2)
+    print(f"Backfilled {ref_path.relative_to(model_dir)} -> {model_name}")
+    return True
+
+
 def push_model(model_dir, org, private=True, include_resume=False, dry_run=False,
                repo_name=None, prefix=None):
     """Push model files to HuggingFace Hub.
@@ -148,6 +211,7 @@ def push_model(model_dir, org, private=True, include_resume=False, dry_run=False
         prefix: Upload files under this subdirectory in the repo (e.g., "student").
     """
     model_dir = Path(model_dir).resolve()
+    _ensure_base_ref(model_dir)
     existing, is_adapter = validate_model_dir(model_dir)
 
     if repo_name:
@@ -196,6 +260,18 @@ def push_model(model_dir, org, private=True, include_resume=False, dry_run=False
     )
     print("done")
 
+    # Upload model_ref.json with Hub-resolved base reference
+    if not prefix:
+        hub_ref = _build_hub_model_ref(model_dir, org)
+        if hub_ref:
+            api.upload_file(
+                path_or_fileobj=json.dumps(hub_ref, indent=2).encode(),
+                path_in_repo="model_ref.json",
+                repo_id=repo_id,
+                commit_message="Add model reference",
+            )
+            print(f"Base:    {hub_ref['model_name_or_path']}")
+
     # Upload model card at repo root (skip when uploading to a subdirectory)
     if not prefix:
         metadata = _load_metadata(model_dir)
@@ -209,6 +285,31 @@ def push_model(model_dir, org, private=True, include_resume=False, dry_run=False
             )
 
     print(f"\nPushed to https://huggingface.co/{repo_id}")
+
+
+def _build_hub_model_ref(model_dir, org):
+    """Read base/model_ref.json and translate local paths to Hub repo IDs.
+
+    Args:
+        model_dir: Path to the model directory.
+        org: HuggingFace username or organization.
+
+    Returns:
+        Dict with Hub-resolved model_name_or_path, or None if no ref exists.
+    """
+    ref_path = model_dir / "base" / "model_ref.json"
+    if not ref_path.exists():
+        return None
+
+    ref = json.loads(ref_path.read_text())
+    model_path = ref.get("model_name_or_path", "")
+
+    # Local path (outputs/ocr_sft) -> Hub repo (org/ocr_sft)
+    if model_path.startswith("outputs/") or model_path.startswith("/"):
+        local_name = Path(model_path).name
+        ref["model_name_or_path"] = f"{org}/{local_name}"
+
+    return ref
 
 
 def _load_metadata(model_dir):
@@ -349,6 +450,11 @@ def main():
         help="Upload files under this subdirectory (e.g., 'student')",
     )
     parser.add_argument(
+        "--repair",
+        action="store_true",
+        help="Backfill missing base/model_ref.json from config.yaml (no upload)",
+    )
+    parser.add_argument(
         "--delete",
         metavar="REPO_ID",
         help="Delete a model repo from the Hub (org/name)",
@@ -369,6 +475,12 @@ def main():
 
     if not args.model_dir:
         parser.error("model_dir is required (unless using --list or --delete)")
+
+    if args.repair:
+        created = _ensure_base_ref(Path(args.model_dir).resolve())
+        if not created:
+            print("Nothing to repair (ref already exists or no config.yaml found)")
+        return
 
     push_model(
         model_dir=args.model_dir,

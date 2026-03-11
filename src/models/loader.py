@@ -198,6 +198,65 @@ def _needs_attention_outputs(config: dict) -> bool:
     return False
 
 
+def _resolve_checkpoint(name: str, task: str, device: str,
+                        eager_attention: bool = False,
+                        tokenizer: PreTrainedTokenizer = None,
+                        num_labels: int = None):
+    """Load a model from a local checkpoint, handling both merged and adapter-only cases.
+
+    Mirrors the InferenceEngine loading pattern: checks for merged weights first,
+    falls back to adapter resolution (base model + LoRA merge).
+
+    Args:
+        name: Local path to model directory (run root or checkpoint-N/)
+        task: Task string (routes to VLM vs classifier vs causal LM)
+        device: Device string
+        eager_attention: Use eager attention (for attention distillation)
+        tokenizer: Tokenizer (needed for causal LM embedding resize check)
+        num_labels: Number of labels (needed for classifiers)
+
+    Returns:
+        Loaded model, or None if path is not a local checkpoint.
+    """
+    from pathlib import Path
+    path = Path(name)
+    if not path.is_dir():
+        return None
+
+    has_merged = (
+        (path / "model.safetensors").exists()
+        or (path / "pytorch_model.bin").exists()
+    )
+    has_adapter = (path / "adapter_config.json").exists()
+
+    if not has_merged and not has_adapter:
+        return None
+
+    def _load(model_name):
+        if is_ocr_task(task):
+            return _load_vlm(model_name, "pretrained", device, eager_attention)
+        elif is_translation_task(task):
+            return _load_causal_lm(model_name, "pretrained", device, tokenizer, eager_attention)
+        else:
+            return _load_classifier(model_name, "pretrained", num_labels, device)
+
+    if has_merged:
+        return _load(name)
+
+    # Adapter-only: resolve base, load, merge
+    from src.inference.engine import _resolve_base_model
+    from peft import PeftModel
+
+    base_model_id, revision = _resolve_base_model(path)
+    logger.info(f"Resolving adapter checkpoint: base={base_model_id}, adapter={path}")
+
+    base = _load(base_model_id)
+    model = PeftModel.from_pretrained(base, str(path))
+    model = model.merge_and_unload()
+    logger.info("Adapter merged into base model")
+    return model
+
+
 # =============================================================================
 # Compositions: load teacher + student pairs
 # =============================================================================
@@ -236,12 +295,20 @@ def load_models(config: dict, device: str, tokenizer: PreTrainedTokenizer, num_l
         reason = "teacher is null" if teacher_name is None else "alpha=0.0"
         logger.info(f"No teacher needed ({reason}) - CE-only mode")
         teacher = None
-    elif ocr:
-        teacher = _load_vlm(teacher_name, "pretrained", device, eager)
-    elif translation:
-        teacher = _load_causal_lm(teacher_name, "pretrained", device, tokenizer, eager)
     else:
-        teacher = _load_classifier(teacher_name, "pretrained", num_labels, device)
+        # Try checkpoint loading first (handles merged + adapter-only local paths)
+        teacher = _resolve_checkpoint(
+            teacher_name, task, device, eager,
+            tokenizer=tokenizer, num_labels=num_labels,
+        )
+        if teacher is None:
+            # Fall back to Hub model loading
+            if ocr:
+                teacher = _load_vlm(teacher_name, "pretrained", device, eager)
+            elif translation:
+                teacher = _load_causal_lm(teacher_name, "pretrained", device, tokenizer, eager)
+            else:
+                teacher = _load_classifier(teacher_name, "pretrained", num_labels, device)
 
     # Load student
     if ocr:
@@ -317,12 +384,18 @@ def load_models_from_checkpoint(
             # Frozen teacher: reload from original model ID
             teacher_src = teacher_name
 
-        if ocr:
-            teacher = _load_vlm(teacher_src, "pretrained", device)
-        elif translation:
-            teacher = _load_causal_lm(teacher_src, "pretrained", device, tokenizer)
-        else:
-            teacher = _load_classifier(teacher_src, "pretrained", num_labels, device)
+        # Try checkpoint loading first (handles merged + adapter-only local paths)
+        teacher = _resolve_checkpoint(
+            teacher_src, task, device,
+            tokenizer=tokenizer, num_labels=num_labels,
+        )
+        if teacher is None:
+            if ocr:
+                teacher = _load_vlm(teacher_src, "pretrained", device)
+            elif translation:
+                teacher = _load_causal_lm(teacher_src, "pretrained", device, tokenizer)
+            else:
+                teacher = _load_classifier(teacher_src, "pretrained", num_labels, device)
         _log_params("Teacher (checkpoint)", teacher_src, teacher)
 
     return teacher, student

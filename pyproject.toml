@@ -51,13 +51,14 @@ dependencies = [
     "Pillow>=10.0.0",
     "compressed-tensors>=0.8.0",
 
-    # olmOCR-Bench scoring dependencies
+    # Bench scoring dependencies
     "fuzzysearch>=0.7.0",
     "rapidfuzz>=3.0.0",
     "sequence-align>=0.1.0",
     "pypdfium2>=4.0.0",
     "syntok>=1.4.0",
     "playwright>=1.40.0",
+    "apted>=1.0.3",
 ]
 
 [project.optional-dependencies]

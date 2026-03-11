@@ -125,6 +125,15 @@ class StepMetricsCallback(TrainerCallback):
     # Prefixes to group into a second "rewards" line
     _REWARD_PREFIX = "rewards/"
 
+    @staticmethod
+    def _fmt(value):
+        """Format a numeric value, using scientific notation for very small values."""
+        if isinstance(value, float):
+            if 0 < abs(value) < 1e-4:
+                return f"{value:.4e}"
+            return f"{value:.6f}"
+        return str(value)
+
     def on_log(self, args, state, control, logs=None, **kwargs):
         """
         Format and log metrics at each logging step.
@@ -148,24 +157,23 @@ class StepMetricsCallback(TrainerCallback):
         # Core keys first, in defined order
         for key in self._CORE_KEYS:
             if key in logs and isinstance(logs[key], (int, float)):
-                parts.append(f"{key}={logs[key]:.6f}")
+                parts.append(f"{key}={self._fmt(logs[key])}")
 
         # Aggregate reward (GRPO)
         for key in ("reward", "reward_std"):
             if key in logs and isinstance(logs[key], (int, float)):
-                parts.append(f"{key}={logs[key]:.6f}")
+                parts.append(f"{key}={self._fmt(logs[key])}")
 
         # Remaining metrics (sorted) and reward breakdown
         skip = set(self._CORE_KEYS) | {"reward", "reward_std", "total_flos", "epoch"}
         for key in sorted(logs):
             if key in skip or not isinstance(logs[key], (int, float)):
                 continue
-            formatted = f"{logs[key]:.6f}" if isinstance(logs[key], float) else str(logs[key])
             if key.startswith(self._REWARD_PREFIX):
                 short_key = key[len(self._REWARD_PREFIX):]
-                reward_parts.append(f"{short_key}={formatted}")
+                reward_parts.append(f"{short_key}={self._fmt(logs[key])}")
             else:
-                parts.append(f"{key}={formatted}")
+                parts.append(f"{key}={self._fmt(logs[key])}")
 
         logger.info("  ".join(parts))
 

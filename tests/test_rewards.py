@@ -11,8 +11,6 @@ from src.training.rewards import (
     _extract_text_blocks,
     _extract_markdown_tables,
     _extract_latex,
-    _extract_formatting_spans,
-    _fuzzy_set_f1,
     _match_block_order,
     _lcs_length,
     _score_parallel,
@@ -23,6 +21,10 @@ from src.training.rewards import (
     reading_order_reward,
     inline_formatting_reward,
     ParallelRewardGroup,
+)
+from src.evaluation.formatting_metrics import (
+    extract_formatting_spans as _extract_formatting_spans,
+    fuzzy_set_match as _fuzzy_set_match,
 )
 
 
@@ -337,48 +339,48 @@ class TestExtractFormattingSpans:
 
 
 # ---------------------------------------------------------------------------
-# _fuzzy_set_f1
+# fuzzy_set_match (from src.evaluation.formatting_metrics)
 # ---------------------------------------------------------------------------
-class TestFuzzySetF1:
+class TestFuzzySetMatch:
     def test_identical_sets(self):
-        score = _fuzzy_set_f1({"hello", "world"}, {"hello", "world"})
-        assert score == 1.0
+        result = _fuzzy_set_match({"hello", "world"}, {"hello", "world"})
+        assert result["f1"] == 1.0
 
     def test_no_overlap(self):
-        score = _fuzzy_set_f1({"aaa"}, {"zzz"})
-        assert score == 0.0
+        result = _fuzzy_set_match({"aaa"}, {"zzz"})
+        assert result["f1"] == 0.0
 
     def test_partial_overlap(self):
-        score = _fuzzy_set_f1({"hello", "extra"}, {"hello", "world"})
-        assert 0.3 < score < 0.8
+        result = _fuzzy_set_match({"hello", "extra"}, {"hello", "world"})
+        assert 0.3 < result["f1"] < 0.8
 
     def test_empty_gt(self):
-        assert _fuzzy_set_f1({"hello"}, set()) == 0.0
+        assert _fuzzy_set_match({"hello"}, set())["f1"] == 0.0
 
     def test_empty_pred(self):
-        assert _fuzzy_set_f1(set(), {"hello"}) == 0.0
+        assert _fuzzy_set_match(set(), {"hello"})["f1"] == 0.0
 
     def test_both_empty(self):
-        assert _fuzzy_set_f1(set(), set()) == 1.0
+        assert _fuzzy_set_match(set(), set())["f1"] == 1.0
 
     def test_fuzzy_match(self):
         """Slightly different spans should still match."""
-        score = _fuzzy_set_f1({"Introduction"}, {"Introductions"})
-        assert score > 0.5
+        result = _fuzzy_set_match({"Introduction"}, {"Introductions"})
+        assert result["f1"] > 0.5
 
 
 # ---------------------------------------------------------------------------
 # _score_inline_formatting
 # ---------------------------------------------------------------------------
-class TestScoreInlineFormatting:
+class TestInlineFormattingScore:
     def test_identical(self):
         text = "This has **bold** and *italic* text."
         score = _score_inline_formatting(text, text)
         assert score > 0.9
 
     def test_no_gt_formatting(self):
-        """GT without formatting returns 0.5 (neutral)."""
-        assert _score_inline_formatting("**bold**", "plain text") == 0.5
+        """GT without formatting returns 0.0 (no reward contribution)."""
+        assert _score_inline_formatting("**bold**", "plain text") == 0.0
 
     def test_missing_pred_formatting(self):
         """Pred without formatting when GT has it returns 0.0."""

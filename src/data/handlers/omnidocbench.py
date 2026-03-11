@@ -230,6 +230,38 @@ class OmniDocBenchHandler(DatasetHandler):
         result["details"] = details
         return result
 
+    def load_paths(self, data_dir: str, split: str | None = None) -> list[dict]:
+        """List image/GT file paths.
+
+        Args:
+            data_dir: Root directory with images/ and markdown/.
+            split: Ignored (OmniDocBench has no pre-defined splits).
+
+        Returns:
+            List of dicts with "image_path" and "gt_path" as Path objects.
+        """
+        data_path = Path(data_dir)
+        images_dir = data_path / "images"
+        markdown_dir = data_path / "markdown"
+
+        if not images_dir.exists():
+            raise FileNotFoundError(f"images/ not found in {data_dir}. Run: prepare.py --dataset omnidocbench")
+        if not markdown_dir.exists():
+            raise FileNotFoundError(f"markdown/ not found in {data_dir}. Run: prepare.py --dataset omnidocbench")
+
+        pairs = []
+        for md_path in sorted(markdown_dir.glob("*.md")):
+            image_path = None
+            for ext in (".jpg", ".png", ".jpeg"):
+                candidate = images_dir / (md_path.stem + ext)
+                if candidate.exists():
+                    image_path = candidate
+                    break
+            if image_path:
+                pairs.append({"image_path": image_path, "gt_path": md_path})
+
+        return pairs
+
     def load(
         self,
         data_dir: str,

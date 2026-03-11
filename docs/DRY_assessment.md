@@ -244,8 +244,8 @@ This adds an unnecessary indirection layer. `DistillationTrainer` could extend `
 ## 13. Benchmark Scripts Are 70% Identical
 
 **Files:**
-- `scripts/eval/olmocr_bench.py` (880 lines)
-- `scripts/eval/omnidoc_bench.py` (897 lines)
+- `scripts/benchmarks/olmocr_bench.py` (880 lines)
+- `scripts/benchmarks/omnidoc_bench.py` (897 lines)
 
 **Severity:** Critical
 
@@ -274,7 +274,7 @@ Additionally, `omnidoc_bench.py` re-implements several helpers that already exis
 - `score_reading_order()` LCS + block matching = identical to `rewards.py:reading_order_reward()` internals
 
 **Fix:** Two-part refactor:
-1. Extract shared bench infrastructure into `scripts/eval/bench_base.py`: SIGTERM handling, job registry wrappers, model name derivation, output dir logic, arg parsing, generation loop, metadata management.
+1. Extract shared bench infrastructure into `scripts/benchmarks/bench_base.py`: SIGTERM handling, job registry wrappers, model name derivation, output dir logic, arg parsing, generation loop, metadata management.
 2. Move the markdown analysis helpers (`_extract_markdown_tables`, `_extract_latex`, `_clean_latex`, `_extract_text_blocks`, edit similarity) into a shared module (e.g. `src/evaluation/markdown_utils.py`) so both bench scripts and reward functions import from one place.
 
 ---
@@ -351,7 +351,7 @@ This means adding a new classification task requires updating three places.
 
 **Files:**
 - `src/data/ocr_utils.py:17-38` (canonical)
-- `scripts/eval/olmocr_bench.py:115-133` (copy)
+- `scripts/benchmarks/olmocr_bench.py:115-133` (copy)
 
 **Severity:** Low
 
@@ -364,8 +364,8 @@ This means adding a new classification task requires updating three places.
 ## 18. SLURM CPU Worker Count Resolution
 
 **Files:**
-- `scripts/eval/olmocr_bench.py:866-869`
-- `scripts/eval/omnidoc_bench.py:883-887`
+- `scripts/benchmarks/olmocr_bench.py:866-869`
+- `scripts/benchmarks/omnidoc_bench.py:883-887`
 - `scripts/data/convert_synthmix.py` (similar pattern)
 - `scripts/data/prepare_ocr_data.py` (similar pattern)
 
@@ -484,8 +484,8 @@ def parallel_render(jobs, render_fn, workers, desc="Processing"):
 ## 22. PROJECT_ROOT + sys.path Boilerplate
 
 **Files:**
-- `scripts/eval/olmocr_bench.py:42-43`
-- `scripts/eval/omnidoc_bench.py:42-43`
+- `scripts/benchmarks/olmocr_bench.py:42-43`
+- `scripts/benchmarks/omnidoc_bench.py:42-43`
 - `scripts/data/convert_omnidocbench.py:21-22`
 - `scripts/data/convert_synthmix.py:21-22`
 
@@ -557,8 +557,8 @@ A third copy of the tokenization-then-batch-inference pattern also lives in `dis
 **Files:**
 - `src/utils/environment.py:48` - `get_device()` (canonical)
 - `workbench/finetune_head.py:173` - inline with MPS fallback
-- `scripts/eval/olmocr_bench.py:699` - inline
-- `scripts/eval/omnidoc_bench.py:730` - inline
+- `scripts/benchmarks/olmocr_bench.py:699` - inline
+- `scripts/benchmarks/omnidoc_bench.py:730` - inline
 
 **Severity:** Low
 

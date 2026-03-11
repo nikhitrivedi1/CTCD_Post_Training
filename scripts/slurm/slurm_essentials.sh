@@ -1,20 +1,20 @@
 #!/bin/bash
-# Shared SLURM job utilities for Forge scripts.
+# Shared SLURM utilities for Forge job scripts (training, bench, score).
 #
 # Source this at the top of any SLURM job script:
 #   source scripts/slurm/slurm_essentials.sh
 #
-# Provides:
-#   SIGUSR1_RECEIVED  - Flag set to 1 when SIGUSR1 arrives (trap is auto-registered)
-#   HAS_GPU           - "1" if NVIDIA GPU detected (via nvidia-smi), "0" otherwise
-#   slurm_setup_env   - Load anaconda, activate conda, source .env; loads CUDA if GPU present
-#   slurm_print_header - Print job info banner (includes GPU info when available)
+# Variables:
+#   SIGUSR1_RECEIVED   - Flag set to "1" when SIGUSR1 arrives (trap auto-registered)
+#   HAS_GPU            - "1" if NVIDIA GPU detected, "0" otherwise
 #
-# NOTE: GPU detection currently assumes NVIDIA (nvidia-smi, CUDA). Update
-# the HAS_GPU check and slurm_setup_env if non-NVIDIA GPUs are added.
-#   slurm_print_footer - Print end timestamp
+# Functions:
+#   slurm_setup_env       - Load modules, activate conda, source .env
+#   slurm_print_header    - Print job info banner (GPU info when available)
+#   slurm_print_footer    - Print end timestamp
+#   slurm_wait_child PID  - Wait for background Python with SIGUSR1/kill timer handling
 #   slurm_read_incomplete - Read .incomplete_jobs entry for current job
-#   slurm_is_complete  - Check if training_state.json shows completion
+#   slurm_is_complete DIR - Check if training_state.json shows completion
 
 # ---------------------------------------------------------------------------
 # SIGUSR1 trap
@@ -23,10 +23,10 @@
 # child processes. The shell must forward it to Python. Callers run Python
 # in background, set _FORGE_CHILD_PID, and `wait` for it.
 #
-# Training: forwards SIGUSR1 to Python so SLURMSignalCallback saves checkpoint.
-#   If Python doesn't exit within _FORGE_KILL_DEADLINE seconds, the shell
-#   kills it to ensure time remains for resubmit logic.
-# Bench: uses SIGUSR1_RECEIVED flag to kill Python (C extensions block signals)
+# When _FORGE_CHILD_PID is set, the trap forwards SIGUSR1 to Python and
+# starts a kill timer (_FORGE_KILL_DEADLINE seconds). Python handles the
+# signal gracefully (training: SLURMSignalCallback, bench: bench_utils
+# shutdown handler). If Python doesn't exit in time, it gets force-killed.
 #
 # Timeline with --signal=B:SIGUSR1@120:
 #   T-120s: SIGUSR1 -> forward to Python, start kill timer
@@ -53,6 +53,41 @@ trap '
         _FORGE_KILL_TIMER_PID=$!
     fi
 ' SIGUSR1
+
+# ---------------------------------------------------------------------------
+# Wait for Python child with signal handling
+# ---------------------------------------------------------------------------
+# Waits for a background Python process, handling SIGUSR1 interrupts.
+# The trap above forwards SIGUSR1 to the child and starts a kill timer.
+# This function re-waits until the child actually exits.
+#
+# Args: $1 = PID of background Python process
+# Sets: EXIT_CODE (global)
+slurm_wait_child() {
+    _FORGE_CHILD_PID=$1
+    while true; do
+        wait $_FORGE_CHILD_PID 2>/dev/null
+        EXIT_CODE=$?
+        # If wait was interrupted by SIGUSR1 (128+10=138), re-wait for child
+        if [ "$EXIT_CODE" -eq 138 ] && [ "$SIGUSR1_RECEIVED" = "1" ]; then
+            continue
+        fi
+        break
+    done
+    _FORGE_CHILD_PID=""
+    # Clean up kill timer if it was started
+    if [ -n "$_FORGE_KILL_TIMER_PID" ]; then
+        kill $_FORGE_KILL_TIMER_PID 2>/dev/null
+        wait $_FORGE_KILL_TIMER_PID 2>/dev/null
+        _FORGE_KILL_TIMER_PID=""
+    fi
+    # If force-killed by deadline timer, treat as clean exit for resubmit
+    if [ $EXIT_CODE -eq 137 ] && [ "$SIGUSR1_RECEIVED" = "1" ]; then
+        echo "Python force-killed by deadline timer, treating as clean exit"
+        EXIT_CODE=0
+    fi
+    return $EXIT_CODE
+}
 
 # ---------------------------------------------------------------------------
 # GPU detection (NVIDIA-specific)

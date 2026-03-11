@@ -116,7 +116,7 @@ Registry: `REWARD_REGISTRY = {"bleu": ..., "edit_similarity": ocr_reward, "forma
 | `configs/ocr/olmocr-mix/qwen3vl-2b/rl/02_omnidoc.yaml` | GRPO config: OmniDocBench + 5 rewards |
 | `configs/ocr/olmocr-mix/qwen3vl-2b/base.yaml` | Model config (Qwen3-VL-2B) |
 | `configs/ocr/olmocr-mix/base.yaml` | Dataset + training config (LoRA, batch, etc.) |
-| `scripts/eval/olmocr_bench.py` | olmOCR-Bench eval script |
+| `scripts/benchmarks/olmocr_bench.py` | olmOCR-Bench eval script |
 | `src/inference/engine.py` | InferenceEngine for eval (also does adapter merge) |
 
 ---
@@ -226,7 +226,7 @@ Goal: Train GRPO on top of SFT checkpoint, measure improvement on olmOCR-Bench.
 | 1 | Create config | `reward: [unit_test]`, `dataset: synthmix`, `data_dir: data/ocr/synthmix`, inherit from `base.yaml`. Same hyperparams as `00_grpo.yaml` (lr=1e-6, 4 generations, temp=0.8). | `configs/ocr/olmocr-mix/qwen3vl-2b/rl/01_synthmix.yaml` | Done |
 | 2 | Dry run | `python forge.py --config configs/.../01_synthmix.yaml --adapter outputs/olmocr-mix_ablations_00_.../  --debug` - verify adapter loads, data loads, reward computes, one step runs. | - | TODO |
 | 3 | Full training | Run on H200. ~2K pages, 4 generations each, 1 epoch. Monitor W&B: reward curves, completion quality, gradient norms. | - | TODO |
-| 4 | Eval on olmOCR-Bench | `python scripts/eval/olmocr_bench.py --model outputs/<grpo_run>/`. Compare to SFT baseline (67.1%). | - | TODO |
+| 4 | Eval on olmOCR-Bench | `python scripts/benchmarks/olmocr_bench.py --model outputs/<grpo_run>/`. Compare to SFT baseline (67.1%). | - | TODO |
 | 5 | Eval on synthmix holdout | Run unit tests on held-out pages (if any) to check generalization vs overfitting to test set. | - | TODO |
 
 **Expected outcome:** olmOCR-Bench improvement over SFT baseline. olmOCR 2 saw meaningful gains from GRPO on synthmix.
@@ -273,8 +273,8 @@ Goal: Build an OmniDocBench eval script so we can measure formatting quality, no
 
 | # | Step | Details | Files to create/modify | Status |
 |:-:|------|---------|----------------------|:------:|
-| 1 | Port OmniDocBench eval | Follow `olmocr_bench.py` pattern: load model via InferenceEngine, run inference on all 1,355 pages, save predictions as markdown. Support `--shard` for parallel runs. | `scripts/eval/omnidocbench.py` | TODO |
-| 2 | Implement text scoring | Normalized edit distance between predicted text blocks and GT text blocks. Match blocks by reading order. | `scripts/eval/omnidocbench.py` or `src/eval/metrics.py` | TODO |
+| 1 | Port OmniDocBench eval | Follow `olmocr_bench.py` pattern: load model via InferenceEngine, run inference on all 1,355 pages, save predictions as markdown. Support `--shard` for parallel runs. | `scripts/benchmarks/omnidocbench.py` | TODO |
+| 2 | Implement text scoring | Normalized edit distance between predicted text blocks and GT text blocks. Match blocks by reading order. | `scripts/benchmarks/omnidocbench.py` or `src/eval/metrics.py` | TODO |
 | 3 | Implement table scoring (TEDS) | Parse predicted markdown tables to HTML, compute tree edit distance against GT HTML tables. Need `apted` library. Two variants: TEDS (content + structure) and TEDS-Struct (structure only). | Same as above | TODO |
 | 4 | Implement formula scoring (CDM) | Computational distance metric for LaTeX formulas. Parse to symbol tree, compare. Existing OmniDocBench repo has reference implementation. | Same as above | TODO |
 | 5 | Implement reading order scoring | Extract block sequence from prediction (by position or explicit markers), compute edit distance against GT block order. | Same as above | TODO |
@@ -293,15 +293,15 @@ Goal: Build an OmniDocBench eval script so we can measure formatting quality, no
 
 Three eval levels: end-to-end (our focus), recognition-only, detection-only.
 
-**Integration path:** Keep our architecture (local inference via InferenceEngine, sharded runs). Adopt OmniDocBench metrics. New eval script `scripts/eval/omnidocbench.py` following `olmocr_bench.py` pattern. Both scripts share the same model loading and inference code, only dataset loading and scoring differ.
+**Integration path:** Keep our architecture (local inference via InferenceEngine, sharded runs). Adopt OmniDocBench metrics. New eval script `scripts/benchmarks/omnidocbench.py` following `olmocr_bench.py` pattern. Both scripts share the same model loading and inference code, only dataset loading and scoring differ.
 
 **Run command:**
 ```bash
 # Local model
-python scripts/eval/omnidocbench.py --model outputs/<run>/ --shard 1/4
+python scripts/benchmarks/omnidocbench.py --model outputs/<run>/ --shard 1/4
 
 # API model (for baselines)
-python scripts/eval/omnidocbench.py --model claude-sonnet-4-6-20250514
+python scripts/benchmarks/omnidocbench.py --model claude-sonnet-4-6-20250514
 ```
 
 **Success criteria:** Our eval numbers for API models should be within 1-2pp of IDP Leaderboard numbers. If not, debug scoring implementation.

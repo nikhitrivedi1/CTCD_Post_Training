@@ -14,17 +14,64 @@ _FORGE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)"
 # Monitoring
 # =========================================================================
 
-# My jobs with GRES info
-alias sq='squeue -u $USER -o "%10i %20a %20j %10T %15M %5D %25R %25b"'
+# My jobs with GRES info (sorted by job ID ascending)
+alias sq='squeue -u $USER --sort=i -o "%10i %20a %20j %10T %15M %5D %25R %25b"'
 
 # Watch my jobs (refresh every 5s)
-sqw() { watch -n 5 "squeue -u $USER -o '%10i %20a %20j %10T %15M %5D %25R %25b'"; }
+sqw() { watch -n 5 "squeue -u $USER --sort=i -o '%10i %20a %20j %10T %15M %5D %25R %25b'"; }
 
-# All GPU jobs with user, state, runtime, node, GRES
-alias sqall='squeue -p gpu -o "%10i %20u %10T %15M %5D %25R %25b"'
+# All GPU jobs with user, state, runtime, node, GRES (sorted by job ID ascending)
+alias sqall='squeue -p gpu --sort=i -o "%10i %20u %10T %15M %5D %25R %25b"'
 
 # GPU node availability
 alias sgpu='sinfo -p gpu -N -o "%20N %25G %10t %15C %10m"'
+
+# Estimated start times for pending jobs, converted to UTC.
+# Timezone offset is derived from the SLURM controller's config timestamp.
+#   seta          -> all my pending jobs
+#   seta 12345    -> single job detail
+seta() {
+    # Derive cluster timezone from SLURM config. Parse the same timestamp
+    # as-if-UTC and as-local: the difference reveals the offset exactly.
+    local _cfg_ts _as_utc _as_local _off_s _abs _sign _hh _mm _tz_label
+    _cfg_ts=$(scontrol show config 2>/dev/null | head -1 | grep -oP '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}')
+    _as_utc=$(TZ=UTC date -d "$_cfg_ts" +%s 2>/dev/null || echo 0)
+    _as_local=$(date -d "$_cfg_ts" +%s 2>/dev/null || echo 0)
+    _off_s=$(( _as_utc - _as_local ))
+    if [ $_off_s -ge 0 ]; then _sign="+"; _abs=$_off_s
+    else _sign="-"; _abs=$(( -_off_s )); fi
+    _hh=$(( _abs / 3600 )); _mm=$(( (_abs % 3600) / 60 ))
+    printf -v _tz_label "UTC%s%d:%02d" "$_sign" "$_hh" "$_mm"
+
+    # Convert a SLURM local timestamp to UTC
+    _to_utc() {
+        local ts="$1"
+        if [ -n "$ts" ] && [ "$ts" != "Unknown" ] && [ "$ts" != "N/A" ]; then
+            date -u -d "$ts" '+%Y-%m-%d %H:%M UTC' 2>/dev/null || echo "$ts"
+        else
+            echo "Unknown"
+        fi
+    }
+
+    if [ -n "$1" ]; then
+        local _info _start _state _reason
+        _info=$(scontrol show job "$1" 2>&1)
+        _state=$(echo "$_info" | grep -oP 'JobState=\K\S+')
+        _start=$(echo "$_info" | grep -oP 'StartTime=\K\S+')
+        _reason=$(echo "$_info" | grep -oP 'Reason=\K\S+')
+        echo "Job $1: $_state  Start: $(_to_utc "$_start")  Reason: $_reason"
+    else
+        echo "Cluster: $_tz_label"
+        printf "%-10s %-20s %-22s %s\n" "JOBID" "NAME" "EST. START (UTC)" "REASON"
+        printf "%-10s %-20s %-22s %s\n" "-----" "----" "----------------" "------"
+        squeue -u "$USER" -t PENDING --sort=i -h -o "%i|%j|%S|%r" \
+            | while IFS='|' read -r jid name start reason; do
+                printf "%-10s %-20s %-22s %s\n" "$jid" "$name" "$(_to_utc "$start")" "$reason"
+            done
+    fi
+
+    unset -f _to_utc
+}
 
 # H200 usage per user
 alias sh200='squeue -p gpu -t RUNNING -o "%u %b" | grep h200 | awk "{print \$1}" | sort | uniq -c | sort -rn'
@@ -38,28 +85,79 @@ alias sh200='squeue -p gpu -t RUNNING -o "%u %b" | grep h200 | awk "{print \$1}"
 #   data prep: logs/data_prep_<jobid>.out
 # Functions glob for the job ID to handle all patterns.
 
-# Tail job stdout (no arg = most recent log)
-#   stail 12345   -> tail -f logs/*12345*.out
-#   stail         -> tail -f logs/<latest>.out
-stail() {
-    local logfile
+# Resolve log file by job ID (or most recent if no ID given)
+_slog_file() {
     if [ -n "$1" ]; then
-        logfile="$(ls -t "$_FORGE_ROOT"/logs/*"${1}"*.out 2>/dev/null | head -1)"
+        ls -t "$_FORGE_ROOT"/logs/*"${1}"*.out 2>/dev/null | head -1
     else
-        logfile="$(ls -t "$_FORGE_ROOT"/logs/*.out 2>/dev/null | head -1)"
+        ls -t "$_FORGE_ROOT"/logs/*.out 2>/dev/null | head -1
     fi
-    if [ -z "$logfile" ] || [ ! -f "$logfile" ]; then
-        echo "No log found${1:+: logs/*${1}*.out}" >&2
-        return 1
-    fi
-    tail -f "$logfile"
 }
 
-# View job stdout
+# Tail job log (last N lines, default 50)
+#   stail           -> last 50 lines of most recent log
+#   stail 12345     -> last 50 lines of job 12345
+#   stail 100       -> last 100 lines of most recent log (if no matching job log)
+#   stail 12345 100 -> last 100 lines of job 12345
+#   stail f         -> tail -f most recent log
+#   stail 12345 f   -> tail -f job 12345
+stail() {
+    local jobid="" lines="50" follow=false
+    # Parse args: stail [jobid] [lines|f]
+    if [ $# -eq 2 ]; then
+        jobid="$1"
+        if [ "$2" = "f" ]; then follow=true; else lines="$2"; fi
+    elif [ $# -eq 1 ]; then
+        if [ "$1" = "f" ]; then
+            follow=true
+        elif [[ "$1" =~ ^[0-9]+$ ]] && [ ! -f "$(_slog_file "$1")" ]; then
+            # Numeric arg but no matching job log: treat as line count
+            lines="$1"
+        else
+            jobid="$1"
+        fi
+    fi
+    local logfile="$(_slog_file "$jobid")"
+    if [ -z "$logfile" ] || [ ! -f "$logfile" ]; then
+        echo "No log found${jobid:+: logs/*${jobid}*.out}" >&2
+        return 1
+    fi
+    if $follow; then
+        tail -f "$logfile"
+    else
+        tail -n "$lines" "$logfile"
+    fi
+}
+
+# Head of job log (first N lines, default 50)
+#   shead           -> first 50 lines of most recent log
+#   shead 12345     -> first 50 lines of job 12345
+#   shead 100       -> first 100 lines of most recent log
+#   shead 12345 100 -> first 100 lines of job 12345
+shead() {
+    local jobid="" lines="50"
+    if [ $# -eq 2 ]; then
+        jobid="$1"; lines="$2"
+    elif [ $# -eq 1 ]; then
+        if [[ "$1" =~ ^[0-9]+$ ]] && [ ! -f "$(_slog_file "$1")" ]; then
+            lines="$1"
+        else
+            jobid="$1"
+        fi
+    fi
+    local logfile="$(_slog_file "$jobid")"
+    if [ -z "$logfile" ] || [ ! -f "$logfile" ]; then
+        echo "No log found${jobid:+: logs/*${jobid}*.out}" >&2
+        return 1
+    fi
+    head -n "$lines" "$logfile"
+}
+
+# View full job stdout
 slog() {
     if [ -z "$1" ]; then echo "Usage: slog <job_id>" >&2; return 1; fi
-    local logfile="$(ls -t "$_FORGE_ROOT"/logs/*"${1}"*.out 2>/dev/null | head -1)"
-    if [ -z "$logfile" ]; then
+    local logfile="$(_slog_file "$1")"
+    if [ -z "$logfile" ] || [ ! -f "$logfile" ]; then
         echo "No log found: logs/*${1}*.out" >&2
         return 1
     fi
@@ -70,7 +168,7 @@ slog() {
 serr() {
     if [ -z "$1" ]; then echo "Usage: serr <job_id>" >&2; return 1; fi
     local logfile="$(ls -t "$_FORGE_ROOT"/logs/*"${1}"*.err 2>/dev/null | head -1)"
-    if [ -z "$logfile" ]; then
+    if [ -z "$logfile" ] || [ ! -f "$logfile" ]; then
         echo "No .err file for job $1 (stderr may be in .out)" >&2
         return 1
     fi

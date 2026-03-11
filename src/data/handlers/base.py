@@ -1,12 +1,14 @@
 """Base class for all dataset handlers.
 
 Every dataset (public or synthetic) implements the same interface:
-  prepare()  - download/generate + convert (idempotent)
-  validate() - check integrity
-  load()     - read raw samples from disk -> (train, eval) HF Datasets
+  prepare()     - download/generate + convert (idempotent)
+  validate()    - check integrity
+  load()        - read raw samples from disk -> (train, eval) HF Datasets
+  load_paths()  - list file paths without loading into memory (for bench)
 """
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 from datasets import Dataset
 
@@ -59,3 +61,22 @@ class DatasetHandler(ABC):
         Returns:
             Tuple of (train_dataset, eval_dataset). eval may be None.
         """
+
+    def load_paths(
+        self,
+        data_dir: str,
+        split: str | None = None,
+    ) -> list[dict[str, Path]]:
+        """List image/GT file paths without loading into memory.
+
+        Memory-efficient alternative to load() for bench scripts that
+        process pages one at a time. Override in handlers with image data.
+
+        Args:
+            data_dir: Root directory for this dataset's files.
+            split: Optional split filter ("train", "eval"). None returns all.
+
+        Returns:
+            List of dicts with "image_path" and "gt_path" as Path objects.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support load_paths()")

@@ -67,10 +67,11 @@ class FormattingHandler(DatasetHandler):
             sys.executable, str(script),
             "--output_dir", str(data_dir),
             "--num_pages", str(num_pages),
-            "--categories", categories,
             "--eval_frac", str(eval_frac),
             "--seed", str(seed),
         ]
+        if categories and categories != "all":
+            cmd += ["--categories"] + categories.split(",")
         if augment:
             cmd.append("--augment")
 
@@ -78,6 +79,8 @@ class FormattingHandler(DatasetHandler):
         if result.returncode != 0:
             logger.error(f"Generator failed:\n{result.stderr}")
             raise RuntimeError(f"Formatting data generation failed: {result.stderr[:500]}")
+        if result.stderr:
+            logger.debug(f"Generator stderr:\n{result.stderr[:1000]}")
 
         logger.info("Generation complete")
 
@@ -128,6 +131,38 @@ class FormattingHandler(DatasetHandler):
             "details": f"{len(categories_found)} categories, {total_matched} matched pairs",
         }
         return result
+
+    def load_paths(self, data_dir: str, split: str | None = None) -> list[dict]:
+        """List image/GT file paths from category subdirectories.
+
+        Args:
+            data_dir: Root directory with category subdirs.
+            split: "train", "eval", or None for both.
+
+        Returns:
+            List of dicts with "image_path" and "gt_path" as Path objects.
+        """
+        data_path = Path(data_dir)
+        if not data_path.exists():
+            raise FileNotFoundError(f"Data not found at {data_dir}. Run: prepare.py --dataset formatting")
+
+        splits = [split] if split else ["train", "eval"]
+        pairs = []
+
+        for category_dir in sorted(data_path.iterdir()):
+            if not category_dir.is_dir():
+                continue
+            for s in splits:
+                images_dir = category_dir / s / "images"
+                markdown_dir = category_dir / s / "markdown"
+                if not images_dir.exists():
+                    continue
+                for img_path in sorted(images_dir.glob("*.png")):
+                    md_path = markdown_dir / (img_path.stem + ".md")
+                    if md_path.exists():
+                        pairs.append({"image_path": img_path, "gt_path": md_path})
+
+        return pairs
 
     def load(
         self,

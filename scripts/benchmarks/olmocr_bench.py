@@ -5,19 +5,19 @@ producing standardized pass/fail scores comparable to published results.
 
 Usage:
     # New run (auto-derives output dir)
-    python scripts/eval/olmocr_bench.py --model allenai/olmOCR-2-7B-1025-FP8
+    python scripts/benchmarks/olmocr_bench.py --model allenai/olmOCR-2-7B-1025-FP8
 
     # New run with explicit output dir
-    python scripts/eval/olmocr_bench.py --model Qwen/Qwen3-VL-2B-Instruct --output_dir outputs/bench/olmocr/my-run
+    python scripts/benchmarks/olmocr_bench.py --model Qwen/Qwen3-VL-2B-Instruct --output outputs/bench/olmocr/my-run
 
     # Resume (model loaded from metadata.json)
-    python scripts/eval/olmocr_bench.py --output_dir outputs/bench/olmocr/my-run
+    python scripts/benchmarks/olmocr_bench.py --output outputs/bench/olmocr/my-run
 
     # Sharded run
-    python scripts/eval/olmocr_bench.py --model X --output_dir D --shard 1/4
+    python scripts/benchmarks/olmocr_bench.py --model X --output D --shard 1/4
 
     # Score only (after all shards complete)
-    python scripts/eval/olmocr_bench.py --score_only --output_dir outputs/bench/olmocr/my-run
+    python scripts/benchmarks/olmocr_bench.py --score_only --output outputs/bench/olmocr/my-run
 
 """
 
@@ -26,11 +26,9 @@ import glob
 import json
 import logging
 import os
-import signal
 import sys
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from collections import defaultdict
-from datetime import datetime, timezone
 from pathlib import Path
 
 import torch
@@ -42,14 +40,23 @@ from tqdm import tqdm
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.inference import InferenceEngine
-from src.utils.jobs import get_job_key, locked_incomplete_jobs
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+from src.evaluation.bench_utils import (
+    add_common_bench_args,
+    apply_shard,
+    build_metadata,
+    cleanup_temp_files,
+    get_num_workers,
+    is_shutdown_requested,
+    register_bench_job,
+    remove_bench_job,
+    save_bench_output,
+    save_metadata,
+    setup_logging,
+    validate_bench_args,
 )
+from src.inference import InferenceEngine
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -60,54 +67,6 @@ DEFAULT_OUTPUT_BASE = "outputs/bench/olmocr"
 DEFAULT_MAX_NEW_TOKENS = 2048
 DEFAULT_DPI = 150
 OCR_PROMPT = "Extract all text from this document page. Output clean markdown."
-
-# Graceful shutdown flag — set by SIGTERM from shell (on SLURM time limit,
-# the shell receives SIGUSR1 and kills Python with SIGTERM).
-_shutdown_requested = False
-
-
-def _handle_sigterm(signum, frame):
-    """Handle SIGTERM — request graceful shutdown after current page."""
-    global _shutdown_requested
-    _shutdown_requested = True
-    logger.warning("SIGTERM received — finishing current page then shutting down")
-
-
-signal.signal(signal.SIGTERM, _handle_sigterm)
-
-
-# ---------------------------------------------------------------------------
-# Incomplete jobs registry (uses shared lock from src.utils.jobs)
-# ---------------------------------------------------------------------------
-
-
-def _register_bench_job(output_dir: str, shard: str = None):
-    """Register current bench job in incomplete registry.
-
-    Removes previous job entry if PREV_JOB_ID is set (SLURM resubmission handoff).
-
-    Args:
-        output_dir: Output directory path.
-        shard: Shard spec (e.g. "1/4") or None.
-    """
-    key = get_job_key()
-    prev = os.environ.get("PREV_JOB_ID")
-
-    with locked_incomplete_jobs() as jobs:
-        if prev and prev in jobs:
-            del jobs[prev]
-        jobs[key] = {"type": "bench", "output_dir": output_dir, "shard": shard or ""}
-    logger.info(f"Registered bench job in incomplete registry: {key}")
-
-
-def _remove_bench_job():
-    """Remove current job from incomplete registry (marks it complete)."""
-    key = get_job_key()
-    with locked_incomplete_jobs() as jobs:
-        if key in jobs:
-            del jobs[key]
-            logger.info(f"Removed job from incomplete registry: {key}")
-
 
 # ---------------------------------------------------------------------------
 # PDF rendering
@@ -533,19 +492,19 @@ def print_results_table(results_by_category: dict, score_of_total: float, score_
     logger.info("=" * 78)
 
 
-def save_results(output_dir: str, results_by_category: dict, results_by_jsonl: dict,
-                 score_of_total: float, score_of_scored: float,
-                 metadata: dict, individual_results: list):
-    """Save results and metadata to output directory.
+def save_olmocr_results(output_dir: str, results_by_category: dict, results_by_jsonl: dict,
+                        score_of_total: float, score_of_scored: float,
+                        metadata: dict, individual_results: list):
+    """Save results, metadata, and per-test details to output directory.
 
     Args:
-        output_dir: Output directory path
-        results_by_category: Per-category results
-        results_by_jsonl: Per-JSONL results
-        score_of_total: Overall score with missing=failed
-        score_of_scored: Overall score of scored tests only
-        metadata: Run metadata dict
-        individual_results: Per-test results
+        output_dir: Output directory path.
+        results_by_category: Per-category results.
+        results_by_jsonl: Per-JSONL results.
+        score_of_total: Overall score with missing=failed.
+        score_of_scored: Overall score of scored tests only.
+        metadata: Run metadata dict.
+        individual_results: Per-test results.
     """
     def _cat_summary(c):
         scored = c["passed"] + c["failed"]
@@ -561,113 +520,25 @@ def save_results(output_dir: str, results_by_category: dict, results_by_jsonl: d
         "by_category": {cat: _cat_summary(c) for cat, c in sorted(results_by_category.items())},
         "by_jsonl": {jsonl: _cat_summary(c) for jsonl, c in sorted(results_by_jsonl.items())},
     }
+    save_bench_output(output_dir, results, metadata)
 
-    with open(os.path.join(output_dir, "results.json"), "w") as f:
-        json.dump(results, f, indent=2)
-
-    with open(os.path.join(output_dir, "metadata.json"), "w") as f:
-        json.dump(metadata, f, indent=2)
-
-    # Save individual test results (large file, but useful for debugging)
+    # Per-test details (large, useful for debugging)
     with open(os.path.join(output_dir, "test_details.jsonl"), "w") as f:
         for r in individual_results:
             f.write(json.dumps(r) + "\n")
-
-    logger.info(f"Results saved to {output_dir}")
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-def _model_name_from_args(model_id: str = None, checkpoint_path: str = None) -> str:
-    """Extract a short model name from args.
-
-    Args:
-        model_id: HuggingFace model ID
-        checkpoint_path: LoRA checkpoint path
-
-    Returns:
-        Short model name string.
-    """
-    if checkpoint_path:
-        cp = Path(checkpoint_path)
-        if cp.name.startswith("checkpoint-"):
-            return cp.parent.name
-        return cp.name
-    return model_id.split("/")[-1]
-
-
-def derive_output_dir(model_id: str = None, checkpoint_path: str = None) -> str:
-    """Derive default output directory from model/checkpoint.
-
-    Args:
-        model_id: HuggingFace model ID
-        checkpoint_path: LoRA checkpoint path
-
-    Returns:
-        Output directory path
-    """
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%MZ")
-    name = _model_name_from_args(model_id, checkpoint_path)
-    return os.path.join(DEFAULT_OUTPUT_BASE, name, timestamp)
-
-
 def main():
     parser = argparse.ArgumentParser(description="Evaluate VLM on olmOCR-Bench")
-    group = parser.add_mutually_exclusive_group(required=False)
-    group.add_argument("--model", type=str, help="HuggingFace model ID")
-    group.add_argument("--checkpoint", type=str, help="Path to LoRA checkpoint")
-
-    parser.add_argument("--output_dir", type=str, default=None,
-                        help="Output directory. If it exists with metadata.json, resumes automatically.")
-    parser.add_argument("--shard", type=str, default=None, help="Shard spec N/M (e.g. 1/4 = first of 4 shards)")
+    add_common_bench_args(parser, max_new_tokens=DEFAULT_MAX_NEW_TOKENS)
     parser.add_argument("--bench_dir", type=str, default=DEFAULT_BENCH_DIR, help="Path to olmOCR-bench data")
-    parser.add_argument("--max_new_tokens", type=int, default=DEFAULT_MAX_NEW_TOKENS)
     parser.add_argument("--dpi", type=int, default=DEFAULT_DPI, help="PDF render DPI")
-    parser.add_argument("--score_only", action="store_true", help="Skip generation, only score existing markdowns")
     args = parser.parse_args()
 
-    # Validate required args based on mode
-    if args.score_only:
-        if not args.output_dir:
-            parser.error("--score_only requires --output_dir")
-
-    # Output directory (auto-detect resume from existing metadata.json)
-    if args.output_dir:
-        output_dir = args.output_dir
-        meta_path = os.path.join(output_dir, "metadata.json")
-        if os.path.isdir(output_dir) and os.path.exists(meta_path):
-            # Resume: load model from metadata if not provided via args
-            with open(meta_path) as f:
-                prev_meta = json.load(f)
-            if not args.model and not args.checkpoint:
-                stored_id = prev_meta.get("model_id", "")
-                if not stored_id:
-                    parser.error("metadata.json has no model_id — specify --model or --checkpoint")
-                if stored_id.startswith("local:"):
-                    args.checkpoint = stored_id.replace("local:", "")
-                else:
-                    args.model = stored_id
-            else:
-                # Both provided — validate match
-                curr_model = _model_name_from_args(args.model, args.checkpoint)
-                prev_model = prev_meta.get("model_name", "")
-                if prev_model and curr_model != prev_model:
-                    parser.error(
-                        f"Model mismatch: '{curr_model}' vs stored '{prev_model}'"
-                    )
-            logger.info(f"Resuming into existing dir: {output_dir}")
-        elif not args.score_only and not args.model and not args.checkpoint:
-            # Explicit dir but no metadata — new run, model required
-            parser.error("--model or --checkpoint required for new runs")
-    else:
-        # No --output_dir: score_only already caught above, so this is a new generation run
-        if not args.model and not args.checkpoint:
-            parser.error("--model or --checkpoint required for new runs")
-        output_dir = derive_output_dir(args.model, args.checkpoint)
-    markdowns_dir = os.path.join(output_dir, "markdowns")
-    os.makedirs(markdowns_dir, exist_ok=True)
-    logger.info(f"Output directory: {output_dir}")
+    output_dir, markdowns_dir = validate_bench_args(args, parser, DEFAULT_OUTPUT_BASE)
 
     # Load benchmark data
     logger.info(f"Loading olmOCR-Bench from {args.bench_dir}...")
@@ -676,23 +547,15 @@ def main():
 
     # Apply sharding
     if args.shard:
-        if not args.output_dir:
-            parser.error("--shard requires --output_dir so all shards write to the same directory")
-        shard_idx, num_shards = [int(x) for x in args.shard.split("/")]
-        if shard_idx < 1 or shard_idx > num_shards:
-            parser.error(f"Invalid shard spec: {args.shard} (must be N/M where 1 <= N <= M)")
-        total_pages = len(unique_pages)
-        shard_size = total_pages // num_shards
-        start = (shard_idx - 1) * shard_size
-        end = total_pages if shard_idx == num_shards else shard_idx * shard_size
-        unique_pages = unique_pages[start:end]
-        logger.info(f"Shard {shard_idx}/{num_shards}: pages {start + 1}–{end} of {total_pages} ({len(unique_pages)} pages)")
+        if not args.output:
+            parser.error("--shard requires --output so all shards write to the same directory")
+        unique_pages = apply_shard(unique_pages, args.shard)
 
     logger.info(f"Unique (pdf, page) pairs to process: {len(unique_pages)}")
 
     # Register in incomplete jobs for SLURM auto-resubmission
     if not args.score_only:
-        _register_bench_job(output_dir, args.shard)
+        register_bench_job(output_dir, "olmocr", args.shard)
 
     # Generation phase
     if not args.score_only:
@@ -702,44 +565,15 @@ def main():
             model_type="vlm", device=device,
         )
 
-        # Load existing metadata on resume, or create fresh
-        meta_path = os.path.join(output_dir, "metadata.json")
-        if os.path.exists(meta_path):
-            with open(meta_path) as f:
-                metadata = json.load(f)
-        else:
-            metadata = {
-                "model_id": args.model or f"local:{args.checkpoint}",
-                "model_name": engine.model_name,
-                "commit_hash": engine.commit_hash,
-                "benchmark": "olmocr",
-                "generation_params": {
-                    "max_new_tokens": args.max_new_tokens,
-                    "do_sample": False,
-                    "dpi": args.dpi,
-                    "prompt": OCR_PROMPT,
-                },
-                "slurm_jobs": [],
-            }
+        metadata = build_metadata(args, engine, "olmocr", {
+            "max_new_tokens": args.max_new_tokens,
+            "do_sample": False,
+            "dpi": args.dpi,
+            "prompt": OCR_PROMPT,
+        })
+        save_metadata(output_dir, metadata)
 
-        # Track SLURM job ID (ordered list, first to latest)
-        slurm_job_id = os.environ.get("SLURM_JOB_ID")
-        if slurm_job_id:
-            jobs = metadata.setdefault("slurm_jobs", [])
-            jobs.append({
-                "job_id": slurm_job_id,
-                "node": os.environ.get("SLURM_NODELIST", "unknown"),
-                "started": datetime.now(timezone.utc).isoformat(),
-            })
-
-        # Write metadata.json immediately so subsequent resumes can auto-detect model
-        with open(meta_path, "w") as f:
-            json.dump(metadata, f, indent=2)
-
-        # Clean up stale .tmp files from interrupted writes
-        for tmp_file in glob.glob(os.path.join(markdowns_dir, "*.tmp")):
-            os.remove(tmp_file)
-            logger.info(f"Cleaned up stale temp file: {os.path.basename(tmp_file)}")
+        cleanup_temp_files(markdowns_dir)
 
         # Count already-generated pages for accurate progress bar
         already_done = sum(
@@ -777,7 +611,7 @@ def main():
         prefetch_future = None
 
         for idx, (pdf_rel, page_num, pdf_abs, md_path) in enumerate(pending):
-            if _shutdown_requested:
+            if is_shutdown_requested():
                 logger.info(f"Shutting down gracefully. Generated {generated} this session.")
                 break
 
@@ -812,7 +646,7 @@ def main():
                 generated += 1
 
             except Exception as e:
-                if _shutdown_requested:
+                if is_shutdown_requested():
                     logger.info(f"Interrupted on {pdf_rel} page {page_num} - will retry on resume")
                     break
                 logger.error(f"Failed on {pdf_rel} page {page_num}: {e}")
@@ -828,15 +662,11 @@ def main():
 
         logger.info(f"Generation complete: {generated} generated, {already_done} skipped, {errors} errors")
 
-        # Clean up any .tmp files left from this session (e.g. interrupted write)
-        for tmp_file in glob.glob(os.path.join(markdowns_dir, "*.tmp")):
-            os.remove(tmp_file)
+        cleanup_temp_files(markdowns_dir)
 
-        # Save metadata (always, even on shutdown)
-        with open(os.path.join(output_dir, "metadata.json"), "w") as f:
-            json.dump(metadata, f, indent=2)
+        save_metadata(output_dir, metadata)
 
-        if _shutdown_requested:
+        if is_shutdown_requested():
             # Leave registry entry as incomplete — shell will auto-resubmit
             logger.info(f"Interrupted. Auto-resubmit will resume from: {output_dir}")
             sys.exit(0)
@@ -850,7 +680,7 @@ def main():
 
     # Scoring phase (skip for sharded runs — score with --score_only after all shards complete)
     if args.shard and not args.score_only:
-        _remove_bench_job()
+        remove_bench_job()
         logger.info(f"Shard {args.shard} complete — run with --score_only to score after all shards finish")
         return
 
@@ -863,17 +693,15 @@ def main():
     pct_available = available / len(all_unique) * 100
     missing = len(all_unique) - available
     logger.info(f"Scoring {available}/{len(all_unique)} pages ({pct_available:.1f}% available, {missing} missing)")
-    slurm_cpus = os.getenv("SLURM_CPUS_PER_TASK")
-    available_cpus = int(slurm_cpus) if slurm_cpus else (os.cpu_count() or 1)
-    num_workers = max(1, available_cpus // 2)
+    num_workers = get_num_workers()
     results_by_category, results_by_jsonl, individual_results = score_tests(all_tests, markdowns_dir, num_workers=num_workers)
     score_of_total, score_of_scored = compute_overall_score(results_by_jsonl)
     print_results_table(results_by_category, score_of_total, score_of_scored)
-    save_results(output_dir, results_by_category, results_by_jsonl,
-                 score_of_total, score_of_scored, metadata, individual_results)
+    save_olmocr_results(output_dir, results_by_category, results_by_jsonl,
+                        score_of_total, score_of_scored, metadata, individual_results)
 
     # Mark complete in registry
-    _remove_bench_job()
+    remove_bench_job()
 
 
 if __name__ == "__main__":

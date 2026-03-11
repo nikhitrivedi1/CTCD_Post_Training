@@ -12,8 +12,8 @@ Unified text generation engine with optimal attention settings.
 
 Used by:
 - `TranslationMetricsCallback` (mid-training BLEU/COMET evaluation)
-- `scripts/eval/olmocr_bench.py` (olmOCR-Bench evaluation)
-- `scripts/eval/omnidoc_bench.py` (OmniDocBench evaluation)
+- `scripts/benchmarks/olmocr_bench.py` (olmOCR-Bench evaluation)
+- `scripts/benchmarks/omnidoc_bench.py` (OmniDocBench evaluation)
 
 ---
 

@@ -14,6 +14,9 @@ sequential GPU idle time during reward scoring.
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
+
+from src.tasks import get_default_reward
+
 logger = logging.getLogger(__name__)
 
 # Lazy-initialized pool for within-function parallelism
@@ -541,73 +544,19 @@ def _lcs_length(a: list[int], b: list[int]) -> int:
     return dp[n]
 
 
-def _extract_formatting_spans(text: str) -> dict[str, set[str]]:
-    """Extract inline formatting spans from markdown text.
-
-    Args:
-        text: Markdown text.
-
-    Returns:
-        Dict with keys 'bold', 'italic', 'strikethrough', each a set of
-        the text content within those markers.
-    """
-    import re
-
-    bold = set(re.findall(r"\*\*(.+?)\*\*", text))
-    italic = set(re.findall(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", text))
-    strikethrough = set(re.findall(r"~~(.+?)~~", text))
-    return {"bold": bold, "italic": italic, "strikethrough": strikethrough}
-
-
-def _fuzzy_set_f1(pred_spans: set[str], gt_spans: set[str], threshold: float = 0.5) -> float:
-    """Compute F1 between two sets of text spans using fuzzy matching.
-
-    Args:
-        pred_spans: Predicted formatting spans.
-        gt_spans: Ground truth formatting spans.
-        threshold: Minimum similarity to count as a match.
-
-    Returns:
-        F1 score in [0, 1].
-    """
-    from rapidfuzz.distance import Levenshtein
-
-    if not gt_spans:
-        return 1.0 if not pred_spans else 0.0
-    if not pred_spans:
-        return 0.0
-
-    matched = 0.0
-    used = set()
-    for gt_s in gt_spans:
-        best_sim = 0.0
-        best_idx = -1
-        for j, pred_s in enumerate(pred_spans):
-            if j in used:
-                continue
-            dist = Levenshtein.distance(gt_s.lower(), pred_s.lower())
-            max_len = max(len(gt_s), len(pred_s))
-            sim = 1.0 - (dist / max_len) if max_len > 0 else 1.0
-            if sim > best_sim:
-                best_sim = sim
-                best_idx = j
-        if best_idx >= 0 and best_sim >= threshold:
-            matched += best_sim
-            used.add(best_idx)
-
-    precision = matched / len(pred_spans)
-    recall = matched / len(gt_spans)
-    if precision + recall == 0:
-        return 0.0
-    return 2 * precision * recall / (precision + recall)
+# Formatting span extraction and matching imported from shared module
+from src.evaluation.formatting_metrics import (
+    extract_formatting_spans as _extract_formatting_spans,
+    fuzzy_set_match as _fuzzy_set_match,
+)
 
 
 def _score_inline_formatting(completion, reference):
     """Score inline formatting preservation between completion and reference.
 
     Extracts bold, italic, and strikethrough spans from both texts and
-    computes F1 using fuzzy matching. Returns 0.5 (neutral) if ground
-    truth has no formatting.
+    computes F1 using fuzzy matching. Returns 0.0 if ground truth has
+    no formatting (no reward contribution).
 
     Args:
         completion: Generated markdown string.
@@ -623,7 +572,7 @@ def _score_inline_formatting(completion, reference):
     all_gt = gt["bold"] | gt["italic"] | gt["strikethrough"]
 
     if not all_gt:
-        return 0.5  # No formatting in GT, neutral
+        return 0.0  # No formatting in GT, no reward contribution
 
     pred = _extract_formatting_spans(completion)
     all_pred = pred["bold"] | pred["italic"] | pred["strikethrough"]
@@ -631,7 +580,7 @@ def _score_inline_formatting(completion, reference):
     if not all_pred:
         return 0.0
 
-    return _fuzzy_set_f1(all_pred, all_gt)
+    return _fuzzy_set_match(all_pred, all_gt)["f1"]
 
 
 def inline_formatting_reward(completions, ground_truth, **kwargs):
@@ -707,12 +656,6 @@ REWARD_REGISTRY = {
     "inline_formatting": inline_formatting_reward,
 }
 
-# Default reward function per task (used by reward: verifiable)
-TASK_REWARDS = {
-    "europarl": "bleu",
-    "ocr": "edit_similarity",
-}
-
 
 def get_reward_funcs(config):
     """Build reward function list from config.
@@ -728,12 +671,11 @@ def get_reward_funcs(config):
     reward_spec = rl_config.get("reward", "verifiable")
 
     if reward_spec == "verifiable":
-        reward_name = TASK_REWARDS.get(task)
+        reward_name = get_default_reward(task)
         if reward_name is None:
             raise ValueError(
                 f"No default verifiable reward for task '{task}'. "
-                f"Supported: {list(TASK_REWARDS.keys())}. "
-                f"Use 'reward: <name>' to specify explicitly."
+                f"Set 'default_reward' in TASK_REGISTRY or use 'reward: <name>' explicitly."
             )
         logger.info(f"Using verifiable reward '{reward_name}' for task '{task}'")
         return [REWARD_REGISTRY[reward_name]]

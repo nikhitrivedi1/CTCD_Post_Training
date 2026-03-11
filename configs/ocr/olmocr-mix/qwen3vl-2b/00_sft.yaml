@@ -1,6 +1,7 @@
-# 00_no-teacher_ce-only: Phase 1 SFT baseline
-# Student (Qwen3-VL-2B) trains on OCR with cross-entropy loss only
-# No teacher supervision - validates vision pipeline and establishes baseline
+# OCR SFT: Qwen3-VL-2B on olmocr-mix (CE only, no teacher)
+#
+# Run:
+#   sbatch scripts/slurm/run_training.sh ocr_sft configs/ocr/olmocr-mix/qwen3vl-2b/00_sft.yaml
 
 inherit: base.yaml
 

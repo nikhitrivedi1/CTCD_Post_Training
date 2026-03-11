@@ -291,6 +291,22 @@ sacct -u $USER
 sacct -j 12345 --format=JobID,JobName,State,ExitCode,Elapsed,MaxRSS
 ```
 
+### scontrol - Job & Cluster Details
+
+```bash
+# Full details for a specific job (state, start time, reason, resources)
+scontrol show job 12345
+
+# Estimated start time for a pending job
+scontrol show job 12345 | grep StartTime
+
+# Cluster configuration (timezone, scheduler params, limits)
+scontrol show config
+
+# Note: scontrol timestamps are in the cluster's local timezone (EDT/EST).
+# Use the `seta` alias to see start times converted to UTC.
+```
+
 ### scancel - Cancel Jobs
 
 ```bash
@@ -499,18 +515,99 @@ sbatch scripts/slurm/run_training.sh
 
 ---
 
+## Forge Aliases
+
+After activating the Forge environment (`source scripts/env/activate.sh` or `conda activate forge`), shorthand aliases are available for all common SLURM operations. Defined in `scripts/env/aliases.sh`.
+
+### Monitoring
+
+| Alias | Description |
+|-------|-------------|
+| `sq` | My jobs (sorted by job ID ascending) |
+| `sqw` | Watch my jobs, refresh every 5s |
+| `sqall` | All GPU jobs across all users |
+| `sgpu` | GPU node availability |
+| `sh200` | H200 usage per user |
+| `seta` | Estimated start times for pending jobs (UTC) |
+| `seta JOBID` | Single job start time detail (UTC) |
+
+### Logs
+
+| Alias | Description |
+|-------|-------------|
+| `stail` | Last 50 lines of most recent log |
+| `stail JOBID` | Last 50 lines of a job's log |
+| `stail JOBID 100` | Last 100 lines of a job's log |
+| `stail f` / `stail JOBID f` | Follow (tail -f) a log |
+| `shead` / `shead JOBID` | First 50 lines (same arg pattern as stail) |
+| `slog JOBID` | View full stdout log |
+| `serr JOBID` | View stderr log (training only) |
+
+### Job Management
+
+| Alias | Description |
+|-------|-------------|
+| `sc JOBID` | Cancel a job |
+| `scall` | Cancel all my jobs |
+| `scpend` | Cancel all pending jobs |
+| `sjob JOBID` | Job details (exit code, runtime, memory) |
+| `snode JOBID` | SSH into the node running a job |
+
+### Accounts & Fairshare
+
+| Alias | Description |
+|-------|-------------|
+| `saccts` | List my accounts and default |
+| `sfair` | Fairshare scores (higher = better priority) |
+| `sbest` | Auto-pick best fairshare account and set as default |
+| `sbj JOBID [...]` | Switch one or more jobs to best fairshare account |
+| `sswitch JOBID ACCT` | Switch a job to a specific account |
+| `sdefault ACCT` | Set default account for future submissions |
+
+### Bench Submission
+
+```bash
+# Submit a single bench
+sbatch scripts/slurm/run_bench.sh formatting --checkpoint outputs/fmt_sft \
+  --output outputs/bench/formatting/fmt_sft
+
+# All 3 benches for a checkpoint
+for bench in formatting omnidoc olmocr; do
+  sbatch scripts/slurm/run_bench.sh $bench --checkpoint outputs/fmt_sft \
+    --output outputs/bench/$bench/fmt_sft
+done
+
+# Score-only (after sharded runs complete)
+sbatch scripts/slurm/run_bench.sh omnidoc --score_only --output outputs/bench/omnidoc/my-run
+```
+
+### Typical Workflow
+
+```bash
+# Submit jobs, switch to best account, check ETAs
+sbatch scripts/slurm/run_bench.sh omnidoc --checkpoint outputs/fmt_sft --output outputs/bench/omnidoc/fmt_sft
+sq                          # see job IDs
+sbj 12345 12346             # switch to best fairshare account
+seta                        # check estimated start times (UTC)
+stail 12345                 # follow logs once running
+```
+
+---
+
 ## Quick Reference Card
 
 | Task | Command |
 |------|---------|
 | Submit job | `sbatch script.sh` |
 | Interactive GPU | `srun --partition=gpu --gres=gpu:1 --time=01:00:00 --pty bash` |
-| View your jobs | `squeue -u $USER` |
-| Cancel job | `scancel JOBID` |
-| View cluster | `sinfo -p gpu` |
-| Job history | `sacct -u $USER` |
-| View logs | `tail -f logs/JOBID.out` |
+| View your jobs | `sq` (or `squeue -u $USER`) |
+| Cancel job | `sc JOBID` (or `scancel JOBID`) |
+| View cluster | `sgpu` (or `sinfo -p gpu`) |
+| Job history | `sjob JOBID` (or `sacct -u $USER`) |
+| View logs | `stail JOBID` (or `tail -f logs/JOBID.out`) |
 | Check GPU | `nvidia-smi` |
+| Estimated start times | `seta` |
+| Switch to best account | `sbj JOBID [...]` |
 
 ### Module Setup
 ```bash

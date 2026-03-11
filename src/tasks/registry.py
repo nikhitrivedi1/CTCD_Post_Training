@@ -3,7 +3,7 @@
 Add new tasks here - single source of truth for task properties.
 """
 
-TASKS = {
+TASK_REGISTRY = {
     # Classification tasks (GLUE)
     "mnli": {
         "num_labels": 3,
@@ -40,6 +40,7 @@ TASKS = {
         "dataset": "europarl",
         "subset": None,
         "primary_metric": "bleu",
+        "default_reward": "bleu",
     },
     # OCR tasks
     "ocr": {
@@ -48,22 +49,23 @@ TASKS = {
         "dataset": "olmocr-mix",
         "subset": None,
         "primary_metric": "edit_similarity",
+        "default_reward": "edit_similarity",
     },
 }
 
 
 def get_num_labels(task: str) -> int | None:
     """Get number of labels for a task."""
-    if task not in TASKS:
+    if task not in TASK_REGISTRY:
         return None
-    return TASKS[task]["num_labels"]
+    return TASK_REGISTRY[task]["num_labels"]
 
 
 def get_task_type(task: str) -> str | None:
     """Get task type ('classification' or 'translation')."""
-    if task not in TASKS:
+    if task not in TASK_REGISTRY:
         return None
-    return TASKS[task]["type"]
+    return TASK_REGISTRY[task]["type"]
 
 
 def is_classification_task(task: str) -> bool:
@@ -83,6 +85,20 @@ def is_ocr_task(task: str) -> bool:
 
 def get_primary_metric(task: str) -> str | None:
     """Get the primary metric for a task (used for best model selection)."""
-    if task not in TASKS:
+    if task not in TASK_REGISTRY:
         return None
-    return TASKS[task].get("primary_metric")
+    return TASK_REGISTRY[task].get("primary_metric")
+
+
+def get_default_reward(task: str) -> str | None:
+    """Get the default verifiable reward for a task.
+
+    Args:
+        task: Task name.
+
+    Returns:
+        Reward name string, or None if task has no default reward.
+    """
+    if task not in TASK_REGISTRY:
+        return None
+    return TASK_REGISTRY[task].get("default_reward")
