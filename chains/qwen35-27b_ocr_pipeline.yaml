@@ -45,20 +45,8 @@ steps:
   # -----------------------------------------------------------------------
   # OmniDoc bench (5-7 depend on 3-4, 8-10 depend on 5-7)
   # -----------------------------------------------------------------------
-  - name: FMT - OmniDoc shard 0/3
-    run_name: fmt_lora_qwen35-27b_bench-omnidoc_s0
-    type: bench
-    depends_on:
-      - fmt_lora_qwen35-27b_bench-formatting
-      - ocr_lora_qwen35-27b_bench-formatting
-    config: omnidoc
-    env:
-      CHECKPOINT: outputs/fmt_lora_qwen35-27b
-      OUTPUT: outputs/bench/omnidoc/fmt_lora_qwen35-27b
-      SHARD: 0/3
-
   - name: FMT - OmniDoc shard 1/3
-    run_name: fmt_lora_qwen35-27b_bench-omnidoc_s1
+    run_name: fmt_lora_qwen35-27b_bench-omnidoc_s0
     type: bench
     depends_on:
       - fmt_lora_qwen35-27b_bench-formatting
@@ -70,7 +58,7 @@ steps:
       SHARD: 1/3
 
   - name: FMT - OmniDoc shard 2/3
-    run_name: fmt_lora_qwen35-27b_bench-omnidoc_s2
+    run_name: fmt_lora_qwen35-27b_bench-omnidoc_s1
     type: bench
     depends_on:
       - fmt_lora_qwen35-27b_bench-formatting
@@ -81,21 +69,20 @@ steps:
       OUTPUT: outputs/bench/omnidoc/fmt_lora_qwen35-27b
       SHARD: 2/3
 
-  - name: OCR - OmniDoc shard 0/3
-    run_name: ocr_lora_qwen35-27b_bench-omnidoc_s0
+  - name: FMT - OmniDoc shard 3/3
+    run_name: fmt_lora_qwen35-27b_bench-omnidoc_s2
     type: bench
     depends_on:
-      - fmt_lora_qwen35-27b_bench-omnidoc_s0
-      - fmt_lora_qwen35-27b_bench-omnidoc_s1
-      - fmt_lora_qwen35-27b_bench-omnidoc_s2
+      - fmt_lora_qwen35-27b_bench-formatting
+      - ocr_lora_qwen35-27b_bench-formatting
     config: omnidoc
     env:
-      CHECKPOINT: outputs/ocr_lora_qwen35-27b
-      OUTPUT: outputs/bench/omnidoc/ocr_lora_qwen35-27b
-      SHARD: 0/3
+      CHECKPOINT: outputs/fmt_lora_qwen35-27b
+      OUTPUT: outputs/bench/omnidoc/fmt_lora_qwen35-27b
+      SHARD: 3/3
 
   - name: OCR - OmniDoc shard 1/3
-    run_name: ocr_lora_qwen35-27b_bench-omnidoc_s1
+    run_name: ocr_lora_qwen35-27b_bench-omnidoc_s0
     type: bench
     depends_on:
       - fmt_lora_qwen35-27b_bench-omnidoc_s0
@@ -108,7 +95,7 @@ steps:
       SHARD: 1/3
 
   - name: OCR - OmniDoc shard 2/3
-    run_name: ocr_lora_qwen35-27b_bench-omnidoc_s2
+    run_name: ocr_lora_qwen35-27b_bench-omnidoc_s1
     type: bench
     depends_on:
       - fmt_lora_qwen35-27b_bench-omnidoc_s0
@@ -119,6 +106,19 @@ steps:
       CHECKPOINT: outputs/ocr_lora_qwen35-27b
       OUTPUT: outputs/bench/omnidoc/ocr_lora_qwen35-27b
       SHARD: 2/3
+
+  - name: OCR - OmniDoc shard 3/3
+    run_name: ocr_lora_qwen35-27b_bench-omnidoc_s2
+    type: bench
+    depends_on:
+      - fmt_lora_qwen35-27b_bench-omnidoc_s0
+      - fmt_lora_qwen35-27b_bench-omnidoc_s1
+      - fmt_lora_qwen35-27b_bench-omnidoc_s2
+    config: omnidoc
+    env:
+      CHECKPOINT: outputs/ocr_lora_qwen35-27b
+      OUTPUT: outputs/bench/omnidoc/ocr_lora_qwen35-27b
+      SHARD: 3/3
 
   - name: FMT - OmniDoc score
     run_name: fmt_lora_qwen35-27b_bench-omnidoc_score
@@ -145,20 +145,8 @@ steps:
   # -----------------------------------------------------------------------
   # olmOCR bench (13-15 depend on 11-12, 16-18 depend on 13-15)
   # -----------------------------------------------------------------------
-  - name: FMT - olmOCR shard 0/3
-    run_name: fmt_lora_qwen35-27b_bench-olmocr_s0
-    type: bench
-    depends_on:
-      - fmt_lora_qwen35-27b_bench-omnidoc_score
-      - ocr_lora_qwen35-27b_bench-omnidoc_score
-    config: olmocr
-    env:
-      CHECKPOINT: outputs/fmt_lora_qwen35-27b
-      OUTPUT: outputs/bench/olmocr/fmt_lora_qwen35-27b
-      SHARD: 0/3
-
   - name: FMT - olmOCR shard 1/3
-    run_name: fmt_lora_qwen35-27b_bench-olmocr_s1
+    run_name: fmt_lora_qwen35-27b_bench-olmocr_s0
     type: bench
     depends_on:
       - fmt_lora_qwen35-27b_bench-omnidoc_score
@@ -170,7 +158,7 @@ steps:
       SHARD: 1/3
 
   - name: FMT - olmOCR shard 2/3
-    run_name: fmt_lora_qwen35-27b_bench-olmocr_s2
+    run_name: fmt_lora_qwen35-27b_bench-olmocr_s1
     type: bench
     depends_on:
       - fmt_lora_qwen35-27b_bench-omnidoc_score
@@ -181,21 +169,20 @@ steps:
       OUTPUT: outputs/bench/olmocr/fmt_lora_qwen35-27b
       SHARD: 2/3
 
-  - name: OCR - olmOCR shard 0/3
-    run_name: ocr_lora_qwen35-27b_bench-olmocr_s0
+  - name: FMT - olmOCR shard 3/3
+    run_name: fmt_lora_qwen35-27b_bench-olmocr_s2
     type: bench
     depends_on:
-      - fmt_lora_qwen35-27b_bench-olmocr_s0
-      - fmt_lora_qwen35-27b_bench-olmocr_s1
-      - fmt_lora_qwen35-27b_bench-olmocr_s2
+      - fmt_lora_qwen35-27b_bench-omnidoc_score
+      - ocr_lora_qwen35-27b_bench-omnidoc_score
     config: olmocr
     env:
-      CHECKPOINT: outputs/ocr_lora_qwen35-27b
-      OUTPUT: outputs/bench/olmocr/ocr_lora_qwen35-27b
-      SHARD: 0/3
+      CHECKPOINT: outputs/fmt_lora_qwen35-27b
+      OUTPUT: outputs/bench/olmocr/fmt_lora_qwen35-27b
+      SHARD: 3/3
 
   - name: OCR - olmOCR shard 1/3
-    run_name: ocr_lora_qwen35-27b_bench-olmocr_s1
+    run_name: ocr_lora_qwen35-27b_bench-olmocr_s0
     type: bench
     depends_on:
       - fmt_lora_qwen35-27b_bench-olmocr_s0
@@ -208,7 +195,7 @@ steps:
       SHARD: 1/3
 
   - name: OCR - olmOCR shard 2/3
-    run_name: ocr_lora_qwen35-27b_bench-olmocr_s2
+    run_name: ocr_lora_qwen35-27b_bench-olmocr_s1
     type: bench
     depends_on:
       - fmt_lora_qwen35-27b_bench-olmocr_s0
@@ -219,6 +206,19 @@ steps:
       CHECKPOINT: outputs/ocr_lora_qwen35-27b
       OUTPUT: outputs/bench/olmocr/ocr_lora_qwen35-27b
       SHARD: 2/3
+
+  - name: OCR - olmOCR shard 3/3
+    run_name: ocr_lora_qwen35-27b_bench-olmocr_s2
+    type: bench
+    depends_on:
+      - fmt_lora_qwen35-27b_bench-olmocr_s0
+      - fmt_lora_qwen35-27b_bench-olmocr_s1
+      - fmt_lora_qwen35-27b_bench-olmocr_s2
+    config: olmocr
+    env:
+      CHECKPOINT: outputs/ocr_lora_qwen35-27b
+      OUTPUT: outputs/bench/olmocr/ocr_lora_qwen35-27b
+      SHARD: 3/3
 
   - name: FMT - olmOCR score
     run_name: fmt_lora_qwen35-27b_bench-olmocr_score
