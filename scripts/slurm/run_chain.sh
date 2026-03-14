@@ -655,8 +655,31 @@ if [ $RESUME_MODE -eq 1 ]; then
         exit 1
     fi
     echo "Chain file: $_CHAIN_FILE"
-    echo "Previously completed: $_CHAIN_COMPLETED"
-    echo "Previously submitted: $_CHAIN_SUBMITTED"
+    echo "Previously completed:"
+    echo "$_CHAIN_COMPLETED" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for rn in data: print(f'  - {rn}')
+if not data: print('  (none)')
+"
+    echo "Previously submitted:"
+    echo "$_CHAIN_SUBMITTED" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+if isinstance(data, list):
+    for rn in data: print(f'  - {rn}')
+elif isinstance(data, dict):
+    for rn, info in data.items():
+        if isinstance(info, dict) and info:
+            parts = [f'job={info[\"job_id\"]}'] if 'job_id' in info else []
+            if 'cmd' in info: parts.append(f'cmd={info[\"cmd\"]}')
+            if 'env' in info: parts.append(f'env={info[\"env\"]}')
+            detail = ', '.join(parts)
+            print(f'  - {rn} ({detail})')
+        else:
+            print(f'  - {rn}')
+if not data: print('  (none)')
+"
 fi
 
 # Validate chain
