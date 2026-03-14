@@ -1,12 +1,8 @@
-# 02_reasoning_distillation: Phase 2b R1-style reasoning SFT
-# Student trains on reasoning traces from Qwen3-VL-8B-Thinking
-# Still CE-only, but richer targets (chain-of-thought + OCR output)
+# Reasoning SFT: R1-style reasoning traces from Qwen3-VL-8B-Thinking
+# CE-only, but richer targets (chain-of-thought + OCR output)
 
 inherit: base.yaml
 
 data:
   data_dir: data/ocr/reasoning_traces
   include_reasoning: true
-
-distillation:
-  alpha: 0.0              # CE only: no distillation

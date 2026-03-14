@@ -1,14 +1,1 @@
-# Full dataset (~260K samples, ~8125 steps/epoch at batch 32)
-inherit: base.yaml
-
-training:
-  warmup_steps: 1000
-
-checkpointing:
-  save_steps: 1000
-
-logging:
-  logging_steps: 100
-
-evaluation:
-  eval_steps: 1000
+# Full dataset (no max_train_samples limit)

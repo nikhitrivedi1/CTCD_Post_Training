@@ -86,6 +86,14 @@ esac
 
 echo "Benchmark: $BENCH"
 echo "Script: $SCRIPT"
+
+# Build args from env vars (mirrors run_training.sh pattern, used by run_chain.sh)
+[ -n "$CHECKPOINT" ] && BENCH_ARGS="$BENCH_ARGS --checkpoint $CHECKPOINT" && echo "Checkpoint: $CHECKPOINT"
+[ -n "$MODEL" ]      && BENCH_ARGS="$BENCH_ARGS --model $MODEL"           && echo "Model: $MODEL"
+[ -n "$OUTPUT" ]     && BENCH_ARGS="$BENCH_ARGS --output $OUTPUT"         && echo "Output: $OUTPUT"
+[ -n "$SHARD" ]      && BENCH_ARGS="$BENCH_ARGS --shard $SHARD"           && echo "Shard: $SHARD"
+[ -n "$DEBUG" ]      && BENCH_ARGS="$BENCH_ARGS --debug"                  && echo "Debug mode: verbose logging enabled"
+
 echo "Args: $BENCH_ARGS"
 
 # --force: remove existing output dir so the bench starts fresh

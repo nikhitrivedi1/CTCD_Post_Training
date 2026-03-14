@@ -10,12 +10,65 @@ import logging
 import subprocess
 import sys
 from pathlib import Path
+from typing import Sequence
 
 from datasets import Dataset, concatenate_datasets, load_from_disk
 
 from .base import DatasetHandler
 
 logger = logging.getLogger(__name__)
+
+
+def _stratified_sample(
+    parts: Sequence[Dataset],
+    n: int,
+    seed: int = 42,
+) -> Dataset:
+    """Sample n total rows spread equally across dataset parts.
+
+    Divides n equally across parts. If a part is smaller than its allocation,
+    takes all of it and redistributes the remainder to larger parts.
+
+    Args:
+        parts: List of HF Datasets (one per subset).
+        n: Total number of samples to select.
+        seed: Random seed for shuffling.
+
+    Returns:
+        Concatenated dataset with n samples, balanced across parts.
+    """
+    k = len(parts)
+    sizes = [len(p) for p in parts]
+    allocations = [0] * k
+
+    remaining = n
+    active = list(range(k))
+
+    # Iteratively allocate: split evenly, cap at subset size, redistribute
+    while remaining > 0 and active:
+        per_part = remaining // len(active)
+        leftover = remaining % len(active)
+        still_active = []
+        remaining = 0
+        for idx in active:
+            alloc = per_part + (1 if leftover > 0 else 0)
+            if leftover > 0:
+                leftover -= 1
+            can_take = sizes[idx] - allocations[idx]
+            take = min(alloc, can_take)
+            allocations[idx] += take
+            remaining += alloc - take
+            if allocations[idx] < sizes[idx]:
+                still_active.append(idx)
+        active = still_active
+
+    sampled = []
+    for i, part in enumerate(parts):
+        count = allocations[i]
+        sampled.append(part.shuffle(seed=seed).select(range(count)))
+        logger.info(f"  Stratified: {count} samples from subset {i} ({sizes[i]} available)")
+
+    return concatenate_datasets(sampled)
 
 
 class OlmOCRMixHandler(DatasetHandler):
@@ -123,6 +176,7 @@ class OlmOCRMixHandler(DatasetHandler):
         max_train_samples: int | None = None,
         eval_fraction: float = 0.1,
         include_reasoning: bool = False,
+        sampling: str = "sequential",
         **kwargs,
     ) -> tuple[Dataset, Dataset | None]:
         """Load pre-processed HF dataset from disk.
@@ -135,11 +189,14 @@ class OlmOCRMixHandler(DatasetHandler):
             max_train_samples: Cap on training samples.
             eval_fraction: Not used (data is pre-split).
             include_reasoning: Use 'reasoning_and_output' column instead of 'text'.
+            sampling: How to apply max_train_samples. "sequential" takes first N
+                rows (default). "stratified" divides N equally across subsets.
 
         Returns:
             Tuple of (train_dataset, eval_dataset).
         """
         data_path = Path(data_dir)
+        train_parts = None
 
         if (data_path / "train").exists():
             train_dataset = load_from_disk(str(data_path / "train"))
@@ -159,7 +216,10 @@ class OlmOCRMixHandler(DatasetHandler):
             eval_dataset = concatenate_datasets(eval_parts) if eval_parts else None
 
         if max_train_samples and len(train_dataset) > max_train_samples:
-            train_dataset = train_dataset.select(range(max_train_samples))
+            if sampling == "stratified" and train_parts and len(train_parts) > 1:
+                train_dataset = _stratified_sample(train_parts, max_train_samples)
+            else:
+                train_dataset = train_dataset.select(range(max_train_samples))
 
         # Normalize column name: 'text' or 'reasoning_and_output' -> 'ground_truth'
         text_col = "reasoning_and_output" if include_reasoning else "text"

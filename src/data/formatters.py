@@ -5,13 +5,84 @@ Handlers load raw data. Formatters shape it for the training mode:
   format_for_rl()  - prompt message dicts + ground_truth/tests for reward computation
 
 These are thin wrappers that bridge handler output to trainer input.
+Formatted datasets are cached to disk per run so restarts (e.g. after
+preemption) skip the expensive .map() step.
 """
 
+import hashlib
+import json
 import logging
+from pathlib import Path
 
-from datasets import Dataset
+from datasets import Dataset, load_from_disk
+
+from src.utils.environment import get_num_workers
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Caching
+# ---------------------------------------------------------------------------
+
+
+def _cache_key(processor_name: str, num_samples: int, max_length: int, split: str) -> str:
+    """Build a deterministic cache key from formatting parameters.
+
+    Args:
+        processor_name: Model/processor name used for formatting.
+        num_samples: Number of samples in the dataset.
+        max_length: Max sequence length.
+        split: Dataset split ("train" or "eval").
+
+    Returns:
+        Hex digest string.
+    """
+    raw = json.dumps({
+        "processor": processor_name,
+        "num_samples": num_samples,
+        "max_length": max_length,
+        "split": split,
+    }, sort_keys=True)
+    return hashlib.sha256(raw.encode()).hexdigest()[:12]
+
+
+def _load_cached(cache_dir: Path, key: str) -> Dataset | None:
+    """Load a cached formatted dataset if it exists and matches.
+
+    Args:
+        cache_dir: Path to the .formatted_cache directory.
+        key: Cache key string.
+
+    Returns:
+        Cached Dataset or None if not found.
+    """
+    path = cache_dir / key
+    if path.exists():
+        try:
+            ds = load_from_disk(str(path))
+            logger.info(f"Loaded formatted dataset from cache ({len(ds)} samples)")
+            return ds
+        except Exception as e:
+            logger.warning(f"Cache load failed, will reformat: {e}")
+    return None
+
+
+def _save_cache(dataset: Dataset, cache_dir: Path, key: str) -> None:
+    """Save a formatted dataset to disk cache.
+
+    Args:
+        dataset: Formatted dataset to cache.
+        cache_dir: Path to the .formatted_cache directory.
+        key: Cache key string.
+    """
+    path = cache_dir / key
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        dataset.save_to_disk(str(path))
+        logger.info(f"Cached formatted dataset ({len(dataset)} samples)")
+    except Exception as e:
+        logger.warning(f"Cache save failed (non-fatal): {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +179,8 @@ def format_for_sft(
     tokenizer_or_processor=None,
     max_length: int = 1024,
     system_prompt: str | None = None,
+    cache_dir: str | Path | None = None,
+    split: str = "train",
 ) -> Dataset:
     """Shape raw samples into SFT format.
 
@@ -122,18 +195,39 @@ def format_for_sft(
         tokenizer_or_processor: Tokenizer (text tasks) or AutoProcessor (VLM tasks).
         max_length: Maximum sequence length.
         system_prompt: Override system prompt.
+        cache_dir: Output dir for caching (e.g. outputs/run_name). If set,
+            formatted results are saved to {cache_dir}/.formatted_cache/ and
+            reused on subsequent calls with matching parameters.
+        split: Dataset split name for cache key ("train" or "eval").
 
     Returns:
         Dataset formatted for SFT training.
     """
+    # Try loading from cache
+    proc_name = getattr(tokenizer_or_processor, "name_or_path", str(tokenizer_or_processor))
+    key = _cache_key(proc_name, len(dataset), max_length, split)
+    fmt_cache_dir = Path(cache_dir) / ".formatted_cache" if cache_dir else None
+
+    if fmt_cache_dir:
+        cached = _load_cached(fmt_cache_dir, key)
+        if cached is not None:
+            return cached
+
+    # Format
     if task_type == "ocr":
-        return _format_ocr_sft(dataset, tokenizer_or_processor, max_length, system_prompt)
+        result = _format_ocr_sft(dataset, tokenizer_or_processor, max_length, system_prompt)
     elif task_type == "translation":
-        return _format_translation_sft(dataset, tokenizer_or_processor, max_length)
+        result = _format_translation_sft(dataset, tokenizer_or_processor, max_length)
     elif task_type == "classification":
-        return _format_classification_sft(dataset, tokenizer_or_processor, max_length)
+        result = _format_classification_sft(dataset, tokenizer_or_processor, max_length)
     else:
         raise ValueError(f"SFT formatting not supported for task type '{task_type}'")
+
+    # Save to cache
+    if fmt_cache_dir:
+        _save_cache(result, fmt_cache_dir, key)
+
+    return result
 
 
 def _format_ocr_sft(dataset: Dataset, processor, max_length: int, system_prompt: str | None) -> Dataset:
@@ -175,8 +269,10 @@ def _format_ocr_sft(dataset: Dataset, processor, max_length: int, system_prompt:
         )
         return {"formatted_text": formatted_text}
 
+    num_proc = get_num_workers()
     return dataset.map(
         preprocess,
+        num_proc=num_proc if num_proc > 1 else None,
         remove_columns=[c for c in dataset.column_names if c != "image"],
     )
 
@@ -239,7 +335,8 @@ def _format_translation_sft(dataset: Dataset, tokenizer, max_length: int) -> Dat
         model_inputs["labels"] = labels
         return model_inputs
 
-    return dataset.map(format_fn, remove_columns=dataset.column_names)
+    num_proc = get_num_workers()
+    return dataset.map(format_fn, num_proc=num_proc if num_proc > 1 else None, remove_columns=dataset.column_names)
 
 
 def _format_classification_sft(dataset: Dataset, tokenizer, max_length: int) -> Dataset:
@@ -278,4 +375,5 @@ def _format_classification_sft(dataset: Dataset, tokenizer, max_length: int) -> 
                 truncation=True, max_length=max_length, padding="max_length",
             )
 
-    return dataset.map(preprocess, batched=True, remove_columns=text_cols)
+    num_proc = get_num_workers()
+    return dataset.map(preprocess, batched=True, num_proc=num_proc if num_proc > 1 else None, remove_columns=text_cols)

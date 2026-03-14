@@ -1,0 +1,6 @@
+# OCR SFT: Qwen3.5-27B on olmocr-mix
+#
+# Run:
+#   sbatch scripts/slurm/run_training.sh teacher_ocr_sft configs/ocr/olmocr-mix/qwen35-27b/00_sft.yaml
+
+inherit: base.yaml

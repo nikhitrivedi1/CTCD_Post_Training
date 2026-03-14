@@ -4,5 +4,6 @@ inherit: ../base.yaml
 
 model:
   name: Qwen/Qwen3-VL-2B-Instruct
-  init: pretrained
-  processor: Qwen/Qwen3-VL-2B-Instruct
+
+training:
+  learning_rate: 5e-6

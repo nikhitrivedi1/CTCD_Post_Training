@@ -1,23 +1,6 @@
-# olmocr-mix: Qwen3-VL-2B (5K samples)
+# olmocr-mix: Qwen3-VL-2B
 
 inherit: ../base.yaml
 
 model:
   name: Qwen/Qwen3-VL-2B-Instruct
-  init: pretrained
-  processor: Qwen/Qwen3-VL-2B-Instruct
-
-data:
-  max_train_samples: 5000
-
-training:
-  warmup_steps: 50
-
-checkpointing:
-  save_steps: 50
-
-logging:
-  logging_steps: 5
-
-evaluation:
-  eval_steps: 50

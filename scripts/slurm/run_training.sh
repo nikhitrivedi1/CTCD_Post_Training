@@ -4,7 +4,7 @@
 #SBATCH --gres=gpu:h200:1
 #SBATCH --time=08:00:00
 #SBATCH --mem=64G
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=16
 #SBATCH --output=logs/train_%j.out
 #SBATCH --error=logs/train_%j.out
 #SBATCH --signal=B:SIGUSR1@120
@@ -66,31 +66,11 @@ run_forge() {
 
 # Build common ARGS from env vars
 ARGS=""
-
-if [ -n "$SEED" ]; then
-    ARGS="$ARGS --seed $SEED"
-    echo "Custom seed: $SEED"
-fi
-
-if [ -n "$MAX_STEPS" ]; then
-    ARGS="$ARGS --max_steps $MAX_STEPS"
-    echo "Testing mode: max_steps=$MAX_STEPS"
-fi
-
-if [ -n "$EPOCHS" ]; then
-    ARGS="$ARGS --epochs $EPOCHS"
-    echo "Epoch override: $EPOCHS"
-fi
-
-if [ -n "$ADAPTER" ]; then
-    ARGS="$ARGS --adapter $ADAPTER"
-    echo "Adapter: $ADAPTER"
-fi
-
-if [ -n "$DEBUG" ]; then
-    ARGS="$ARGS --debug"
-    echo "Debug mode: verbose logging enabled"
-fi
+[ -n "$SEED" ]      && ARGS="$ARGS --seed $SEED"           && echo "Seed: $SEED"
+[ -n "$MAX_STEPS" ] && ARGS="$ARGS --max_steps $MAX_STEPS" && echo "Max steps: $MAX_STEPS"
+[ -n "$EPOCHS" ]    && ARGS="$ARGS --epochs $EPOCHS"       && echo "Epochs: $EPOCHS"
+[ -n "$ADAPTER" ]   && ARGS="$ARGS --adapter $ADAPTER"     && echo "Adapter: $ADAPTER"
+[ -n "$DEBUG" ]     && ARGS="$ARGS --debug"                 && echo "Debug mode: verbose logging enabled"
 
 # Check if this is a resubmit (resume via _FORGE_RESUME_PATH env var)
 if [ -n "$_FORGE_RESUME_PATH" ]; then
@@ -122,15 +102,8 @@ else
     fi
 
     # Add create-only flags
-    if [ -n "$TIMESTAMP" ]; then
-        ARGS="$ARGS --timestamp"
-        echo "Timestamp mode: appending timestamp to run_name"
-    fi
-
-    if [ -n "$FORCE" ]; then
-        ARGS="$ARGS --force"
-        echo "Force mode: will overwrite existing run"
-    fi
+    [ -n "$TIMESTAMP" ] && ARGS="$ARGS --timestamp" && echo "Timestamp mode: appending timestamp to run_name"
+    [ -n "$FORCE" ]     && ARGS="$ARGS --force"      && echo "Force mode: will overwrite existing run"
 
     # Pre-completion check for named runs (prevents wasteful GPU allocation)
     if [ -n "$RUN_NAME" ] && [ -z "$TIMESTAMP" ] && [ -z "$FORCE" ]; then

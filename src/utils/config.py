@@ -35,16 +35,23 @@ def load_config(config_path: str, _depth: int = 0) -> Dict[str, Any]:
     config_path = Path(config_path)
 
     with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
+        config = yaml.safe_load(f) or {}
 
-    # Handle inheritance
+    # Handle inheritance (string or list of paths)
     if 'inherit' in config:
-        parent_path = config_path.parent / config['inherit']
-        parent_config = load_config(str(parent_path), _depth=_depth + 1)
+        parents = config['inherit']
+        if isinstance(parents, str):
+            parents = [parents]
 
-        # Remove the inherit key and merge
+        # Merge parents left-to-right, then overlay current config
+        merged = {}
+        for parent_ref in parents:
+            parent_path = config_path.parent / parent_ref
+            parent_config = load_config(str(parent_path), _depth=_depth + 1)
+            merged = _deep_merge(merged, parent_config)
+
         del config['inherit']
-        merged_config = _deep_merge(parent_config, config)
+        merged_config = _deep_merge(merged, config)
         return merged_config
 
     return config

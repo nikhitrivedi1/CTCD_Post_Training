@@ -1,40 +1,13 @@
 # olmOCR-mix dataset base configuration
 
-inherit: ../base.yaml
+inherit:
+  - ../base.yaml
+  - sizes/5k.yaml
 
 data:
-  task: ocr
   dataset: olmocr-mix
   data_dir: data/ocr/olmocr-mix-full
-  max_length: 1024
+  sampling: stratified
 
 training:
-  num_epochs: 3
-  batch_size: 2
-  gradient_accumulation_steps: 16
-  learning_rate: 0.00005
-  weight_decay: 0.01
-  max_grad_norm: 1.0
-  use_lora: true
-
-  lora:
-    r: 16
-    alpha: 16
-    dropout: 0.05
-    target_modules:
-      - q_proj
-      - k_proj
-      - v_proj
-      - o_proj
-      - gate_proj
-      - up_proj
-      - down_proj
-
-checkpointing:
-  save_total_limit: 3
-
-logging:
-  report_to: wandb
-
-evaluation:
-  eval_strategy: steps
+  learning_rate: 5e-5

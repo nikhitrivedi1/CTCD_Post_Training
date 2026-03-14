@@ -61,6 +61,17 @@ def get_device():
     return "cpu"
 
 
+def get_num_workers() -> int:
+    """Get number of parallel workers, respecting SLURM CPU allocation.
+
+    Returns:
+        Number of workers (available CPUs minus 1, minimum 1).
+    """
+    slurm_cpus = os.getenv("SLURM_CPUS_PER_TASK")
+    available_cpus = int(slurm_cpus) if slurm_cpus else (os.cpu_count() or 1)
+    return max(1, available_cpus - 1)
+
+
 def get_gpu_info():
     """
     Get GPU information based on environment.

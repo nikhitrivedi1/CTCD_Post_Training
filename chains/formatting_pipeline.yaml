@@ -1,0 +1,33 @@
+# Formatting pipeline: OCR grounding -> Formatting SFT -> Formatting GRPO -> Bench
+# Sequential chain - each step depends on the previous one.
+#
+# Usage:
+#   scripts/slurm/run_chain.sh chains/formatting_pipeline.yaml        # login node
+#   sbatch scripts/slurm/run_chain.sh chains/formatting_pipeline.yaml  # CPU node
+
+steps:
+  - name: OCR grounding
+    run_name: ocr_sft
+    config: configs/ocr/olmocr-mix/qwen3vl-2b/base.yaml
+
+  - name: Formatting SFT
+    run_name: fmt_sft
+    depends_on: ocr_sft
+    config: configs/ocr/formatting/qwen3vl-2b/00_sft.yaml
+    env:
+      ADAPTER: outputs/ocr_sft
+
+  - name: Formatting GRPO
+    run_name: fmt_grpo
+    depends_on: fmt_sft
+    config: configs/ocr/formatting/qwen3vl-2b/rl/00_grpo.yaml
+    env:
+      ADAPTER: outputs/fmt_sft
+
+  - name: Formatting bench
+    run_name: fmt_bench
+    type: bench
+    depends_on: fmt_grpo
+    config: formatting
+    env:
+      CHECKPOINT: outputs/fmt_grpo

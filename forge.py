@@ -17,7 +17,7 @@ import yaml
 import numpy as np
 import torch
 
-from src.utils.jobs import get_job_key, locked_incomplete_jobs
+from src.utils.jobs import get_job_key, guard_duplicate_job, locked_incomplete_jobs
 
 # Module-level logger
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import environment first - this auto-loads .env file if it exists
 # (override=False means Colab/HPC env vars take precedence)
-from src.utils.environment import detect_environment, get_device
+from src.utils.environment import detect_environment, get_device, get_num_workers
 
 from transformers import Trainer, TrainingArguments, ProgressCallback, set_seed, DataCollatorForSeq2Seq
 
@@ -112,6 +112,32 @@ from src.training.layer_mapping import get_layer_mapping
 from src.training.projections import create_projection_if_needed
 from src.utils.checkpoint import TrainingState
 from src.utils.config import load_config
+
+# Keys forwarded from config["data"] to handler.load(**kwargs)
+_HANDLER_DATA_KEYS = (
+    "max_train_samples", "include_reasoning", "sampling",
+    "source_lang", "target_lang", "max_samples",
+)
+
+
+def _build_handler_kwargs(config: dict, dataset_name: str) -> dict:
+    """Build kwargs dict for handler.load() from config["data"].
+
+    Args:
+        config: Full training config.
+        dataset_name: Dataset identifier (e.g. "olmocr-mix", "formatting").
+
+    Returns:
+        Dict of keyword arguments to pass to handler.load().
+    """
+    data_cfg = config.get("data", {})
+    kwargs = {"data_dir": data_cfg.get("data_dir", f"data/{dataset_name}")}
+
+    for key in _HANDLER_DATA_KEYS:
+        if key in data_cfg:
+            kwargs[key] = data_cfg[key]
+
+    return kwargs
 
 
 def create_loss_strategy_from_config(
@@ -401,6 +427,7 @@ def add_incomplete_job(resume_path: str, output_dir: Path):
     prev_job_id = os.environ.get("PREV_JOB_ID")
 
     with locked_incomplete_jobs() as jobs:
+        guard_duplicate_job(jobs, "resume_path", resume_path, job_key)
         if prev_job_id and prev_job_id in jobs:
             del jobs[prev_job_id]
         jobs[job_key] = {
@@ -698,7 +725,7 @@ def _train(
         eval_steps=int(config.get("evaluation", {}).get("eval_steps", 500)),
         report_to=report_to,
         fp16=(config["training"].get("fp16", True) and student.dtype != torch.float16) if device == "cuda" else False,
-        dataloader_num_workers=config["training"].get("dataloader_num_workers", 4) if device == "cuda" else 0,  # MPS requires 0 workers
+        dataloader_num_workers=config["training"].get("dataloader_num_workers", get_num_workers()) if device == "cuda" else 0,
         dataloader_pin_memory=device == "cuda",  # Disable on MPS (not supported)
         run_name=run_name,
         max_steps=args.max_steps if args.max_steps > 0 else -1,
@@ -715,6 +742,7 @@ def _train(
         # VLM datasets store raw images + text; the collator handles tokenization.
         # Must keep these columns so the collator can process them.
         remove_unused_columns=not is_ocr_task(task),
+        gradient_checkpointing=config["training"].get("gradient_checkpointing", False),
     )
 
     # Choose trainer based on whether we have a teacher
@@ -885,8 +913,9 @@ def _build_grpo_config(config, output_dir, run_name, args, device, report_to):
         report_to=report_to,
         run_name=run_name,
         # Hardware
+        gradient_checkpointing=training.get("gradient_checkpointing", False),
         bf16=(device == "cuda"),
-        dataloader_num_workers=training.get("dataloader_num_workers", 4) if device == "cuda" else 0,
+        dataloader_num_workers=training.get("dataloader_num_workers", get_num_workers()) if device == "cuda" else 0,
         dataloader_pin_memory=(device == "cuda"),
         # Overrides
         max_steps=args.max_steps if args.max_steps > 0 else -1,
@@ -1318,22 +1347,7 @@ def main():
         logger.info("Loading RL dataset (prompt-based)...")
         dataset_name = config["data"].get("dataset", task)
         handler = get_handler(dataset_name)
-        handler_kwargs = {}
-        if "data_dir" in config.get("data", {}):
-            handler_kwargs["data_dir"] = config["data"]["data_dir"]
-        else:
-            handler_kwargs["data_dir"] = f"data/{dataset_name}"
-        if "max_train_samples" in config.get("data", {}):
-            handler_kwargs["max_train_samples"] = config["data"]["max_train_samples"]
-        if "include_reasoning" in config.get("data", {}):
-            handler_kwargs["include_reasoning"] = config["data"]["include_reasoning"]
-        # Load extra kwargs for specific handlers
-        if "source_lang" in config.get("data", {}):
-            handler_kwargs["source_lang"] = config["data"]["source_lang"]
-        if "target_lang" in config.get("data", {}):
-            handler_kwargs["target_lang"] = config["data"]["target_lang"]
-        if "max_samples" in config.get("data", {}):
-            handler_kwargs["max_samples"] = config["data"]["max_samples"]
+        handler_kwargs = _build_handler_kwargs(config, dataset_name)
         train_dataset, eval_dataset = handler.load(**handler_kwargs)
         task_type = get_task_type(task)
         train_dataset = format_for_rl(train_dataset, task_type)
@@ -1406,29 +1420,21 @@ def main():
         # Load raw data via handler
         dataset_name = config["data"].get("dataset", task)
         handler = get_handler(dataset_name)
-        handler_kwargs = {}
-        if "data_dir" in config.get("data", {}):
-            handler_kwargs["data_dir"] = config["data"]["data_dir"]
-        elif dataset_name not in ("mnli", "qqp", "sst2", "cola", "europarl"):
-            handler_kwargs["data_dir"] = f"data/{dataset_name}"
-        if "max_train_samples" in config.get("data", {}):
-            handler_kwargs["max_train_samples"] = config["data"]["max_train_samples"]
-        if "include_reasoning" in config.get("data", {}):
-            handler_kwargs["include_reasoning"] = config["data"]["include_reasoning"]
-        if "source_lang" in config.get("data", {}):
-            handler_kwargs["source_lang"] = config["data"]["source_lang"]
-        if "target_lang" in config.get("data", {}):
-            handler_kwargs["target_lang"] = config["data"]["target_lang"]
-        if "max_samples" in config.get("data", {}):
-            handler_kwargs["max_samples"] = config["data"]["max_samples"]
+        handler_kwargs = _build_handler_kwargs(config, dataset_name)
         train_dataset, eval_dataset = handler.load(**handler_kwargs)
 
-        # Format for SFT
+        # Format for SFT (cached to output_dir/.formatted_cache/ for fast restarts)
         max_length = config.get("data", {}).get("max_length", 1024)
         tokenizer_or_processor = processor if processor else tokenizer
-        train_dataset = format_for_sft(train_dataset, task_type, tokenizer_or_processor, max_length)
+        train_dataset = format_for_sft(
+            train_dataset, task_type, tokenizer_or_processor, max_length,
+            cache_dir=output_dir, split="train",
+        )
         if eval_dataset is not None:
-            eval_dataset = format_for_sft(eval_dataset, task_type, tokenizer_or_processor, max_length)
+            eval_dataset = format_for_sft(
+                eval_dataset, task_type, tokenizer_or_processor, max_length,
+                cache_dir=output_dir, split="eval",
+            )
 
         # Resolve --adapter: merge into base/ on first run, reuse on resume
         adapter_path = config["model"].get("adapter_path")

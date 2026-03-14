@@ -1,0 +1,27 @@
+# Formatting GRPO v2: per-type reward, KL regularization
+#
+# Fixes three issues from 00_grpo:
+#   1. Per-type F1 averaging prevents bold from dominating reward signal
+#   2. beta=0.1 prevents entropy/policy collapse
+#   3. edit_similarity reduced (1.0 -> 0.25) so formatting drives learning
+#
+# 00_grpo: edit_sim=1.0, formatting_pooled=3.0, beta=0.0, temp=1.3
+# 01_grpo: edit_sim=0.25, formatting_pertype=1.0, beta=0.1, temp=1.0
+#
+# Run:
+#   ADAPTER=outputs/fmt_sft \
+#     sbatch scripts/slurm/run_training.sh fmt_grpo_v2 configs/ocr/formatting/qwen3vl-2b/rl/01_grpo.yaml
+
+inherit: base.yaml
+
+rl:
+  algorithm: grpo
+  reward: [edit_similarity, inline_formatting_pertype]
+  reward_weights: [0.25, 1.0]
+  num_generations: 4
+  generation_batch_size: 4
+  max_completion_length: 1024
+  temperature: 1.0
+  beta: 0.1
+  loss_type: grpo
+  log_completions: true

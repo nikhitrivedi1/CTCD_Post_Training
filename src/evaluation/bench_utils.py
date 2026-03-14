@@ -59,7 +59,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src.utils.jobs import get_job_key, locked_incomplete_jobs
+from src.utils.jobs import get_job_key, guard_duplicate_job, locked_incomplete_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -221,6 +221,7 @@ def register_bench_job(output_dir: str, bench_type: str, shard: str = None):
     prev = os.environ.get("PREV_JOB_ID")
 
     with locked_incomplete_jobs() as jobs:
+        guard_duplicate_job(jobs, "output_dir", output_dir, key)
         if prev and prev in jobs:
             del jobs[prev]
         jobs[key] = {"type": bench_type, "output_dir": output_dir, "shard": shard or ""}
@@ -381,14 +382,3 @@ def cleanup_temp_files(markdowns_dir: str):
     """
     for tmp_file in glob.glob(os.path.join(markdowns_dir, "*.tmp")):
         os.remove(tmp_file)
-
-
-def get_num_workers() -> int:
-    """Get number of parallel workers for scoring, respecting SLURM CPU allocation.
-
-    Returns:
-        Number of workers (half of available CPUs, minimum 1).
-    """
-    slurm_cpus = os.getenv("SLURM_CPUS_PER_TASK")
-    available_cpus = int(slurm_cpus) if slurm_cpus else (os.cpu_count() or 1)
-    return max(1, available_cpus - 1)

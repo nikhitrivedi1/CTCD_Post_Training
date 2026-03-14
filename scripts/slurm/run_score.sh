@@ -44,8 +44,14 @@ case "$BENCH" in
 esac
 
 echo "Benchmark: $BENCH"
-echo "Args: $@"
 
-python $SCRIPT --score_only "$@"
+# Build args from env vars (used by run_chain.sh)
+SCORE_ARGS="$@"
+[ -n "$OUTPUT" ] && SCORE_ARGS="$SCORE_ARGS --output $OUTPUT" && echo "Output: $OUTPUT"
+[ -n "$DEBUG" ]  && SCORE_ARGS="$SCORE_ARGS --debug"          && echo "Debug mode: verbose logging enabled"
+
+echo "Args: $SCORE_ARGS"
+
+python $SCRIPT --score_only $SCORE_ARGS
 
 slurm_print_footer

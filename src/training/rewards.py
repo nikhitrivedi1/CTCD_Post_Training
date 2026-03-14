@@ -583,6 +583,57 @@ def _score_inline_formatting(completion, reference):
     return _fuzzy_set_match(all_pred, all_gt)["f1"]
 
 
+def _score_inline_formatting_pertype(completion, reference):
+    """Score inline formatting with equal weight per type.
+
+    Unlike _score_inline_formatting which pools all spans, this computes
+    F1 separately for bold, italic, and strikethrough, then averages.
+    Types not present in GT are excluded from the average.
+
+    Args:
+        completion: Generated markdown string.
+        reference: Ground truth markdown string.
+
+    Returns:
+        Float in [0, 1].
+    """
+    if not reference:
+        return 0.0
+
+    gt = _extract_formatting_spans(reference)
+    pred = _extract_formatting_spans(completion)
+
+    type_scores = []
+    for fmt_type in ["bold", "italic", "strikethrough"]:
+        if gt[fmt_type]:
+            f1 = _fuzzy_set_match(pred[fmt_type], gt[fmt_type])["f1"]
+            type_scores.append(f1)
+
+    if not type_scores:
+        return 0.0
+
+    return sum(type_scores) / len(type_scores)
+
+
+def inline_formatting_pertype_reward(completions, ground_truth, **kwargs):
+    """Per-type formatting reward (equal weight for bold/italic/strikethrough).
+
+    Unlike inline_formatting_reward which pools all span types into one set,
+    this scores each type independently and averages. Prevents majority types
+    (bold) from dominating the reward signal.
+
+    Args:
+        completions: List of generated markdown strings.
+        ground_truth: List of reference markdown strings.
+
+    Returns:
+        List of float rewards in [0, 1].
+    """
+    return _score_parallel(
+        _score_inline_formatting_pertype, completions, ground_truth
+    )
+
+
 def inline_formatting_reward(completions, ground_truth, **kwargs):
     """Reward based on inline formatting preservation (bold, italic, strikethrough).
 
@@ -654,6 +705,7 @@ REWARD_REGISTRY = {
     "formula_cdm": formula_cdm_reward,
     "reading_order": reading_order_reward,
     "inline_formatting": inline_formatting_reward,
+    "inline_formatting_pertype": inline_formatting_pertype_reward,
 }
 
 

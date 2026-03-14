@@ -1,9 +1,6 @@
-# OCR SFT: Qwen3-VL-2B on olmocr-mix (CE only, no teacher)
+# OCR SFT: Qwen3-VL-2B on olmocr-mix
 #
 # Run:
 #   sbatch scripts/slurm/run_training.sh ocr_sft configs/ocr/olmocr-mix/qwen3vl-2b/00_sft.yaml
 
 inherit: base.yaml
-
-distillation:
-  alpha: 0.0              # CE only: no distillation
