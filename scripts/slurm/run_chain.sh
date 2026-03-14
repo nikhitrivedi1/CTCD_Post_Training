@@ -527,11 +527,27 @@ check_step_status() {
     fi
 
     # 3. No active job - check completion
-    local complete
-    complete=$(slurm_is_complete "./outputs/$run_name")
-    if [ "$complete" = "true" ]; then
-        _STEP_STATUS="complete"
-        return 0
+    #    For training jobs: check training_state.json in outputs/$run_name.
+    #    Guard with dir existence since slurm_is_complete returns true when
+    #    training_state.json is absent (false positive for bench jobs / missing dirs).
+    if [ -d "./outputs/$run_name" ]; then
+        local complete
+        complete=$(slurm_is_complete "./outputs/$run_name")
+        if [ "$complete" = "true" ]; then
+            _STEP_STATUS="complete"
+            return 0
+        fi
+    fi
+
+    # 3b. For bench/score jobs (output dir != outputs/$run_name):
+    #     check sacct for clean exit of the tracked job.
+    if [ -n "$tracked_job_id" ]; then
+        local exit_code
+        exit_code=$(sacct -j "$tracked_job_id" --format=ExitCode --parsable2 --noheader 2>/dev/null | head -1)
+        if [ "$exit_code" = "0:0" ]; then
+            _STEP_STATUS="complete"
+            return 0
+        fi
     fi
 
     # 4. Not active and not complete = failed
