@@ -4,19 +4,22 @@ Workbench entry point.
 
 Usage:
     # Run specific analyses
-    python workbench/analyze.py --teacher T --student S --task mnli --test probe cka
+    python workbench/analyze.py --model M --reference R --task mnli --test probe cka
 
     # Run all analyses
-    python workbench/analyze.py --teacher T --student S --task mnli --test all
+    python workbench/analyze.py --model M --reference R --task mnli --test all
+
+    # Probe a single model (no comparison)
+    python workbench/analyze.py --model M --task mnli --test probe
 
     # Named run (reusable across days)
-    python workbench/analyze.py --teacher T --student S --task mnli --run_name v1 --test probe cka
+    python workbench/analyze.py --model M --reference R --task mnli --run_name v1 --test probe cka
 
     # Timestamped filenames (never collide)
-    python workbench/analyze.py --teacher T --student S --task mnli --run_name v1 --timestamp --test all
+    python workbench/analyze.py --model M --reference R --task mnli --run_name v1 --timestamp --test all
 
     # Overwrite existing results
-    python workbench/analyze.py --teacher T --student S --task mnli --run_name v1 --force --test probe
+    python workbench/analyze.py --model M --reference R --task mnli --run_name v1 --force --test probe
 """
 
 import argparse
@@ -35,36 +38,36 @@ from utils.logging import setup_file_logging
 
 
 def get_default_output(
-    command: str, task: str, student: str = None,
+    command: str, task: str, model_name: str = None,
     run_name: str = None, timestamp: bool = False, force: bool = False,
 ) -> str:
     """
-    Generate output path organized by student model and run.
+    Generate output path organized by model and run.
 
     Naming semantics:
-    - --run_name X                    -> <student>/X/<command>.json
-    - --run_name X --timestamp        -> <student>/X_20260206Z/<command>_20260206-1712Z.json
-    - (no --run_name)                 -> <student>/20260206Z/<command>.json
-    - (no --run_name) --timestamp     -> <student>/20260206Z/<command>_20260206-1712Z.json
+    - --run_name X                    -> <model>/X/<command>.json
+    - --run_name X --timestamp        -> <model>/X_20260206Z/<command>_20260206-1712Z.json
+    - (no --run_name)                 -> <model>/20260206Z/<command>.json
+    - (no --run_name) --timestamp     -> <model>/20260206Z/<command>_20260206-1712Z.json
     - --force overwrites existing output file on collision.
     - Without --timestamp or --force, collision = error.
 
     Args:
         command: Analysis command (probe, cka, attention-entropy, disagreement)
         task: Task name (mnli, qqp, etc.)
-        student: Optional student model path for naming
+        model_name: Optional model path for naming
         run_name: Optional run name for grouping results
         timestamp: Whether to append time-level timestamp to output filename
         force: Whether to overwrite existing output file
 
     Returns:
-        Output path like: workbench/results/<student>/<run>/<command>.json
+        Output path like: workbench/results/<model>/<run>/<command>.json
     """
     base_dir = Path("workbench/results")
 
-    if student:
-        student_name = Path(student).name
-        model_dir = base_dir / student_name
+    if model_name:
+        short_name = Path(model_name).name
+        model_dir = base_dir / short_name
     else:
         model_dir = base_dir / task
 
@@ -136,31 +139,31 @@ def cmd_probe(args):
     """Run linear probing analysis."""
     from workbench.probing import run_probing, compare_probes
 
-    output_path = args.output or get_default_output("probe", args.task, args.student, args.run_name, args.timestamp, args.force)
+    output_path = args.output or get_default_output("probe", args.task, args.model, args.run_name, args.timestamp, args.force)
     log_path = setup_logging(output_path)
     max_samples = args.max_samples  # default: full dataset
 
     results = {}
 
     logger.info("=" * 60)
-    logger.info(f"PROBING: {args.teacher}")
+    logger.info(f"PROBING: {args.model}")
     logger.info("=" * 60)
-    results["teacher"] = {
-        "model": args.teacher,
-        "probes": run_probing(args.teacher, args.task, args.device, max_samples, args.seed)
+    results["model"] = {
+        "model": args.model,
+        "probes": run_probing(args.model, args.task, args.device, max_samples, args.seed)
     }
 
-    if args.student:
+    if args.reference:
         logger.info("=" * 60)
-        logger.info(f"PROBING: {args.student}")
+        logger.info(f"PROBING: {args.reference}")
         logger.info("=" * 60)
-        results["student"] = {
-            "model": args.student,
-            "probes": run_probing(args.student, args.task, args.device, max_samples, args.seed)
+        results["reference"] = {
+            "model": args.reference,
+            "probes": run_probing(args.reference, args.task, args.device, max_samples, args.seed)
         }
         results["comparison"] = compare_probes(
-            results["teacher"]["probes"],
-            results["student"]["probes"]
+            reference_probes=results["reference"]["probes"],
+            target_probes=results["model"]["probes"]
         )
 
     with open(output_path, "w") as f:
@@ -175,11 +178,11 @@ def cmd_cka(args):
     """Run CKA analysis."""
     from workbench.cka import run_cka
 
-    if not args.student:
-        logger.error("CKA requires --student checkpoint")
+    if not args.reference:
+        logger.error("CKA requires --reference model")
         sys.exit(1)
 
-    output_path = args.output or get_default_output("cka", args.task, args.student, args.run_name, args.timestamp, args.force)
+    output_path = args.output or get_default_output("cka", args.task, args.model, args.run_name, args.timestamp, args.force)
     log_path = setup_logging(output_path)
     max_samples = args.max_samples or 1000  # CKA is O(N^2)
 
@@ -188,7 +191,7 @@ def cmd_cka(args):
     logger.info("=" * 60)
 
     results = run_cka(
-        args.teacher, args.student, args.task,
+        args.model, args.reference, args.task,
         args.device, max_samples
     )
 
@@ -206,24 +209,24 @@ def print_probe_summary(results: dict):
     print("PROBING RESULTS")
     print("=" * 60)
 
-    teacher_probes = results["teacher"]["probes"]
-    print(f"\nTeacher ({results['teacher']['model']}):")
-    for layer, acc in teacher_probes.items():
+    model_probes = results["model"]["probes"]
+    print(f"\nModel ({results['model']['model']}):")
+    for layer, acc in model_probes.items():
         print(f"  {layer}: {acc:.2%}")
 
-    if "student" in results:
-        student_probes = results["student"]["probes"]
-        print(f"\nStudent ({results['student']['model']}):")
-        for layer, acc in student_probes.items():
+    if "reference" in results:
+        ref_probes = results["reference"]["probes"]
+        print(f"\nReference ({results['reference']['model']}):")
+        for layer, acc in ref_probes.items():
             print(f"  {layer}: {acc:.2%}")
 
         comp = results["comparison"]
         print(f"\nComparison:")
-        print(f"  Teacher peak: {comp['teacher_peak']['layer']} @ {comp['teacher_peak']['accuracy']:.2%}")
-        print(f"  Student peak: {comp['student_peak']['layer']} @ {comp['student_peak']['accuracy']:.2%}")
+        print(f"  Reference peak: {comp['reference_peak']['layer']} @ {comp['reference_peak']['accuracy']:.2%}")
+        print(f"  Model peak: {comp['target_peak']['layer']} @ {comp['target_peak']['accuracy']:.2%}")
         print(f"  Retention: {comp['retention']:.1%}")
-        if comp['student_saturation_layer']:
-            print(f"  Student saturates at: {comp['student_saturation_layer']}")
+        if comp['target_saturation_layer']:
+            print(f"  Model saturates at: {comp['target_saturation_layer']}")
 
 
 def print_cka_summary(results: dict):
@@ -232,20 +235,20 @@ def print_cka_summary(results: dict):
     print("CKA ALIGNMENT")
     print("=" * 60)
 
-    print("\nBest teacher layer match for each student layer:")
-    for s_layer, alignment in results["best_alignment"].items():
-        print(f"  {s_layer} -> {alignment['teacher_layer']} (CKA: {alignment['cka_score']:.3f})")
+    print("\nBest reference layer match for each model layer:")
+    for m_layer, alignment in results["best_alignment"].items():
+        print(f"  {m_layer} -> {alignment['reference_layer']} (CKA: {alignment['cka_score']:.3f})")
 
 
 def cmd_attention_entropy(args):
     """Run attention entropy analysis."""
     from workbench.attention import run_attention_analysis
 
-    if not args.student:
-        logger.error("Attention entropy analysis requires --student checkpoint")
+    if not args.reference:
+        logger.error("Attention entropy analysis requires --reference model")
         sys.exit(1)
 
-    output_path = args.output or get_default_output("attention-entropy", args.task, args.student, args.run_name, args.timestamp, args.force)
+    output_path = args.output or get_default_output("attention-entropy", args.task, args.model, args.run_name, args.timestamp, args.force)
     log_path = setup_logging(output_path)
     max_samples = args.max_samples or 1000
 
@@ -254,7 +257,7 @@ def cmd_attention_entropy(args):
     logger.info("=" * 60)
 
     results = run_attention_analysis(
-        args.teacher, args.student, args.task,
+        args.model, args.reference, args.task,
         args.device, max_samples
     )
 
@@ -270,11 +273,11 @@ def cmd_disagreement(args):
     """Run prediction disagreement analysis."""
     from workbench.disagreement import run_disagreement_analysis
 
-    if not args.student:
-        logger.error("Disagreement analysis requires --student checkpoint")
+    if not args.reference:
+        logger.error("Disagreement analysis requires --reference model")
         sys.exit(1)
 
-    output_path = args.output or get_default_output("disagreement", args.task, args.student, args.run_name, args.timestamp, args.force)
+    output_path = args.output or get_default_output("disagreement", args.task, args.model, args.run_name, args.timestamp, args.force)
     log_path = setup_logging(output_path)
     max_samples = args.max_samples  # default: full dataset
 
@@ -283,7 +286,7 @@ def cmd_disagreement(args):
     logger.info("=" * 60)
 
     results = run_disagreement_analysis(
-        args.teacher, args.student, args.task,
+        args.model, args.reference, args.task,
         args.device, max_samples
     )
 
@@ -301,23 +304,23 @@ def print_attention_summary(results: dict):
     print("ATTENTION ENTROPY")
     print("=" * 60)
 
-    print(f"\nTeacher ({results['teacher']['model']}):")
-    print(f"  Mean entropy: {results['teacher']['mean_entropy']:.3f}")
-    for layer, stats in results['teacher']['layer_stats'].items():
+    print(f"\nModel ({results['model']['model']}):")
+    print(f"  Mean entropy: {results['model']['mean_entropy']:.3f}")
+    for layer, stats in results['model']['layer_stats'].items():
         print(f"  {layer}: {stats['mean_entropy']:.3f}")
 
-    print(f"\nStudent ({results['student']['model']}):")
-    print(f"  Mean entropy: {results['student']['mean_entropy']:.3f}")
-    for layer, stats in results['student']['layer_stats'].items():
+    print(f"\nReference ({results['reference']['model']}):")
+    print(f"  Mean entropy: {results['reference']['mean_entropy']:.3f}")
+    for layer, stats in results['reference']['layer_stats'].items():
         print(f"  {layer}: {stats['mean_entropy']:.3f}")
 
     print(f"\nComparison:")
-    print(f"  Entropy ratio (S/T): {results['comparison']['entropy_ratio']:.3f}")
+    print(f"  Entropy ratio (M/R): {results['comparison']['entropy_ratio']:.3f}")
     print(f"\n  Layer mapping:")
-    for s_layer, comp in results['comparison']['layer_mapping'].items():
+    for m_layer, comp in results['comparison']['layer_mapping'].items():
         ratio = comp['ratio']
-        indicator = "↑" if ratio > 1.05 else "↓" if ratio < 0.95 else "≈"
-        print(f"    {s_layer} -> {comp['teacher_layer']}: {ratio:.2f} {indicator}")
+        indicator = "\u2191" if ratio > 1.05 else "\u2193" if ratio < 0.95 else "\u2248"
+        print(f"    {m_layer} -> {comp['reference_layer']}: {ratio:.2f} {indicator}")
 
 
 def print_disagreement_summary(results: dict):
@@ -330,30 +333,30 @@ def print_disagreement_summary(results: dict):
     print(f"\nSamples analyzed: {dis['total_samples']}")
 
     print(f"\nAccuracy:")
-    print(f"  Teacher: {dis['accuracy']['teacher']:.2%}")
-    print(f"  Student: {dis['accuracy']['student']:.2%}")
+    print(f"  Model: {dis['accuracy']['model']:.2%}")
+    print(f"  Reference: {dis['accuracy']['reference']:.2%}")
 
     print(f"\nAgreement/Disagreement:")
     print(f"  Agree: {dis['agreement']['agree']} ({dis['agreement']['agree_pct']:.1%})")
     print(f"    Both correct: {dis['agreement']['agree_and_correct']} ({dis['agreement']['agree_and_correct_pct']:.1%})")
     print(f"    Both wrong: {dis['agreement']['agree_and_wrong']} ({dis['agreement']['agree_and_wrong_pct']:.1%})")
     print(f"  Disagree: {dis['disagreement']['disagree']} ({dis['disagreement']['disagree_pct']:.1%})")
-    print(f"    Teacher only correct: {dis['disagreement']['teacher_only_correct']} ({dis['disagreement']['teacher_only_correct_pct']:.1%})")
-    print(f"    Student only correct: {dis['disagreement']['student_only_correct']} ({dis['disagreement']['student_only_correct_pct']:.1%})")
+    print(f"    Model only correct: {dis['disagreement']['model_only_correct']} ({dis['disagreement']['model_only_correct_pct']:.1%})")
+    print(f"    Reference only correct: {dis['disagreement']['reference_only_correct']} ({dis['disagreement']['reference_only_correct_pct']:.1%})")
 
     print(f"\nConfidence (mean):")
-    print(f"  Teacher: {dis['confidence']['teacher_mean']:.3f}")
-    print(f"  Student: {dis['confidence']['student_mean']:.3f}")
-    print(f"  Teacher when wrong: {dis['confidence']['teacher_when_wrong']:.3f}")
-    print(f"  Student when wrong: {dis['confidence']['student_when_wrong']:.3f}")
+    print(f"  Model: {dis['confidence']['model_mean']:.3f}")
+    print(f"  Reference: {dis['confidence']['reference_mean']:.3f}")
+    print(f"  Model when wrong: {dis['confidence']['model_when_wrong']:.3f}")
+    print(f"  Reference when wrong: {dis['confidence']['reference_when_wrong']:.3f}")
 
     print(f"\nPer-class disagreement rate:")
     for class_name, stats in dis.get("per_class_disagreement", {}).items():
-        print(f"  {class_name}: {stats['disagree_pct']:.1%} (T:{stats['teacher_acc']:.1%} S:{stats['student_acc']:.1%})")
+        print(f"  {class_name}: {stats['disagree_pct']:.1%} (M:{stats['model_acc']:.1%} R:{stats['reference_acc']:.1%})")
 
     # Per-class accuracy breakdown
     print(f"\nPer-class accuracy breakdown:")
-    for model_key in ["teacher", "student"]:
+    for model_key in ["model", "reference"]:
         model_data = results[model_key]["per_class"]
         print(f"\n  {model_key.capitalize()} ({model_data['model']}):")
         for class_name, stats in model_data["per_class"].items():
@@ -365,15 +368,15 @@ ANALYSES = ["probe", "cka", "attention-entropy", "disagreement"]
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Workbench for distillation analysis",
+        description="Workbench for model analysis",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     # Shared model/task args
-    parser.add_argument("--teacher", type=str, required=True,
-                        help="Teacher model (HuggingFace name or path)")
-    parser.add_argument("--student", type=str, default=None,
-                        help="Student model checkpoint path")
+    parser.add_argument("--model", type=str, required=True,
+                        help="Model to analyze (HuggingFace name or checkpoint path)")
+    parser.add_argument("--reference", type=str, default=None,
+                        help="Reference model for comparison (optional for probe, required for others)")
     parser.add_argument("--task", type=str, default="mnli",
                         choices=["mnli", "qqp", "sst2", "cola"])
     parser.add_argument("--device", type=str,

@@ -1,6 +1,6 @@
 # Training: Projections
 
-Dimension alignment modules for Feature distillation when teacher and student have different hidden sizes.
+Dimension alignment modules for Feature distillation when teacher and model have different hidden sizes.
 
 **Source:** `src/training/projections.py` (~196 lines)
 
@@ -8,7 +8,7 @@ Dimension alignment modules for Feature distillation when teacher and student ha
 
 ## Overview
 
-When the teacher's hidden dimension differs from the student's (e.g., BERT-large 1024 to DistilBERT 768), a projection module aligns dimensions before computing Feature loss. The projector is a learnable component trained during distillation.
+When the teacher's hidden dimension differs from the model's (e.g., BERT-large 1024 to DistilBERT 768), a projection module aligns dimensions before computing Feature loss. The projector is a learnable component trained during distillation.
 
 ---
 
@@ -16,7 +16,7 @@ When the teacher's hidden dimension differs from the student's (e.g., BERT-large
 
 ### IdentityProjection
 
-No-op pass-through. Used when teacher and student have matching dimensions.
+No-op pass-through. Used when teacher and model have matching dimensions.
 
 ```python
 class IdentityProjection:
@@ -30,7 +30,7 @@ Not an `nn.Module` - has no parameters, no computation. Provides a consistent in
 
 ### LinearProjection (nn.Module)
 
-Single linear layer: `teacher_dim -> student_dim`.
+Single linear layer: `teacher_dim -> model_dim`.
 
 ```python
 class LinearProjection(nn.Module):
@@ -42,7 +42,7 @@ class LinearProjection(nn.Module):
         return self.proj(x)
 ```
 
-Learnable, trained alongside the student during distillation. The dtype cast handles fp16 training where the input may be fp16 but the projector weights are fp32.
+Learnable, trained alongside the model during distillation. The dtype cast handles fp16 training where the input may be fp16 but the projector weights are fp32.
 
 **Example use case:** BERT-large (1024) to DistilBERT (768) - linear projection down.
 
@@ -61,7 +61,7 @@ class MLPProjection(nn.Module):
         )
 ```
 
-More expressive than linear projection. The hidden layer lets the projection learn a nonlinear transformation between teacher and student representation spaces.
+More expressive than linear projection. The hidden layer lets the projection learn a nonlinear transformation between teacher and model representation spaces.
 
 **Default hidden_dim:** average of input and output dims, e.g., (1024 + 768) / 2 = 896.
 
@@ -83,14 +83,14 @@ PROJECTION_REGISTRY = {
 
 Creates a projection by name. `input_dim` and `output_dim` are required for `linear` and `mlp`.
 
-### `create_projection_if_needed(teacher_dim, student_dim, projection_type, **kwargs)`
+### `create_projection_if_needed(teacher_dim, model_dim, projection_type, **kwargs)`
 
 Convenience function that automatically selects `IdentityProjection` if dims match, otherwise creates the specified projection type. This is the primary API used by `DistillationTrainer.setup_from_config()`.
 
 ```python
 # In setup_from_config:
-if teacher_dim != student_dim or projection_config.get("force", False):
-    projector = create_projection_if_needed(teacher_dim, student_dim, proj_type, ...)
+if teacher_dim != model_dim or projection_config.get("force", False):
+    projector = create_projection_if_needed(teacher_dim, model_dim, proj_type, ...)
 ```
 
 The `force` config option creates a projection even when dimensions match (e.g., for experiments testing whether a learnable projection layer helps even with same-dim models).
@@ -99,10 +99,10 @@ The `force` config option creates a projection even when dimensions match (e.g.,
 
 ## Device and Dtype Placement
 
-After creation, the projector is moved to the student's device and dtype:
+After creation, the projector is moved to the model's device and dtype:
 
 ```python
-projector = projector.to(device=student_model.device, dtype=student_model.dtype)
+projector = projector.to(device=model.device, dtype=model.dtype)
 ```
 
 Both `LinearProjection` and `MLPProjection` handle dtype casting in their `forward()` methods, casting input to match projector weight dtype. This handles the case where model hidden states are fp16 but the projector was initialized in fp32.

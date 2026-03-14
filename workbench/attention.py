@@ -1,4 +1,4 @@
-"""Attention analysis for comparing teacher-student attention patterns."""
+"""Attention analysis for comparing attention patterns between models."""
 
 import logging
 from typing import Optional
@@ -75,18 +75,18 @@ def compute_layer_entropy_stats(layer_attentions: dict, attention_mask: np.ndarr
 
 
 def run_attention_analysis(
-    teacher_model: str,
-    student_model: str,
+    model_name: str,
+    reference_model: str,
     task: str = "mnli",
     device: str = "cuda",
     max_samples: Optional[int] = 1000,
 ) -> dict:
     """
-    Run attention entropy analysis comparing teacher and student.
+    Run attention entropy analysis comparing two models.
 
     Args:
-        teacher_model: Teacher model path or HF name
-        student_model: Student model checkpoint path
+        model_name: Model checkpoint path
+        reference_model: Reference model path or HF name
         task: Task name
         device: Device to use
         max_samples: Max samples for analysis
@@ -95,65 +95,65 @@ def run_attention_analysis(
         Dict with attention analysis results
     """
     logger.info("Loading models...")
-    teacher, teacher_tok, teacher_layers = load_model(teacher_model, device)
-    student, student_tok, student_layers = load_model(student_model, device)
+    model, model_tok, model_layers = load_model(model_name, device)
+    ref, ref_tok, ref_layers = load_model(reference_model, device)
 
     logger.info("Loading data...")
     texts, labels, task_cfg = load_task_data(task, max_samples)
 
-    logger.info("Extracting teacher attention...")
-    teacher_attn, teacher_mask = extract_attention_weights(
-        teacher, teacher_tok, texts, device=device, batch_size=16
+    logger.info("Extracting model attention...")
+    model_attn, model_mask = extract_attention_weights(
+        model, model_tok, texts, device=device, batch_size=16
     )
 
-    logger.info("Extracting student attention...")
-    student_attn, student_mask = extract_attention_weights(
-        student, student_tok, texts, device=device, batch_size=16
+    logger.info("Extracting reference attention...")
+    ref_attn, ref_mask = extract_attention_weights(
+        ref, ref_tok, texts, device=device, batch_size=16
     )
 
     logger.info("Computing entropy statistics...")
-    teacher_stats = compute_layer_entropy_stats(teacher_attn, teacher_mask)
-    student_stats = compute_layer_entropy_stats(student_attn, student_mask)
+    model_stats = compute_layer_entropy_stats(model_attn, model_mask)
+    ref_stats = compute_layer_entropy_stats(ref_attn, ref_mask)
 
     # Compute summary metrics
-    teacher_mean_entropy = np.mean([s["mean_entropy"] for s in teacher_stats.values()])
-    student_mean_entropy = np.mean([s["mean_entropy"] for s in student_stats.values()])
+    model_mean_entropy = np.mean([s["mean_entropy"] for s in model_stats.values()])
+    ref_mean_entropy = np.mean([s["mean_entropy"] for s in ref_stats.values()])
 
-    # Layer-wise comparison (map student layers to teacher equivalents)
+    # Layer-wise comparison (map model layers to reference equivalents)
     layer_comparison = {}
-    layer_ratio = teacher_layers / student_layers
+    layer_ratio = ref_layers / model_layers
 
-    for s_layer in range(student_layers):
-        s_key = f"layer_{s_layer + 1}"
-        # Map to corresponding teacher layer (e.g., student 1 -> teacher 2)
-        t_layer = int((s_layer + 1) * layer_ratio) - 1
-        t_key = f"layer_{t_layer + 1}"
+    for m_layer in range(model_layers):
+        m_key = f"layer_{m_layer + 1}"
+        # Map to corresponding reference layer (e.g., model 1 -> reference 2)
+        r_layer = int((m_layer + 1) * layer_ratio) - 1
+        r_key = f"layer_{r_layer + 1}"
 
-        if s_key in student_stats and t_key in teacher_stats:
-            s_ent = student_stats[s_key]["mean_entropy"]
-            t_ent = teacher_stats[t_key]["mean_entropy"]
-            layer_comparison[s_key] = {
-                "student_entropy": s_ent,
-                "teacher_layer": t_key,
-                "teacher_entropy": t_ent,
-                "ratio": s_ent / t_ent if t_ent > 0 else 0,
+        if m_key in model_stats and r_key in ref_stats:
+            m_ent = model_stats[m_key]["mean_entropy"]
+            r_ent = ref_stats[r_key]["mean_entropy"]
+            layer_comparison[m_key] = {
+                "model_entropy": m_ent,
+                "reference_layer": r_key,
+                "reference_entropy": r_ent,
+                "ratio": m_ent / r_ent if r_ent > 0 else 0,
             }
 
     return {
-        "teacher": {
-            "model": teacher_model,
-            "layers": teacher_layers,
-            "mean_entropy": float(teacher_mean_entropy),
-            "layer_stats": teacher_stats,
+        "model": {
+            "model": model_name,
+            "layers": model_layers,
+            "mean_entropy": float(model_mean_entropy),
+            "layer_stats": model_stats,
         },
-        "student": {
-            "model": student_model,
-            "layers": student_layers,
-            "mean_entropy": float(student_mean_entropy),
-            "layer_stats": student_stats,
+        "reference": {
+            "model": reference_model,
+            "layers": ref_layers,
+            "mean_entropy": float(ref_mean_entropy),
+            "layer_stats": ref_stats,
         },
         "comparison": {
-            "entropy_ratio": float(student_mean_entropy / teacher_mean_entropy),
+            "entropy_ratio": float(model_mean_entropy / ref_mean_entropy),
             "layer_mapping": layer_comparison,
         },
         "samples": len(texts),

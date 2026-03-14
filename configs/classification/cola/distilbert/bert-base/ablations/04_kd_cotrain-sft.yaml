@@ -1,5 +1,5 @@
 # 04_cotrain_sft-teacher_kl: Co-training with fine-tuned teacher
-# Both teacher and student train together
+# Both teacher and model train together
 # Teacher starts from fine-tuned checkpoint and continues training
 
 inherit: base.yaml

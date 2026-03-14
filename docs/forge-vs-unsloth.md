@@ -5,7 +5,7 @@ Forge and [Unsloth](https://github.com/unslothai/unsloth) solve different proble
 | | **Forge** | **Unsloth** |
 |---|---|---|
 | **Goal** | Produce a smaller model that learns from a larger one | Make fine-tuning the same model faster |
-| **Method** | Knowledge distillation (teacher-student training) | Optimized CUDA kernels + memory tricks |
+| **Method** | Knowledge distillation (teacher-model training) | Optimized CUDA kernels + memory tricks |
 | **Output** | A different, smaller architecture (e.g., BERT → DistilBERT) | Same architecture with adapted weights |
 | **Model types** | Any HuggingFace pair (encoders, decoders) | Decoder-only LLMs (Llama, Mistral, Gemma) |
 | **Research question** | *What knowledge transfers and how?* | *How fast can we fine-tune?* |
@@ -24,4 +24,4 @@ Forge and [Unsloth](https://github.com/unslothai/unsloth) solve different proble
 - You're doing LoRA/QLoRA adaptation and want 2-5x speedups
 - You don't need a smaller architecture, just adapted weights
 
-**Using them together:** Unsloth can accelerate the student's training loop inside Forge. Load the student via `FastLanguageModel`, apply LoRA, and pass it to `DistillationTrainer` — you get Unsloth's speed optimizations with Forge's knowledge transfer signals. This is most useful for LLM-scale distillation (e.g., Llama-70B → Llama-3B).
+**Using them together:** Unsloth can accelerate the model's training loop inside Forge. Load the model via `FastLanguageModel`, apply LoRA, and pass it to `DistillationTrainer` - you get Unsloth's speed optimizations with Forge's knowledge transfer signals. This is most useful for LLM-scale distillation (e.g., Llama-70B → Llama-3B).

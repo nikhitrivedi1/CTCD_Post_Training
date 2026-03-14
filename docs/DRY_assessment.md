@@ -156,26 +156,9 @@ def _edit_similarity(a: str, b: str) -> float:
 
 ---
 
-## 8. Model Loading Dispatch Repeated 3 Times
+## 8. Model Loading Dispatch ~~Repeated 3 Times~~ FIXED
 
-**Files:** `src/models/loader.py`
-- `load_models()` lines 238-256 (student + teacher)
-- `load_models_from_checkpoint()` lines 301-306 (student), lines 320-325 (teacher)
-
-**Severity:** Medium
-
-The `if ocr: _load_vlm(...) elif translation: _load_causal_lm(...) else: _load_classifier(...)` dispatch appears three times.
-
-**Fix:** Extract a unified dispatcher:
-```python
-def _load_model(task_type: str, name: str, init: str, device: str, **kwargs):
-    if task_type == "ocr":
-        return _load_vlm(name, init, device, **kwargs)
-    elif task_type == "translation":
-        return _load_causal_lm(name, init, device, **kwargs)
-    else:
-        return _load_classifier(name, init, kwargs["num_labels"], device)
-```
+**Status:** Resolved. `load_model()` is now a single public function that handles task-type dispatch, checkpoint resolution, and optional LoRA. `load_models()` and `load_models_from_checkpoint()` were removed. Callers (forge.py, evaluate.py) handle composition.
 
 ---
 
@@ -518,9 +501,9 @@ def cmd_X(args):
     logger.info("=" * 60)
     logger.info("ANALYSIS NAME")
 
-    results["teacher"] = {"model": args.teacher, "data": run_X(...)}
-    if args.student:
-        results["student"] = {"model": args.student, "data": run_X(...)}
+    results["model"] = {"model": args.model, "data": run_X(...)}
+    if args.reference:
+        results["reference"] = {"model": args.reference, "data": run_X(...)}
         results["comparison"] = compare_X(...)
 
     with open(output_path, "w") as f:
@@ -662,7 +645,7 @@ When consolidating the GLUE loaders (#1), follow this same pattern: define a `GL
 
 ### F. `evaluate_models()` Consolidation
 
-`src/evaluation/evaluate.py:167-228` wraps the student/teacher eval loop into a single function with shared kwargs dict, avoiding duplicated `evaluate_model()` calls. The model loading dispatch (#8) should follow the same consolidation approach.
+`src/evaluation/evaluate.py:167-228` wraps the model/teacher eval loop into a single function with shared kwargs dict, avoiding duplicated `evaluate_model()` calls. The model loading dispatch (#8) should follow the same consolidation approach.
 
 ### G. Atomic File Operations
 

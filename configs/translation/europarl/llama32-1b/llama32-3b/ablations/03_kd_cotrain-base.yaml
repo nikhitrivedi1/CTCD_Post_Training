@@ -1,7 +1,7 @@
 # 03_cotrain_base-teacher_kl: Co-training with base (LM-pretrained) teacher
 # Teacher is Llama-3.2-3B (not instruction-tuned), learns during training
 # Both models improve together - Adaptive Teacher
-# Tests: Can an untrained teacher learn alongside the student?
+# Tests: Can an untrained teacher learn alongside the model?
 
 inherit: base.yaml
 

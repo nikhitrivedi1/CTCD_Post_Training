@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 from torch.utils.data import DataLoader
 
-from src.models import load_models, load_models_from_checkpoint
+from src.models import load_model
 from src.tasks import get_primary_metric
 
 logger = logging.getLogger(__name__)
@@ -124,7 +124,7 @@ def log_pre_post_metrics(
 
     Args:
         metrics: Dictionary of metrics
-        model_name: "teacher" or "student"
+        model_name: "teacher" or "model"
         phase: "pre" or "post"
         to_wandb: Whether to log to W&B
     """
@@ -165,7 +165,7 @@ def _remap_compute_metrics(compute_metrics, label_map: List[int]):
 
 
 def evaluate_models(
-    student: torch.nn.Module,
+    model: torch.nn.Module,
     teacher: Optional[torch.nn.Module],
     eval_dataset,
     tokenizer,
@@ -179,10 +179,10 @@ def evaluate_models(
     remove_unused_columns: bool = True,
 ) -> Tuple[Dict[str, float], Optional[Dict[str, float]]]:
     """
-    Evaluate student and teacher, logging metrics with the given phase prefix.
+    Evaluate model and teacher, logging metrics with the given phase prefix.
 
     Args:
-        student: Student model
+        model: Model to evaluate
         teacher: Teacher model (or None)
         eval_dataset: Evaluation dataset
         tokenizer: Tokenizer
@@ -196,7 +196,7 @@ def evaluate_models(
         remove_unused_columns: If False, keep all dataset columns (needed for VLM tasks)
 
     Returns:
-        Tuple of (student_metrics, teacher_metrics)
+        Tuple of (model_metrics, teacher_metrics)
     """
     eval_kwargs = dict(
         eval_dataset=eval_dataset,
@@ -209,9 +209,9 @@ def evaluate_models(
         remove_unused_columns=remove_unused_columns,
     )
 
-    logger.info(f"Evaluating student ({phase}-training)...")
-    student_metrics = evaluate_model(model=student, **eval_kwargs)
-    log_pre_post_metrics(student_metrics, "student", phase)
+    logger.info(f"Evaluating model ({phase}-training)...")
+    model_metrics = evaluate_model(model=model, **eval_kwargs)
+    log_pre_post_metrics(model_metrics, "model", phase)
 
     teacher_metrics = None
     if teacher is not None:
@@ -225,52 +225,52 @@ def evaluate_models(
         teacher_metrics = evaluate_model(model=teacher, **teacher_eval_kwargs)
         log_pre_post_metrics(teacher_metrics, "teacher", phase)
 
-    return student_metrics, teacher_metrics
+    return model_metrics, teacher_metrics
 
 
 def log_transfer_metrics(
     task: str,
-    student: Dict[str, float],
+    model: Dict[str, float],
     teacher: Optional[Dict[str, float]],
-    student_prev: Optional[Dict[str, float]] = None,
+    model_prev: Optional[Dict[str, float]] = None,
     teacher_prev: Optional[Dict[str, float]] = None,
 ) -> None:
     """
     Compute and log transfer metrics from evaluation results.
 
     Logs whatever it can from the available metrics:
-    - Teacher advantage (teacher - student gap)
-    - Student gain (current - previous)
+    - Teacher advantage (teacher - model gap)
+    - Model gain (current - previous)
     - Teacher gain (current - previous, co-training)
-    - Transfer efficiency (student gain / pre-training teacher advantage)
+    - Transfer efficiency (model gain / pre-training teacher advantage)
 
     Args:
         task: Task name (for primary metric lookup)
-        student: Current student metrics
+        model: Current model metrics
         teacher: Current teacher metrics (or None)
-        student_prev: Previous student metrics (or None)
+        model_prev: Previous model metrics (or None)
         teacher_prev: Previous teacher metrics (or None)
     """
     primary_metric = get_primary_metric(task) or "loss"
     metrics = {}
 
-    # Teacher-student gap at this point
-    if teacher is not None and primary_metric in teacher and primary_metric in student:
-        gap = teacher[primary_metric] - student[primary_metric]
+    # Teacher-model gap at this point
+    if teacher is not None and primary_metric in teacher and primary_metric in model:
+        gap = teacher[primary_metric] - model[primary_metric]
         metrics["transfer/teacher_advantage"] = gap
         logger.info(f"  Teacher advantage ({primary_metric}): {gap:+.4f}")
 
-    # Student gain (requires previous)
-    if student_prev is not None and primary_metric in student and primary_metric in student_prev:
-        student_gain = student[primary_metric] - student_prev[primary_metric]
-        metrics["transfer/student_gain"] = student_gain
-        logger.info(f"  Student gain ({primary_metric}): {student_gain:+.4f}")
+    # Model gain (requires previous)
+    if model_prev is not None and primary_metric in model and primary_metric in model_prev:
+        model_gain = model[primary_metric] - model_prev[primary_metric]
+        metrics["transfer/model_gain"] = model_gain
+        logger.info(f"  Model gain ({primary_metric}): {model_gain:+.4f}")
 
-        # Transfer efficiency (student gain / pre-training teacher advantage)
-        if teacher_prev is not None and primary_metric in teacher_prev and primary_metric in student_prev:
-            teacher_advantage_pre = teacher_prev[primary_metric] - student_prev[primary_metric]
+        # Transfer efficiency (model gain / pre-training teacher advantage)
+        if teacher_prev is not None and primary_metric in teacher_prev and primary_metric in model_prev:
+            teacher_advantage_pre = teacher_prev[primary_metric] - model_prev[primary_metric]
             if abs(teacher_advantage_pre) > 1e-6:
-                efficiency = student_gain / teacher_advantage_pre
+                efficiency = model_gain / teacher_advantage_pre
                 metrics["transfer/efficiency"] = efficiency
                 logger.info(f"  Transfer efficiency: {efficiency:.2%}")
 
@@ -322,33 +322,50 @@ def run_evaluation(
         phase: "pre" or "post"
         checkpoint_dir: If provided, load models from checkpoint instead of config
         evaluate_teacher: Whether to evaluate the teacher model
-        prev_metrics: Previous (student_metrics, teacher_metrics) for gain computation
+        prev_metrics: Previous (model_metrics, teacher_metrics) for gain computation
         remove_unused_columns: If False, keep all dataset columns (needed for VLM tasks)
 
     Returns:
-        Tuple of (student_metrics, teacher_metrics)
+        Tuple of (model_metrics, teacher_metrics)
     """
     logger.info("=" * 60)
     logger.info(f"{'Pre' if phase == 'pre' else 'Post'}-training evaluation{' (baselines)' if phase == 'pre' else ''}...")
     logger.info("=" * 60)
 
-    # Load models
-    if checkpoint_dir is not None:
-        teacher, student = load_models_from_checkpoint(
-            checkpoint_dir, config, device, tokenizer, num_labels,
-        )
-    else:
-        teacher, student = load_models(config, device, tokenizer, num_labels)
+    from pathlib import Path
 
-    # Skip teacher eval if not requested
-    teacher_for_eval = teacher if evaluate_teacher else None
+    # Load model
+    if checkpoint_dir is not None:
+        model = load_model(str(checkpoint_dir), task, device,
+                           tokenizer=tokenizer, num_labels=num_labels)
+    else:
+        lora_config = config["training"]["lora"] if config.get("training", {}).get("use_lora") else None
+        model = load_model(config["model"]["name"], task, device,
+                           init=config["model"].get("init", "pretrained"),
+                           tokenizer=tokenizer, num_labels=num_labels,
+                           lora_config=lora_config)
+
+    # Load teacher (if applicable)
+    teacher_for_eval = None
+    if evaluate_teacher:
+        teacher_cfg = config["model"].get("teacher", {})
+        teacher_name = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
+        alpha = config.get("distillation", {}).get("alpha", 0.5)
+        if teacher_name and alpha > 0.0:
+            if checkpoint_dir is not None:
+                teacher_path = Path(checkpoint_dir) / "teacher"
+                teacher_src = str(teacher_path) if teacher_path.exists() else teacher_name
+            else:
+                teacher_src = teacher_name
+            teacher_for_eval = load_model(teacher_src, task, device,
+                                          tokenizer=tokenizer, num_labels=num_labels)
 
     eval_batch_size = config["training"].get("eval_batch_size", config["training"]["batch_size"])
     loss_only = num_labels is None
     teacher_label_map = config.get("distillation", {}).get("teacher_label_map")
 
-    student_metrics, teacher_metrics = evaluate_models(
-        student=student,
+    model_metrics, teacher_metrics = evaluate_models(
+        model=model,
         teacher=teacher_for_eval,
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
@@ -364,10 +381,10 @@ def run_evaluation(
 
     # Log transfer metrics if previous metrics provided
     if prev_metrics is not None:
-        student_prev, teacher_prev = prev_metrics
+        model_prev, teacher_prev = prev_metrics
         log_transfer_metrics(
-            task, student_metrics, teacher_metrics,
-            student_prev=student_prev, teacher_prev=teacher_prev,
+            task, model_metrics, teacher_metrics,
+            model_prev=model_prev, teacher_prev=teacher_prev,
         )
 
-    return student_metrics, teacher_metrics
+    return model_metrics, teacher_metrics

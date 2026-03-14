@@ -90,35 +90,21 @@ Student: Qwen3-VL-2B-Instruct (2.1M trainable / 2247.0M total)
 
 ---
 
-## Compositions (Teacher-Student Pairs)
+## Public API
 
-### `load_models(config, device, tokenizer, num_labels=None)`
+### `load_model(name, task, device, *, init, tokenizer, num_labels, eager, lora_config)`
 
-The main model loading function. Routes to appropriate primitives based on task type.
-
-**Returns:** `(teacher, student)` where teacher is `None` for CE-only baselines.
-
-**Teacher skip conditions:**
-- `teacher.name` not set in config
-- `distillation.alpha == 0.0` (CE-only mode)
+Load a single model, routing by task type. Tries local checkpoint first (merged or adapter-only), falls back to Hub.
 
 **Task routing:**
 
-| Task Type | Student Loader | Teacher Loader | LoRA |
-|-----------|---------------|----------------|------|
-| Classification | `_load_classifier` | `_load_classifier` | No |
-| Translation | `_load_causal_lm` | `_load_causal_lm` | Config-driven |
-| OCR | `_load_vlm` | `_load_vlm` | Config-driven |
+| Task Type | Loader | LoRA |
+|-----------|--------|------|
+| Classification | `_load_classifier` | No |
+| Translation | `_load_causal_lm` | Config-driven |
+| OCR | `_load_vlm` | Config-driven |
 
-### `load_models_from_checkpoint(checkpoint_dir, config, device, tokenizer, num_labels=None)`
-
-Loads models from a training checkpoint for resume or post-training evaluation.
-
-**Student:** loaded from `checkpoint_dir` (the checkpoint directory itself contains the model).
-
-**Teacher:**
-- If `checkpoint_dir/teacher/` exists: load co-trained teacher from there (weights changed during training)
-- Otherwise: reload frozen teacher from original HuggingFace model ID (weights haven't changed)
+Callers (forge.py, evaluate.py) handle composition: loading the model, then optionally loading a teacher.
 
 ---
 
@@ -126,7 +112,7 @@ Loads models from a training checkpoint for resume or post-training evaluation.
 
 ```yaml
 model:
-  name: distilbert-base-uncased     # Student model ID
+  name: distilbert-base-uncased     # Model ID
   init: pretrained                   # pretrained or fresh
   processor: Qwen/Qwen3-VL-2B-Instruct  # For VLMs (if different from model name)
   teacher:

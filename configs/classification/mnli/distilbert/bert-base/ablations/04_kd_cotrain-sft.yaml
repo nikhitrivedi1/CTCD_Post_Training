@@ -1,5 +1,5 @@
 # 04_cotrain_sft-teacher_kl: Co-training with SFT (task-trained) teacher, KL loss
-# Teacher starts MNLI-trained, continues learning alongside student
+# Teacher starts MNLI-trained, continues learning alongside model
 # Tests: Does continued teacher training help when teacher already knows task?
 # Expected: ~82-83% (may slightly improve or match frozen SFT)
 

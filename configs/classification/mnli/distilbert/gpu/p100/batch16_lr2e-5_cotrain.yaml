@@ -1,4 +1,4 @@
-# BERT → DistilBERT on MNLI - Co-training (Teacher trains with student)
+# BERT → DistilBERT on MNLI - Co-training (Teacher trains with model)
 # Batch size: 16, LR: 2e-5
 # Expected accuracy: ~82% (matching paper results)
 

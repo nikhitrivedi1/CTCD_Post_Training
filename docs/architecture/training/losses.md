@@ -33,8 +33,8 @@ class DistillationLossStrategy(ABC):
     requires_attentions: bool = False     # Set True for Attention losses
 
     @abstractmethod
-    def compute(self, student_logits, teacher_logits, ce_loss, labels=None,
-                student_outputs=None, teacher_outputs=None, **kwargs) -> LossOutput
+    def compute(self, model_logits, teacher_logits, ce_loss, labels=None,
+                model_outputs=None, teacher_outputs=None, **kwargs) -> LossOutput
 
     @property
     @abstractmethod
@@ -46,14 +46,14 @@ The `requires_*` flags tell the trainer to pass `output_hidden_states=True` or `
 ### compute_kl_divergence (helper)
 
 ```python
-def compute_kl_divergence(student, teacher, temperature, input_is_probs=False, reverse=False)
+def compute_kl_divergence(model, teacher, temperature, input_is_probs=False, reverse=False)
 ```
 
 Core KL computation used by multiple strategies. Key details:
 - **Computes in fp32** to avoid underflow with high temperatures (fp16 `softmax(logits/T)` can underflow when T is large)
 - **T^2 scaling** maintains gradient magnitude across different temperatures (Hinton et al. 2015)
-- **Forward KL** (`reverse=False`): `KL(teacher || student)` - mean-seeking, student covers all teacher modes
-- **Reverse KL** (`reverse=True`): `KL(student || teacher)` - mode-seeking, student picks dominant modes (MiniLLM, Gu et al. 2024)
+- **Forward KL** (`reverse=False`): `KL(teacher || model)` - mean-seeking, model covers all teacher modes
+- **Reverse KL** (`reverse=True`): `KL(model || teacher)` - mode-seeking, model picks dominant modes (MiniLLM, Gu et al. 2024)
 - **Probability inputs** (`input_is_probs=True`): for attention weights, converts probs to logits first via `log(probs + eps)`
 
 ---
@@ -82,7 +82,7 @@ Logged components: `ce_weighted`, `kl_weighted`, `ce_raw`, `kl_raw`, `alpha`
 ### MSEDistillationLoss
 
 ```
-Loss = (1 - alpha) * CE + alpha * MSE(student_logits, teacher_logits)
+Loss = (1 - alpha) * CE + alpha * MSE(model_logits, teacher_logits)
 ```
 
 **Name:** `response_mse`
@@ -98,12 +98,12 @@ Logged components: `ce_weighted`, `mse_weighted`, `ce_raw`, `mse_raw`, `alpha`
 ### CosineDistillationLoss
 
 ```
-Loss = (1 - alpha) * CE + alpha * (1 - cosine_sim(student, teacher))
+Loss = (1 - alpha) * CE + alpha * (1 - cosine_sim(model, teacher))
 ```
 
 **Name:** `response_cosine`
 
-Focuses on the direction of output vectors, ignoring magnitude. Useful when teacher and student have different logit scales.
+Focuses on the direction of output vectors, ignoring magnitude. Useful when teacher and model have different logit scales.
 
 Parameters:
 - `alpha` (float, default 0.5)
@@ -111,7 +111,7 @@ Parameters:
 ### SoftTargetDistillationLoss
 
 ```
-Loss = (1 - alpha) * CE_hard + alpha * T^2 * CE(student/T, softmax(teacher/T))
+Loss = (1 - alpha) * CE_hard + alpha * T^2 * CE(model/T, softmax(teacher/T))
 ```
 
 **Name:** `response_ce`
@@ -133,14 +133,14 @@ These operate on hidden states from intermediate layers. Require `output_hidden_
 ### FeatureLossStrategy
 
 ```
-Loss = (1 - alpha) * CE + alpha * mean(MSE(proj(student_hidden_i), teacher_hidden_j))
+Loss = (1 - alpha) * CE + alpha * mean(MSE(proj(model_hidden_i), teacher_hidden_j))
 ```
 
 **Name:** `feature_mse`
 
-FitNets-style hidden state matching (Romero et al. 2015). For each mapped layer pair (teacher_j, student_i):
+FitNets-style hidden state matching (Romero et al. 2015). For each mapped layer pair (teacher_j, model_i):
 1. Get hidden states: `(batch, seq_len, hidden_dim)`
-2. Project student if dimensions differ via `projector(student_hidden)`
+2. Project model if dimensions differ via `projector(model_hidden)`
 3. Align dtypes (projector may output fp32 while teacher is fp16)
 4. Optionally normalize both (z-score) before comparison
 5. Compute MSE loss
@@ -158,7 +158,7 @@ Logged components: `ce_weighted`, `feature_weighted`, `ce_raw`, `feature_raw`, `
 ### CosineFeatureLoss
 
 ```
-Loss = (1 - alpha) * CE + alpha * mean(1 - cosine_sim(student_hidden_i, teacher_hidden_j))
+Loss = (1 - alpha) * CE + alpha * mean(1 - cosine_sim(model_hidden_i, teacher_hidden_j))
 ```
 
 **Name:** `feature_cosine`
@@ -182,12 +182,12 @@ These operate on attention weight matrices. Require `output_attentions=True`, wh
 ### AttentionLossStrategy
 
 ```
-Loss = (1 - alpha) * CE + alpha * mean(KL(student_attn_i || teacher_attn_j))
+Loss = (1 - alpha) * CE + alpha * mean(KL(model_attn_i || teacher_attn_j))
 ```
 
 **Name:** `attention_kl`
 
-Transfers attention patterns from teacher to student (Zagoruyko & Komodakis 2017). For each mapped layer pair:
+Transfers attention patterns from teacher to model (Zagoruyko & Komodakis 2017). For each mapped layer pair:
 1. Get attention weights: `(batch, num_heads, seq_len, seq_len)`
 2. Handle different head counts by averaging both to single head
 3. Flatten to `(N, seq_len)` for KL computation
@@ -198,7 +198,7 @@ Parameters:
 - `layer_mapping` (list of tuples)
 - `temperature` (float, default 1.0)
 
-**Important:** Attention distillation requires `attn_implementation="eager"` for both teacher and student. SDPA fuses attention internally and never materializes the attention weight matrix.
+**Important:** Attention distillation requires `attn_implementation="eager"` for both teacher and model. SDPA fuses attention internally and never materializes the attention weight matrix.
 
 ---
 

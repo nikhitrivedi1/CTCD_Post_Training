@@ -208,7 +208,7 @@ def push_model(model_dir, org, private=True, include_resume=False, dry_run=False
         include_resume: Whether to include optimizer/scheduler state for full resume.
         dry_run: If True, only print what would be uploaded.
         repo_name: Override auto-derived repo name.
-        prefix: Upload files under this subdirectory in the repo (e.g., "student").
+        prefix: Upload files under this subdirectory in the repo (e.g., "model").
     """
     model_dir = Path(model_dir).resolve()
     _ensure_base_ref(model_dir)
@@ -447,7 +447,7 @@ def main():
     parser.add_argument(
         "--prefix",
         default=None,
-        help="Upload files under this subdirectory (e.g., 'student')",
+        help="Upload files under this subdirectory (e.g., 'model')",
     )
     parser.add_argument(
         "--repair",

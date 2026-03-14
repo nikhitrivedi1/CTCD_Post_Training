@@ -42,47 +42,47 @@ def compute_cka(X: np.ndarray, Y: np.ndarray) -> float:
 
 
 def compute_cka_matrix(
-    teacher_hiddens: dict,
-    student_hiddens: dict,
+    model_hiddens: dict,
+    reference_hiddens: dict,
 ) -> np.ndarray:
     """
-    Compute CKA similarity matrix between all teacher and student layers.
+    Compute CKA similarity matrix between all model and reference layers.
 
     Args:
-        teacher_hiddens: Dict of layer_idx -> representations
-        student_hiddens: Dict of layer_idx -> representations
+        model_hiddens: Dict of layer_idx -> representations
+        reference_hiddens: Dict of layer_idx -> representations
 
     Returns:
-        CKA matrix [student_layers, teacher_layers]
+        CKA matrix [model_layers, reference_layers]
     """
-    student_layers = sorted(student_hiddens.keys())
-    teacher_layers = sorted(teacher_hiddens.keys())
+    model_layers = sorted(model_hiddens.keys())
+    ref_layers = sorted(reference_hiddens.keys())
 
-    cka_matrix = np.zeros((len(student_layers), len(teacher_layers)))
+    cka_matrix = np.zeros((len(model_layers), len(ref_layers)))
 
-    for i, s_layer in enumerate(student_layers):
-        for j, t_layer in enumerate(teacher_layers):
+    for i, m_layer in enumerate(model_layers):
+        for j, r_layer in enumerate(ref_layers):
             cka_matrix[i, j] = compute_cka(
-                student_hiddens[s_layer],
-                teacher_hiddens[t_layer]
+                model_hiddens[m_layer],
+                reference_hiddens[r_layer]
             )
 
     return cka_matrix
 
 
 def run_cka(
-    teacher_path: str,
-    student_path: str,
+    model_path: str,
+    reference_path: str,
     task: str,
     device: str = "cuda",
     max_samples: int = 1000,
 ):
     """
-    Run CKA analysis comparing teacher and student representations.
+    Run CKA analysis comparing model and reference representations.
 
     Args:
-        teacher_path: Path to teacher model
-        student_path: Path to student model
+        model_path: Path to model
+        reference_path: Path to reference model
         task: Task name
         device: Device
         max_samples: Max samples (CKA is O(N^2), keep small)
@@ -90,41 +90,41 @@ def run_cka(
     Returns:
         Dict with CKA matrix and metadata
     """
-    logger.info(f"Loading teacher: {teacher_path}")
-    teacher_model, teacher_tok, teacher_layers = load_model(teacher_path, device)
+    logger.info(f"Loading model: {model_path}")
+    model, model_tok, model_layers = load_model(model_path, device)
 
-    logger.info(f"Loading student: {student_path}")
-    student_model, student_tok, student_layers = load_model(student_path, device)
+    logger.info(f"Loading reference: {reference_path}")
+    ref_model, ref_tok, ref_layers = load_model(reference_path, device)
 
     texts, _, _ = load_task_data(task, max_samples)
 
-    logger.info("Extracting teacher hidden states...")
-    teacher_hiddens = extract_hidden_states(
-        teacher_model, teacher_tok, texts, device=device
+    logger.info("Extracting model hidden states...")
+    model_hiddens = extract_hidden_states(
+        model, model_tok, texts, device=device
     )
 
-    logger.info("Extracting student hidden states...")
-    student_hiddens = extract_hidden_states(
-        student_model, student_tok, texts, device=device
+    logger.info("Extracting reference hidden states...")
+    ref_hiddens = extract_hidden_states(
+        ref_model, ref_tok, texts, device=device
     )
 
     logger.info("Computing CKA matrix...")
-    cka_matrix = compute_cka_matrix(teacher_hiddens, student_hiddens)
+    cka_matrix = compute_cka_matrix(model_hiddens, ref_hiddens)
 
-    # Find best alignment for each student layer
+    # Find best alignment for each model layer
     best_alignment = {}
-    for s_idx in range(cka_matrix.shape[0]):
-        t_idx = np.argmax(cka_matrix[s_idx])
-        s_name = "embeddings" if s_idx == 0 else f"layer_{s_idx}"
-        t_name = "embeddings" if t_idx == 0 else f"layer_{t_idx}"
-        best_alignment[s_name] = {
-            "teacher_layer": t_name,
-            "cka_score": float(cka_matrix[s_idx, t_idx])
+    for m_idx in range(cka_matrix.shape[0]):
+        r_idx = np.argmax(cka_matrix[m_idx])
+        m_name = "embeddings" if m_idx == 0 else f"layer_{m_idx}"
+        r_name = "embeddings" if r_idx == 0 else f"layer_{r_idx}"
+        best_alignment[m_name] = {
+            "reference_layer": r_name,
+            "cka_score": float(cka_matrix[m_idx, r_idx])
         }
 
     return {
         "cka_matrix": cka_matrix.tolist(),
-        "student_layers": student_layers + 1,  # +1 for embeddings
-        "teacher_layers": teacher_layers + 1,
+        "model_layers": model_layers + 1,  # +1 for embeddings
+        "reference_layers": ref_layers + 1,
         "best_alignment": best_alignment,
     }

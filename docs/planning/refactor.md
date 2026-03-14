@@ -274,7 +274,7 @@ not inherited methods.
 - Extends `trl.GRPOTrainer` (separate branch from FinetuningTrainer)
 - Reward function dispatch (teacher logprob, verifiable check, judge LLM)
 - KL penalty against reference policy
-- Can load teacher as reward model (reuses `load_models()` utility)
+- Can load teacher as reward model (reuses `load_model()` utility)
 - Eval hooks called via shared utility function (not inherited from FinetuningTrainer)
 
 ### Config Schema

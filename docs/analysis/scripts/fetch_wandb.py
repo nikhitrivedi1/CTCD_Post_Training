@@ -25,9 +25,9 @@ def _get_teacher_name(config: dict) -> str | None:
 
 
 def _get_model_name(config: dict) -> str | None:
-    """Extract primary model name from config (handles old and new schema)."""
+    """Extract primary model name from config."""
     model = config.get("model", {})
-    return model.get("name") or model.get("student")
+    return model.get("name")
 
 
 def _get_freeze_teacher(config: dict) -> bool | None:
@@ -80,7 +80,7 @@ def fetch_runs(
             # Config
             "task": run.config.get("data", {}).get("task"),
             "teacher": _get_teacher_name(run.config),
-            "student": _get_model_name(run.config),
+            "model": _get_model_name(run.config),
             "alpha": run.config.get("distillation", {}).get("alpha"),
             "temperature": run.config.get("distillation", {}).get("temperature"),
             "freeze_teacher": _get_freeze_teacher(run.config),

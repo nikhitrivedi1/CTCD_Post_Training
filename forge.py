@@ -96,7 +96,7 @@ from src.data.formatters import format_for_sft, format_for_rl
 from src.data.collators import VLMDataCollator
 from src.evaluation import get_compute_metrics, run_evaluation
 from src.tasks import get_num_labels, get_primary_metric, get_task_type, is_ocr_task
-from src.models import load_models
+from src.models import load_model, needs_attention_outputs
 from src.training.callbacks import (
     SLURMSignalCallback, CheckpointMarkerCallback, StepMetricsCallback,
     TeacherEvalCallback, TranslationMetricsCallback, PeakMetricsCallback,
@@ -142,8 +142,8 @@ def _build_handler_kwargs(config: dict, dataset_name: str) -> dict:
 
 def create_loss_strategy_from_config(
     distill_config: dict,
+    model,
     teacher_model,
-    student_model,
     device: str,
 ):
     """
@@ -230,23 +230,23 @@ def create_loss_strategy_from_config(
 
         # Get layer counts from model configs
         teacher_layers = getattr(teacher_model.config, "num_hidden_layers", 12)
-        student_layers = getattr(student_model.config, "num_hidden_layers", 6)
+        model_layers = getattr(model.config, "num_hidden_layers", 6)
 
         if mapping_type == "custom" and "mapping" in layer_mapping_config:
             # Explicit mapping provided
             layer_mapping = [
-                (pair["teacher"], pair["student"])
+                (pair["teacher"], pair["model"])
                 for pair in layer_mapping_config["mapping"]
             ]
         else:
             # Use a mapping strategy
             mapper = get_layer_mapping(mapping_type)
-            if not mapper.validate(teacher_layers, student_layers):
+            if not mapper.validate(teacher_layers, model_layers):
                 raise ValueError(
                     f"Invalid layer mapping '{mapping_type}' for "
-                    f"teacher={teacher_layers}, student={student_layers} layers"
+                    f"teacher={teacher_layers}, model={model_layers} layers"
                 )
-            layer_mapping = mapper.map(teacher_layers, student_layers)
+            layer_mapping = mapper.map(teacher_layers, model_layers)
 
         logger.debug(f"  Layer mapping ({mapping_type}): {layer_mapping}")
 
@@ -255,18 +255,18 @@ def create_loss_strategy_from_config(
     projection_config = distill_config.get("projection", {})
     if loss_strategy.requires_hidden_states:
         teacher_dim = getattr(teacher_model.config, "hidden_size", 768)
-        student_dim = getattr(student_model.config, "hidden_size", 768)
+        model_dim = getattr(model.config, "hidden_size", 768)
 
-        if teacher_dim != student_dim or projection_config.get("force", False):
+        if teacher_dim != model_dim or projection_config.get("force", False):
             proj_type = projection_config.get("type", "linear")
             projector = create_projection_if_needed(
                 teacher_dim=teacher_dim,
-                student_dim=student_dim,
+                model_dim=model_dim,
                 projection_type=proj_type,
             )
             if projector is not None:
                 projector = projector.to(device)
-            logger.debug(f"  Projection: {student_dim} -> {teacher_dim} ({proj_type})")
+            logger.debug(f"  Projection: {model_dim} -> {teacher_dim} ({proj_type})")
 
     return loss_strategy, layer_mapping, projector
 
@@ -680,7 +680,7 @@ def _train(
 ):
     """Run the training phase with models scoped locally.
 
-    All model references (teacher, student, trainer, loss_strategy, projector)
+    All model references (model, teacher, trainer, loss_strategy, projector)
     are local to this function and GC'd on return.
 
     Args:
@@ -703,9 +703,30 @@ def _train(
         metadata: Run metadata dict
         processor: AutoProcessor for VLMs (optional)
     """
-    # Load teacher and student models
-    logger.info("Loading models...")
-    teacher, student = load_models(config, device, tokenizer, num_labels)
+    # Load model
+    eager = needs_attention_outputs(config)
+    if eager:
+        logger.info("Using eager attention (required for attention distillation)")
+    lora_config = config["training"]["lora"] if config.get("training", {}).get("use_lora") else None
+    logger.info("Loading model...")
+    model = load_model(config["model"]["name"], task, device,
+                       init=config["model"].get("init", "pretrained"),
+                       tokenizer=tokenizer, num_labels=num_labels,
+                       eager=eager, lora_config=lora_config)
+
+    # Load teacher (if applicable)
+    teacher = None
+    teacher_cfg = config["model"].get("teacher", {})
+    teacher_name = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
+    alpha = config.get("distillation", {}).get("alpha", 0.5)
+    if teacher_name and alpha > 0.0:
+        logger.info("Loading teacher...")
+        teacher = load_model(teacher_name, task, device,
+                             tokenizer=tokenizer, num_labels=num_labels,
+                             eager=eager)
+    else:
+        reason = "no teacher configured" if not teacher_name else "alpha=0.0"
+        logger.info(f"No teacher ({reason}) - CE-only mode")
 
     # Training arguments
     training_args = TrainingArguments(
@@ -724,7 +745,7 @@ def _train(
         eval_strategy=config.get("evaluation", {}).get("eval_strategy", "steps"),
         eval_steps=int(config.get("evaluation", {}).get("eval_steps", 500)),
         report_to=report_to,
-        fp16=(config["training"].get("fp16", True) and student.dtype != torch.float16) if device == "cuda" else False,
+        fp16=(config["training"].get("fp16", True) and model.dtype != torch.float16) if device == "cuda" else False,
         dataloader_num_workers=config["training"].get("dataloader_num_workers", get_num_workers()) if device == "cuda" else 0,
         dataloader_pin_memory=device == "cuda",  # Disable on MPS (not supported)
         run_name=run_name,
@@ -750,7 +771,7 @@ def _train(
         # CE-only baseline: use FinetuningTrainer
         logger.info("No teacher - using FinetuningTrainer (CE-only mode)")
         trainer = FinetuningTrainer(
-            model=student,
+            model=model,
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
@@ -763,8 +784,8 @@ def _train(
         logger.info("Setting up distillation loss strategy...")
         loss_strategy, layer_mapping, projector = create_loss_strategy_from_config(
             config["distillation"],
+            model,
             teacher,
-            student,
             device,
         )
 
@@ -777,7 +798,7 @@ def _train(
             teacher_label_map=config["distillation"].get("teacher_label_map"),
             layer_mapping=layer_mapping,
             projector=projector,
-            model=student,
+            model=model,
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
@@ -1407,12 +1428,12 @@ def main():
         else:
             from transformers import AutoTokenizer
             teacher_cfg = config["model"].get("teacher", {})
-            teacher_model = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
-            if teacher_model is None:
-                teacher_model = config["model"]["name"]
-            tokenizer = AutoTokenizer.from_pretrained(teacher_model)
+            tokenizer_model = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
+            if tokenizer_model is None:
+                tokenizer_model = config["model"]["name"]
+            tokenizer = AutoTokenizer.from_pretrained(tokenizer_model)
             from src.tasks import is_translation_task
-            if "llama" in teacher_model.lower() or is_translation_task(task):
+            if "llama" in tokenizer_model.lower() or is_translation_task(task):
                 tokenizer.padding_side = "left"
                 if tokenizer.pad_token is None:
                     tokenizer.pad_token = tokenizer.eos_token
@@ -1464,14 +1485,14 @@ def main():
             )
 
         # Pre-training evaluation
-        student_pre = teacher_pre = None
+        model_pre = teacher_pre = None
         default_log_pre_post = num_labels is not None
         log_pre_post = config.get("evaluation", {}).get("log_pre_post_metrics", default_log_pre_post)
         if log_pre_post and num_labels is None:
             logger.warning("log_pre_post_metrics enabled for translation - this may take hours on large eval sets")
         if log_pre_post:
             set_reproducibility_seed(args.seed)
-            student_pre, teacher_pre = run_evaluation(
+            model_pre, teacher_pre = run_evaluation(
                 config, device, tokenizer, num_labels,
                 eval_dataset, compute_metrics, data_collator,
                 task, phase="pre",
@@ -1490,13 +1511,13 @@ def main():
         # Post-training evaluation (skip if training was interrupted to save time for W&B sync)
         if state.is_complete():
             set_reproducibility_seed(args.seed)
-            student_post, teacher_post = run_evaluation(
+            model_post, teacher_post = run_evaluation(
                 config, device, tokenizer, num_labels,
                 eval_dataset, compute_metrics, data_collator,
                 task, phase="post",
                 checkpoint_dir=output_dir,
                 evaluate_teacher=log_pre_post,
-                prev_metrics=(student_pre, teacher_pre) if log_pre_post else None,
+                prev_metrics=(model_pre, teacher_pre) if log_pre_post else None,
                 remove_unused_columns=not is_ocr_task(task),
             )
         else:

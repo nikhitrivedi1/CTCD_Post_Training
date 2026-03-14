@@ -436,14 +436,14 @@ from src.training.projections import create_projection_if_needed
 
 projector = create_projection_if_needed(
     teacher_dim=1024,  # BERT-large
-    student_dim=768,   # DistilBERT
+    model_dim=768,     # DistilBERT
     projection_type="linear"
 )
 # Returns LinearProjection(1024, 768)
 
 projector = create_projection_if_needed(
     teacher_dim=768,
-    student_dim=768,
+    model_dim=768,
     projection_type="linear"
 )
 # Returns IdentityProjection (no transform needed)

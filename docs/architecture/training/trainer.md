@@ -11,7 +11,7 @@ Custom HuggingFace Trainer subclasses for distillation and fine-tuning.
 ```
 transformers.Trainer
   └── FinetuningTrainer        # Pass-through base (establishes hierarchy)
-        └── DistillationTrainer  # Teacher-student training with pluggable losses
+        └── DistillationTrainer  # Teacher-model training with pluggable losses
 ```
 
 ---
@@ -62,13 +62,13 @@ DistillationTrainer(
 
 #### `create_optimizer()`
 
-Extends parent optimizer creation. If co-training (`freeze_teacher=False`), adds teacher parameters as a new param group to the student's optimizer. Both models share the same learning rate and schedule.
+Extends parent optimizer creation. If co-training (`freeze_teacher=False`), adds teacher parameters as a new param group to the model's optimizer. Both models share the same learning rate and schedule.
 
 #### `_detach_teacher_intermediates(teacher_outputs)`
 
 Creates a shallow copy of teacher outputs with detached hidden states and attentions. This is critical for co-training correctness:
 
-**Problem:** Without detaching, Feature/Attention loss gradients flow back into the teacher, pulling teacher representations toward the (worse) student. The teacher should only learn from its own CE loss.
+**Problem:** Without detaching, Feature/Attention loss gradients flow back into the teacher, pulling teacher representations toward the (worse) model. The teacher should only learn from its own CE loss.
 
 **Solution:** `dataclasses.replace()` creates a new output object with `hidden_states` and `attentions` detached, while keeping `loss` and `logits` connected to the computation graph (so teacher CE loss still gets gradients).
 
@@ -76,7 +76,7 @@ Creates a shallow copy of teacher outputs with detached hidden states and attent
 
 The main training loop override. Step-by-step:
 
-1. **Student forward pass** with optional `output_hidden_states` / `output_attentions` flags
+1. **Model forward pass** with optional `output_hidden_states` / `output_attentions` flags
 2. **Early return during eval** - skip distillation loss entirely (just return CE loss). Hidden states/attentions are disabled during eval to prevent OOM.
 3. **Teacher forward pass** - with or without gradients depending on `freeze_teacher`
 4. **Label remapping** - reorder teacher logits if `teacher_label_map` is set (e.g., TextAttack models use different label ordering than HuggingFace datasets)
@@ -89,17 +89,17 @@ The main training loop override. Step-by-step:
 
 **Why metric accumulation matters:** Without it, `self.log()` fires every step, creating noisy W&B charts. The accumulator averages over `logging_steps` steps before logging, matching HF Trainer's behavior for the standard loss metric.
 
-#### `setup_from_config(config, teacher_model, student_model)` (classmethod)
+#### `setup_from_config(config, teacher_model, model)` (classmethod)
 
 Factory method that parses the `distillation` config section and returns everything needed to construct a `DistillationTrainer`:
 
 ```python
 trainer_kwargs, layer_mapping, projector = DistillationTrainer.setup_from_config(
-    config, teacher, student
+    config, teacher, model
 )
 trainer = DistillationTrainer(
     teacher_model=teacher,
-    model=student,
+    model=model,
     **trainer_kwargs,
     layer_mapping=layer_mapping,
     projector=projector,

@@ -1,5 +1,5 @@
 # 03_cotrain_base-teacher_kl: Co-training with untrained teacher
-# Teacher learns alongside student from scratch
+# Teacher learns alongside model from scratch
 # Tests if joint training provides mutual benefit
 
 inherit: base.yaml

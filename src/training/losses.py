@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 
 def compute_kl_divergence(
-    student: torch.Tensor,
+    model: torch.Tensor,
     teacher: torch.Tensor,
     temperature: float,
     input_is_probs: bool = False,
@@ -19,28 +19,28 @@ def compute_kl_divergence(
     """
     Compute KL divergence with temperature scaling (Hinton 2015).
 
-    When reverse=False (default): KL(teacher || student) — student learns to match teacher (Hinton et al. 2015).
-    When reverse=True: KL(student || teacher) — reverse KL for mode-seeking behavior (Gu et al., MiniLLM, ICLR 2024).
+    When reverse=False (default): KL(teacher || model) - model learns to match teacher (Hinton et al. 2015).
+    When reverse=True: KL(model || teacher) - reverse KL for mode-seeking behavior (Gu et al., MiniLLM, ICLR 2024).
 
     Args:
-        student: Student logits or probabilities
+        model: Model logits or probabilities
         teacher: Teacher logits or probabilities
         temperature: Temperature for softening distributions
         input_is_probs: If True, inputs are probabilities (e.g., attention weights)
                        and need log conversion before temperature scaling
-        reverse: If True, compute reverse KL(student || teacher) instead of KL(teacher || student).
+        reverse: If True, compute reverse KL(model || teacher) instead of KL(teacher || model).
 
     Returns:
         KL divergence scaled by T² to maintain gradient magnitude
     """
     # Compute in fp32 to avoid underflow with high temperature (e.g., T=15)
     # fp16 softmax(logits/T) can underflow when T is large
-    original_dtype = student.dtype
+    original_dtype = model.dtype
 
     if reverse:
-        input, target = teacher.float(), student.float()
+        input, target = teacher.float(), model.float()
     else:
-        input, target = student.float(), teacher.float()
+        input, target = model.float(), teacher.float()
 
     if input_is_probs:
         # Convert probabilities to logits first
@@ -85,11 +85,11 @@ class DistillationLossStrategy(ABC):
     @abstractmethod
     def compute(
         self,
-        student_logits: torch.Tensor,
+        model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
-        student_outputs: Optional[Any] = None,
+        model_outputs: Optional[Any] = None,
         teacher_outputs: Optional[Any] = None,
         **kwargs,
     ) -> LossOutput:
@@ -97,11 +97,11 @@ class DistillationLossStrategy(ABC):
         Compute the distillation loss.
 
         Args:
-            student_logits: Raw output logits from student model
+            model_logits: Raw output logits from model
             teacher_logits: Raw output logits from teacher model
-            ce_loss: Pre-computed cross-entropy loss from student
+            ce_loss: Pre-computed cross-entropy loss from model
             labels: Ground truth labels (optional, some strategies may use)
-            student_outputs: Full model outputs (for hidden states/attention)
+            model_outputs: Full model outputs (for hidden states/attention)
             teacher_outputs: Full model outputs (for hidden states/attention)
             **kwargs: Additional arguments (layer_mapper, projector, etc.)
 
@@ -124,7 +124,7 @@ class KLDistillationLoss(DistillationLossStrategy):
     Loss = (1 - alpha) * CE + alpha * T^2 * KL(softmax(s/T) || softmax(t/T))
 
     This is the classic distillation loss that transfers "dark knowledge"
-    from teacher to student by matching softened probability distributions.
+    from teacher to model by matching softened probability distributions.
     """
 
     def __init__(self, temperature: float = 2.0, alpha: float = 0.5, reverse: bool = False):
@@ -138,17 +138,17 @@ class KLDistillationLoss(DistillationLossStrategy):
 
     def compute(
         self,
-        student_logits: torch.Tensor,
+        model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
-        student_outputs: Optional[Any] = None,
+        model_outputs: Optional[Any] = None,
         teacher_outputs: Optional[Any] = None,
         **kwargs,
     ) -> LossOutput:
         # Always compute KL divergence for monitoring (even when alpha=0)
         kl_raw = compute_kl_divergence(
-            student_logits, teacher_logits, self.temperature, input_is_probs=False, reverse=self.reverse
+            model_logits, teacher_logits, self.temperature, input_is_probs=False, reverse=self.reverse
         )
 
         # Weighted contributions
@@ -178,7 +178,7 @@ class MSEDistillationLoss(DistillationLossStrategy):
     """
     Mean Squared Error loss between logits.
 
-    Loss = (1 - alpha) * CE + alpha * MSE(student_logits, teacher_logits)
+    Loss = (1 - alpha) * CE + alpha * MSE(model_logits, teacher_logits)
 
     Simpler than KL divergence, directly minimizes L2 distance between
     raw logits. Can be more stable in some cases.
@@ -194,21 +194,21 @@ class MSEDistillationLoss(DistillationLossStrategy):
 
     def compute(
         self,
-        student_logits: torch.Tensor,
+        model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
-        student_outputs: Optional[Any] = None,
+        model_outputs: Optional[Any] = None,
         teacher_outputs: Optional[Any] = None,
         **kwargs,
     ) -> LossOutput:
         # Always compute MSE for monitoring (even when alpha=0)
         if self.normalize:
-            student_norm = (student_logits - student_logits.mean()) / (student_logits.std() + 1e-8)
+            model_norm = (model_logits - model_logits.mean()) / (model_logits.std() + 1e-8)
             teacher_norm = (teacher_logits - teacher_logits.mean()) / (teacher_logits.std() + 1e-8)
-            mse_raw = F.mse_loss(student_norm, teacher_norm)
+            mse_raw = F.mse_loss(model_norm, teacher_norm)
         else:
-            mse_raw = F.mse_loss(student_logits, teacher_logits)
+            mse_raw = F.mse_loss(model_logits, teacher_logits)
 
         # Weighted contributions
         ce_weighted = (1 - self.alpha) * ce_loss
@@ -231,7 +231,7 @@ class CosineDistillationLoss(DistillationLossStrategy):
     """
     Cosine similarity loss between logits/representations.
 
-    Loss = (1 - alpha) * CE + alpha * (1 - cosine_sim(student, teacher))
+    Loss = (1 - alpha) * CE + alpha * (1 - cosine_sim(model, teacher))
 
     Focuses on matching the direction of the output vectors rather than
     their magnitude. Useful when scale differences are problematic.
@@ -246,16 +246,16 @@ class CosineDistillationLoss(DistillationLossStrategy):
 
     def compute(
         self,
-        student_logits: torch.Tensor,
+        model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
-        student_outputs: Optional[Any] = None,
+        model_outputs: Optional[Any] = None,
         teacher_outputs: Optional[Any] = None,
         **kwargs,
     ) -> LossOutput:
         # Always compute cosine for monitoring (even when alpha=0)
-        cosine_sim = F.cosine_similarity(student_logits, teacher_logits, dim=-1)
+        cosine_sim = F.cosine_similarity(model_logits, teacher_logits, dim=-1)
         cosine_raw = (1 - cosine_sim).mean()
 
         # Weighted contributions
@@ -295,17 +295,17 @@ class SoftTargetDistillationLoss(DistillationLossStrategy):
 
     def compute(
         self,
-        student_logits: torch.Tensor,
+        model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
-        student_outputs: Optional[Any] = None,
+        model_outputs: Optional[Any] = None,
         teacher_outputs: Optional[Any] = None,
         **kwargs,
     ) -> LossOutput:
         # Always compute soft CE for monitoring (even when alpha=0)
         soft_labels = F.softmax(teacher_logits / self.temperature, dim=-1)
-        ce_soft_raw = -(soft_labels * F.log_softmax(student_logits / self.temperature, dim=-1)).sum(dim=-1).mean()
+        ce_soft_raw = -(soft_labels * F.log_softmax(model_logits / self.temperature, dim=-1)).sum(dim=-1).mean()
         ce_soft_raw = ce_soft_raw * (self.temperature ** 2)
 
         # Weighted contributions
@@ -352,11 +352,11 @@ class CombinedDistillationLoss(DistillationLossStrategy):
 
     def compute(
         self,
-        student_logits: torch.Tensor,
+        model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
-        student_outputs: Optional[Any] = None,
+        model_outputs: Optional[Any] = None,
         teacher_outputs: Optional[Any] = None,
         **kwargs,
     ) -> LossOutput:
@@ -369,16 +369,16 @@ class CombinedDistillationLoss(DistillationLossStrategy):
             "ce_raw": ce_loss,
             # distill_raw components added by loop
         }
-        distill_loss = torch.tensor(0.0, device=student_logits.device)
+        distill_loss = torch.tensor(0.0, device=model_logits.device)
 
         for strategy, weight in zip(self.strategies, self.weights):
             # Pass full outputs and kwargs to sub-strategies (needed for Feature/Attention)
             output = strategy.compute(
-                student_logits=student_logits,
+                model_logits=model_logits,
                 teacher_logits=teacher_logits,
                 ce_loss=ce_loss,
                 labels=labels,
-                student_outputs=student_outputs,
+                model_outputs=model_outputs,
                 teacher_outputs=teacher_outputs,
                 **kwargs,
             )
@@ -403,10 +403,10 @@ class FeatureLossStrategy(DistillationLossStrategy):
     """
     Feature-based distillation loss (MSE on hidden states).
 
-    Loss = (1 - alpha) * CE + alpha * mean(MSE(proj(student_hidden), teacher_hidden))
+    Loss = (1 - alpha) * CE + alpha * mean(MSE(proj(model_hidden), teacher_hidden))
 
     Transfers knowledge by matching intermediate representations between
-    teacher and student. Requires layer mapping to handle different depths.
+    teacher and model. Requires layer mapping to handle different depths.
 
     References:
     - Romero et al. (2015): "FitNets: Hints for Thin Deep Nets"
@@ -426,7 +426,7 @@ class FeatureLossStrategy(DistillationLossStrategy):
 
         Args:
             alpha: Weight for distillation loss vs CE loss
-            layer_mapping: List of (teacher_idx, student_idx) pairs
+            layer_mapping: List of (teacher_idx, model_idx) pairs
             projector: Optional projection module for dimension alignment
             normalize: Whether to normalize hidden states before comparison
         """
@@ -441,11 +441,11 @@ class FeatureLossStrategy(DistillationLossStrategy):
 
     def compute(
         self,
-        student_logits: torch.Tensor,
+        model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
-        student_outputs: Optional[Any] = None,
+        model_outputs: Optional[Any] = None,
         teacher_outputs: Optional[Any] = None,
         **kwargs,
     ) -> LossOutput:
@@ -454,10 +454,10 @@ class FeatureLossStrategy(DistillationLossStrategy):
         projector = kwargs.get("projector", self.projector)
 
         # Extract hidden states
-        student_hidden = getattr(student_outputs, "hidden_states", None)
+        model_hidden = getattr(model_outputs, "hidden_states", None)
         teacher_hidden = getattr(teacher_outputs, "hidden_states", None)
 
-        if student_hidden is None or teacher_hidden is None:
+        if model_hidden is None or teacher_hidden is None:
             raise ValueError(
                 "Feature loss requires hidden_states. "
                 "Ensure output_hidden_states=True in model config."
@@ -465,32 +465,32 @@ class FeatureLossStrategy(DistillationLossStrategy):
 
         # Compute feature MSE for each mapped layer pair
         feature_losses = []
-        for teacher_idx, student_idx in layer_mapping:
+        for teacher_idx, model_idx in layer_mapping:
             t_hidden = teacher_hidden[teacher_idx]  # (batch, seq, hidden)
-            s_hidden = student_hidden[student_idx]
+            m_hidden = model_hidden[model_idx]
 
-            # Project student hidden if dimensions don't match
+            # Project model hidden if dimensions don't match
             if projector is not None:
-                s_hidden = projector(s_hidden)
+                m_hidden = projector(m_hidden)
 
             # Ensure same dtype (projector may output fp32 while t_hidden is fp16)
-            if s_hidden.dtype != t_hidden.dtype:
-                t_hidden = t_hidden.to(s_hidden.dtype)
+            if m_hidden.dtype != t_hidden.dtype:
+                t_hidden = t_hidden.to(m_hidden.dtype)
 
             # Normalize if requested
             if self.normalize:
                 t_hidden = (t_hidden - t_hidden.mean()) / (t_hidden.std() + 1e-8)
-                s_hidden = (s_hidden - s_hidden.mean()) / (s_hidden.std() + 1e-8)
+                m_hidden = (m_hidden - m_hidden.mean()) / (m_hidden.std() + 1e-8)
 
             # MSE loss for this layer pair
-            layer_loss = F.mse_loss(s_hidden, t_hidden)
+            layer_loss = F.mse_loss(m_hidden, t_hidden)
             feature_losses.append(layer_loss)
 
         # Average across all layer pairs
         if feature_losses:
             feature_raw = torch.stack(feature_losses).mean()
         else:
-            feature_raw = torch.tensor(0.0, device=student_logits.device)
+            feature_raw = torch.tensor(0.0, device=model_logits.device)
 
         # Weighted contributions
         ce_weighted = (1 - self.alpha) * ce_loss
@@ -514,7 +514,7 @@ class CosineFeatureLoss(DistillationLossStrategy):
     """
     Feature-based distillation loss using cosine similarity (DistilBERT-style).
 
-    Loss = (1 - alpha) * CE + alpha * mean(1 - cosine_sim(student_hidden, teacher_hidden))
+    Loss = (1 - alpha) * CE + alpha * mean(1 - cosine_sim(model_hidden, teacher_hidden))
 
     Unlike MSE, cosine similarity focuses on the direction of hidden state
     vectors rather than their magnitude. DistilBERT found this beneficial
@@ -542,47 +542,47 @@ class CosineFeatureLoss(DistillationLossStrategy):
 
     def compute(
         self,
-        student_logits: torch.Tensor,
+        model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
-        student_outputs: Optional[Any] = None,
+        model_outputs: Optional[Any] = None,
         teacher_outputs: Optional[Any] = None,
         **kwargs,
     ) -> LossOutput:
         layer_mapping = kwargs.get("layer_mapping", self.layer_mapping)
         projector = kwargs.get("projector", self.projector)
 
-        student_hidden = getattr(student_outputs, "hidden_states", None)
+        model_hidden = getattr(model_outputs, "hidden_states", None)
         teacher_hidden = getattr(teacher_outputs, "hidden_states", None)
 
-        if student_hidden is None or teacher_hidden is None:
+        if model_hidden is None or teacher_hidden is None:
             raise ValueError(
                 "Feature loss requires hidden_states. "
                 "Ensure output_hidden_states=True in model config."
             )
 
         cosine_losses = []
-        for teacher_idx, student_idx in layer_mapping:
+        for teacher_idx, model_idx in layer_mapping:
             t_hidden = teacher_hidden[teacher_idx]
-            s_hidden = student_hidden[student_idx]
+            m_hidden = model_hidden[model_idx]
 
             if projector is not None:
-                s_hidden = projector(s_hidden)
+                m_hidden = projector(m_hidden)
 
             # Ensure same dtype (projector may output fp32 while t_hidden is fp16)
-            if s_hidden.dtype != t_hidden.dtype:
-                t_hidden = t_hidden.to(s_hidden.dtype)
+            if m_hidden.dtype != t_hidden.dtype:
+                t_hidden = t_hidden.to(m_hidden.dtype)
 
             # Cosine similarity: 1 - cos(s, t) as loss (0 = identical direction)
-            cos_sim = F.cosine_similarity(s_hidden, t_hidden, dim=-1)
+            cos_sim = F.cosine_similarity(m_hidden, t_hidden, dim=-1)
             layer_loss = (1 - cos_sim).mean()
             cosine_losses.append(layer_loss)
 
         if cosine_losses:
             feature_raw = torch.stack(cosine_losses).mean()
         else:
-            feature_raw = torch.tensor(0.0, device=student_logits.device)
+            feature_raw = torch.tensor(0.0, device=model_logits.device)
 
         ce_weighted = (1 - self.alpha) * ce_loss
         feature_weighted = self.alpha * feature_raw
@@ -605,10 +605,10 @@ class AttentionLossStrategy(DistillationLossStrategy):
     """
     Attention-based distillation loss (KL on attention distributions).
 
-    Loss = (1 - alpha) * CE + alpha * mean(KL(student_attn || teacher_attn))
+    Loss = (1 - alpha) * CE + alpha * mean(KL(model_attn || teacher_attn))
 
     Transfers knowledge by matching attention patterns between teacher
-    and student. Helps student learn where to "look" in the input.
+    and model. Helps model learn where to "look" in the input.
 
     References:
     - Zagoruyko & Komodakis (2017): "Paying More Attention to Attention"
@@ -627,7 +627,7 @@ class AttentionLossStrategy(DistillationLossStrategy):
 
         Args:
             alpha: Weight for distillation loss vs CE loss
-            layer_mapping: List of (teacher_idx, student_idx) pairs
+            layer_mapping: List of (teacher_idx, model_idx) pairs
             temperature: Temperature for softening attention distributions
         """
         self.alpha = alpha
@@ -640,11 +640,11 @@ class AttentionLossStrategy(DistillationLossStrategy):
 
     def compute(
         self,
-        student_logits: torch.Tensor,
+        model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
-        student_outputs: Optional[Any] = None,
+        model_outputs: Optional[Any] = None,
         teacher_outputs: Optional[Any] = None,
         **kwargs,
     ) -> LossOutput:
@@ -652,10 +652,10 @@ class AttentionLossStrategy(DistillationLossStrategy):
         layer_mapping = kwargs.get("layer_mapping", self.layer_mapping)
 
         # Extract attention weights
-        student_attns = getattr(student_outputs, "attentions", None)
+        model_attns = getattr(model_outputs, "attentions", None)
         teacher_attns = getattr(teacher_outputs, "attentions", None)
 
-        if student_attns is None or teacher_attns is None:
+        if model_attns is None or teacher_attns is None:
             raise ValueError(
                 "Attention loss requires attentions. "
                 "Ensure output_attentions=True in model config."
@@ -663,24 +663,24 @@ class AttentionLossStrategy(DistillationLossStrategy):
 
         # Compute attention KL for each mapped layer pair
         attention_losses = []
-        for teacher_idx, student_idx in layer_mapping:
+        for teacher_idx, model_idx in layer_mapping:
             t_attn = teacher_attns[teacher_idx]  # (batch, heads, seq, seq)
-            s_attn = student_attns[student_idx]
+            m_attn = model_attns[model_idx]
 
             # Handle different number of attention heads by averaging
-            if t_attn.shape[1] != s_attn.shape[1]:
-                # Average teacher heads to match student head count
-                # or expand student heads - for now, average both to single
+            if t_attn.shape[1] != m_attn.shape[1]:
+                # Average teacher heads to match model head count
+                # or expand model heads - for now, average both to single
                 t_attn = t_attn.mean(dim=1, keepdim=True)
-                s_attn = s_attn.mean(dim=1, keepdim=True)
+                m_attn = m_attn.mean(dim=1, keepdim=True)
 
             # Flatten attention matrices for KL computation: (batch, heads, seq, seq) -> (N, seq)
-            s_flat = s_attn.view(-1, s_attn.size(-1))
+            m_flat = m_attn.view(-1, m_attn.size(-1))
             t_flat = t_attn.view(-1, t_attn.size(-1))
 
             # Compute KL divergence (attention weights are probabilities)
             kl_loss = compute_kl_divergence(
-                s_flat, t_flat, self.temperature, input_is_probs=True
+                m_flat, t_flat, self.temperature, input_is_probs=True
             )
             attention_losses.append(kl_loss)
 
@@ -688,7 +688,7 @@ class AttentionLossStrategy(DistillationLossStrategy):
         if attention_losses:
             attention_raw = torch.stack(attention_losses).mean()
         else:
-            attention_raw = torch.tensor(0.0, device=student_logits.device)
+            attention_raw = torch.tensor(0.0, device=model_logits.device)
 
         # Weighted contributions
         ce_weighted = (1 - self.alpha) * ce_loss
@@ -794,11 +794,11 @@ class StagedDistillationLoss(DistillationLossStrategy):
 
     def compute(
         self,
-        student_logits: torch.Tensor,
+        model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
-        student_outputs: Optional[Any] = None,
+        model_outputs: Optional[Any] = None,
         teacher_outputs: Optional[Any] = None,
         **kwargs,
     ) -> LossOutput:
@@ -810,11 +810,11 @@ class StagedDistillationLoss(DistillationLossStrategy):
 
         # Delegate to active strategy
         output = active_strategy.compute(
-            student_logits=student_logits,
+            model_logits=model_logits,
             teacher_logits=teacher_logits,
             ce_loss=ce_loss,
             labels=labels,
-            student_outputs=student_outputs,
+            model_outputs=model_outputs,
             teacher_outputs=teacher_outputs,
             **kwargs,
         )

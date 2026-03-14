@@ -37,7 +37,7 @@ class DistillationTrainer(FinetuningTrainer):
 
     Supports two modes:
     - Traditional distillation: Teacher is frozen, provides fixed soft labels
-    - Co-training: Teacher trains alongside student, soft labels improve over time
+    - Co-training: Teacher trains alongside model, soft labels improve over time
 
     Uses Strategy Pattern for loss functions - swap loss strategies
     without modifying this class.
@@ -66,15 +66,15 @@ class DistillationTrainer(FinetuningTrainer):
             temperature: Temperature for softening distributions
             alpha: Weight for distillation loss (0=only CE, 1=only KL)
             freeze_teacher: If True, freeze teacher (traditional distillation).
-                           If False, train teacher alongside student (co-training).
+                           If False, train teacher alongside model (co-training).
             loss_strategy: Pre-configured loss strategy instance (takes precedence)
             loss_type: Name of loss strategy to use (e.g., "kl_divergence", "mse_logits")
             teacher_label_map: Optional list to remap teacher logits to match dataset labels.
                               e.g., [1, 2, 0] means teacher label 1 -> dataset label 0, etc.
                               Use when teacher was trained with different label ordering.
-            layer_mapping_type: Strategy for mapping teacher layers to student layers
+            layer_mapping_type: Strategy for mapping teacher layers to model layers
                                (uniform, last_n, first_last). Used for feature/attention distillation.
-            layer_mapping: Explicit list of (teacher_idx, student_idx) pairs.
+            layer_mapping: Explicit list of (teacher_idx, model_idx) pairs.
                           Overrides layer_mapping_type if provided.
             projector: Optional projection module for dimension alignment in feature distillation.
             *args: Additional arguments for Trainer
@@ -145,7 +145,7 @@ class DistillationTrainer(FinetuningTrainer):
         if self.optimizer is not None:
             return self.optimizer
 
-        # Get default optimizer for student
+        # Get default optimizer for model
         super().create_optimizer()
 
         # If co-training, add teacher parameters to optimizer
@@ -163,7 +163,7 @@ class DistillationTrainer(FinetuningTrainer):
 
         In co-training, teacher should only learn from CE loss, not from
         distillation losses (F, A). This prevents the teacher from being
-        pulled toward matching the (worse) student's representations.
+        pulled toward matching the (worse) model's representations.
 
         Args:
             teacher_outputs: Model outputs containing hidden_states/attentions
@@ -195,7 +195,7 @@ class DistillationTrainer(FinetuningTrainer):
         Compute distillation loss using the configured strategy.
 
         Args:
-            model: Student model
+            model: Model being trained
             inputs: Batch of inputs
             return_outputs: Whether to return model outputs
             num_items_in_batch: Number of items in batch (for gradient accumulation)
@@ -210,7 +210,7 @@ class DistillationTrainer(FinetuningTrainer):
         if self.output_attentions:
             model_kwargs["output_attentions"] = True
 
-        # Get student predictions
+        # Get model predictions
         outputs = model(**inputs, **model_kwargs)
 
         # During evaluation, just return CE loss (skip distillation loss computation)
@@ -218,7 +218,7 @@ class DistillationTrainer(FinetuningTrainer):
         # eval to avoid OOM from accumulating large intermediate tensors
         if not model.training:
             return (outputs.loss, outputs) if return_outputs else outputs.loss
-        student_logits = outputs.logits
+        model_logits = outputs.logits
 
         # Get teacher predictions
         if self.freeze_teacher:
@@ -244,13 +244,13 @@ class DistillationTrainer(FinetuningTrainer):
 
         # Align vocab dimensions for cross-tokenizer distillation
         # (e.g., Qwen3-VL has 4 extra special tokens vs Qwen2.5-VL)
-        if student_logits.size(-1) != teacher_logits_for_distill.size(-1):
-            min_vocab = min(student_logits.size(-1), teacher_logits_for_distill.size(-1))
-            student_logits = student_logits[..., :min_vocab]
+        if model_logits.size(-1) != teacher_logits_for_distill.size(-1):
+            min_vocab = min(model_logits.size(-1), teacher_logits_for_distill.size(-1))
+            model_logits = model_logits[..., :min_vocab]
             teacher_logits_for_distill = teacher_logits_for_distill[..., :min_vocab]
 
         # Also detach hidden states and attentions for Feature/Attention losses
-        # This prevents the bug where teacher gets pulled toward student representations
+        # This prevents the bug where teacher gets pulled toward model representations
         teacher_outputs_for_distill = teacher_outputs
         if not self.freeze_teacher:
             # In co-training, we need to detach intermediate outputs
@@ -278,16 +278,16 @@ class DistillationTrainer(FinetuningTrainer):
 
         # Compute loss using strategy (with detached teacher outputs)
         loss_output = self.loss_strategy.compute(
-            student_logits=student_logits,
+            model_logits=model_logits,
             teacher_logits=teacher_logits_for_distill,
             ce_loss=ce_loss,
             labels=labels,
-            student_outputs=outputs,
+            model_outputs=outputs,
             teacher_outputs=teacher_outputs_for_distill,
             **loss_kwargs
         )
 
-        # Combine losses: student loss + teacher CE (if co-training)
+        # Combine losses: model loss + teacher CE (if co-training)
         total_loss = loss_output.total_loss
         if not self.freeze_teacher:
             # When teacher_label_map is set, teacher_outputs.loss was computed with
@@ -326,7 +326,7 @@ class DistillationTrainer(FinetuningTrainer):
         cls,
         config: Dict[str, Any],
         teacher_model: torch.nn.Module,
-        student_model: torch.nn.Module,
+        model: torch.nn.Module,
     ) -> Tuple[Dict[str, Any], Optional[List[Tuple[int, int]]], Optional[torch.nn.Module]]:
         """
         Parse distillation config and prepare trainer arguments.
@@ -337,21 +337,21 @@ class DistillationTrainer(FinetuningTrainer):
         Args:
             config: Full configuration dictionary (with 'distillation' key)
             teacher_model: Teacher model (for layer/dimension info)
-            student_model: Student model (for layer/dimension info)
+            model: Model (for layer/dimension info)
 
         Returns:
             Tuple of (trainer_kwargs, layer_mapping, projector)
             - trainer_kwargs: Dict of arguments to pass to DistillationTrainer
-            - layer_mapping: List of (teacher_idx, student_idx) pairs or None
+            - layer_mapping: List of (teacher_idx, model_idx) pairs or None
             - projector: Projection module or None
 
         Example:
             trainer_kwargs, layer_mapping, projector = DistillationTrainer.setup_from_config(
-                config, teacher, student
+                config, teacher, model
             )
             trainer = DistillationTrainer(
                 teacher_model=teacher,
-                model=student,
+                model=model,
                 **trainer_kwargs,
                 layer_mapping=layer_mapping,
                 projector=projector,
@@ -390,18 +390,18 @@ class DistillationTrainer(FinetuningTrainer):
 
             # Get layer counts from model configs
             teacher_layers = getattr(teacher_model.config, "num_hidden_layers", 12)
-            student_layers = getattr(student_model.config, "num_hidden_layers", 6)
+            model_layers = getattr(model.config, "num_hidden_layers", 6)
 
             if mapping_type == "custom" and "mapping" in layer_mapping_config:
                 # Explicit mapping provided
                 layer_mapping = [
-                    (pair["teacher"], pair["student"])
+                    (pair["teacher"], pair["model"])
                     for pair in layer_mapping_config["mapping"]
                 ]
             else:
                 # Use a mapping strategy
                 mapper = get_layer_mapping(mapping_type)
-                layer_mapping = mapper.map(teacher_layers, student_layers)
+                layer_mapping = mapper.map(teacher_layers, model_layers)
 
             trainer_kwargs["layer_mapping_type"] = mapping_type
 
@@ -410,20 +410,20 @@ class DistillationTrainer(FinetuningTrainer):
         projection_config = distill_config.get("projection", {})
         if projection_config:
             teacher_dim = getattr(teacher_model.config, "hidden_size", 768)
-            student_dim = getattr(student_model.config, "hidden_size", 768)
+            model_dim = getattr(model.config, "hidden_size", 768)
 
-            if teacher_dim != student_dim or projection_config.get("force", False):
+            if teacher_dim != model_dim or projection_config.get("force", False):
                 proj_type = projection_config.get("type", "linear")
                 projector = create_projection_if_needed(
                     teacher_dim=teacher_dim,
-                    student_dim=student_dim,
+                    model_dim=model_dim,
                     projection_type=proj_type,
                     hidden_dim=projection_config.get("hidden_dim"),
                     activation=projection_config.get("activation", "relu"),
                 )
-                # Move projector to same device and dtype as student model
-                if hasattr(student_model, "device"):
-                    projector = projector.to(device=student_model.device, dtype=student_model.dtype)
+                # Move projector to same device and dtype as model
+                if hasattr(model, "device"):
+                    projector = projector.to(device=model.device, dtype=model.dtype)
 
         return trainer_kwargs, layer_mapping, projector
 

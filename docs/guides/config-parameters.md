@@ -294,8 +294,8 @@ T=5:  █████░░░░░░░░░  (very soft, may be too uniform
 Balance between distillation loss (KL) and task loss (CE).
 
 ```
-total_loss = α × KL_divergence(student, teacher)
-           + (1-α) × CrossEntropy(student, labels)
+total_loss = α × KL_divergence(model, teacher)
+           + (1-α) × CrossEntropy(model, labels)
 
 α = 0.0: Only hard labels
 ├── No knowledge from teacher

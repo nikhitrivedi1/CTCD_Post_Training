@@ -35,7 +35,7 @@ Core evaluation loop:
 
 ### evaluate_models()
 
-Convenience function that evaluates both student and teacher, logging with phase prefix ("pre" or "post").
+Convenience function that evaluates both model and teacher, logging with phase prefix ("pre" or "post").
 
 Handles teacher label remapping by wrapping `compute_metrics` with `_remap_compute_metrics()` when `teacher_label_map` is set.
 
@@ -47,7 +47,7 @@ Models are function-local and automatically garbage-collected on return. No manu
 
 ### log_pre_post_metrics()
 
-Logs metrics to console and W&B with proper prefixes (`student/pre`, `teacher/post`, etc.). Uses `commit=False` for W&B to batch metrics.
+Logs metrics to console and W&B with proper prefixes (`model/pre`, `teacher/post`, etc.). Uses `commit=False` for W&B to batch metrics.
 
 ### log_transfer_metrics()
 

@@ -102,7 +102,7 @@ Resolves `--adapter` CLI flag into a base model for training. If no adapter path
 1. If `base/config.json` exists (resume), skips re-merge and loads from cache
 2. Otherwise: loads base model, loads adapter via PeftModel, merges via `merge_and_unload()`, saves merged model to `base/`
 
-In the SFT path, called from `main()` before `load_models()` - saves to `base/`, then `config["model"]["name"]` is repointed to `str(base_dir)` so `load_models()` picks up the merged weights. In the RL path, called from `_train_rl()` directly and returns the model object for GRPOTrainer.
+In the SFT path, called from `main()` before model loading - saves to `base/`, then `config["model"]["name"]` is repointed to `str(base_dir)` so `load_model()` picks up the merged weights. In the RL path, called from `_train_rl()` directly and returns the model object for GRPOTrainer.
 
 #### `_sync_wandb(config, task, metadata, output_dir)`
 
@@ -162,7 +162,7 @@ outputs/seed42_20260308-1200Z/
 
 **SFT/KD adapter resolution (`--adapter`):**
 - If `config["model"]["adapter_path"]` is set and `base/config.json` doesn't exist: calls `_resolve_adapter()` to merge adapter into base model, save to `base/`
-- Then sets `config["model"]["name"] = str(base_dir)` so `load_models()` picks up the merged weights
+- Then sets `config["model"]["name"] = str(base_dir)` so `load_model()` picks up the merged weights
 - On resume, the merged model already exists in `base/`, so merge is skipped
 
 **W&B integration:**

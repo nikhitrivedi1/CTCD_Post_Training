@@ -1,5 +1,5 @@
 # 03_cotrain_base-teacher_kl: Co-training with pretrained teacher
-# Both teacher and student train together from pretrained weights
+# Both teacher and model train together from pretrained weights
 # Teacher starts from bert-base-uncased (not fine-tuned)
 
 inherit: base.yaml

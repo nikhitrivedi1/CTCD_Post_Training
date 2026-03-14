@@ -1,7 +1,7 @@
 # FAR 07: Full Feature + Attention + Response distillation
 # R=1, F=1, A=1
 # Complete knowledge transfer: soft labels + hidden states + attention patterns
-# Maximum knowledge transfer from teacher to student
+# Maximum knowledge transfer from teacher to model
 
 inherit: base.yaml
 

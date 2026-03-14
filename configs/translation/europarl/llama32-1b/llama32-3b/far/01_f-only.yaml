@@ -15,7 +15,7 @@ distillation:
   # temperature and alpha inherited from base.yaml
   loss_type: feature_cosine
   layer_mapping:
-    type: uniform         # Maps 28 teacher layers → 16 student layers
+    type: uniform         # Maps 28 teacher layers → 16 model layers
   projection:
     enabled: true         # Project 3072 → 2048
     type: linear

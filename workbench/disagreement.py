@@ -1,7 +1,7 @@
 """
 Prediction disagreement and per-class accuracy analysis.
 
-Analyzes where teacher and student predictions differ, and breaks down
+Analyzes where two models' predictions differ, and breaks down
 accuracy by class to understand model behavior on different categories.
 """
 
@@ -142,21 +142,21 @@ def get_predictions(
 
 
 def compute_disagreement_analysis(
-    teacher_preds: np.ndarray,
-    teacher_confs: np.ndarray,
-    student_preds: np.ndarray,
-    student_confs: np.ndarray,
+    model_preds: np.ndarray,
+    model_confs: np.ndarray,
+    ref_preds: np.ndarray,
+    ref_confs: np.ndarray,
     labels: np.ndarray,
     task: str,
 ) -> Dict:
     """
-    Analyze prediction disagreements between teacher and student.
+    Analyze prediction disagreements between two models.
 
     Args:
-        teacher_preds: Teacher predictions
-        teacher_confs: Teacher confidence scores
-        student_preds: Student predictions
-        student_confs: Student confidence scores
+        model_preds: Model predictions
+        model_confs: Model confidence scores
+        ref_preds: Reference model predictions
+        ref_confs: Reference model confidence scores
         labels: Ground truth labels
         task: Task name for class labels
 
@@ -167,22 +167,22 @@ def compute_disagreement_analysis(
     class_labels = CLASS_LABELS.get(task, {})
 
     # Basic disagreement
-    agree_mask = teacher_preds == student_preds
+    agree_mask = model_preds == ref_preds
     disagree_mask = ~agree_mask
 
     # Correctness masks
-    teacher_correct = teacher_preds == labels
-    student_correct = student_preds == labels
+    model_correct = model_preds == labels
+    ref_correct = ref_preds == labels
 
     # Disagreement categories
-    both_correct = teacher_correct & student_correct
-    both_wrong = ~teacher_correct & ~student_correct
-    teacher_only_correct = teacher_correct & ~student_correct
-    student_only_correct = ~teacher_correct & student_correct
+    both_correct = model_correct & ref_correct
+    both_wrong = ~model_correct & ~ref_correct
+    model_only_correct = model_correct & ~ref_correct
+    ref_only_correct = ~model_correct & ref_correct
 
     # Agreement on correct/wrong
-    agree_correct = agree_mask & teacher_correct
-    agree_wrong = agree_mask & ~teacher_correct
+    agree_correct = agree_mask & model_correct
+    agree_wrong = agree_mask & ~model_correct
 
     results = {
         "total_samples": n_samples,
@@ -197,10 +197,10 @@ def compute_disagreement_analysis(
         "disagreement": {
             "disagree": int(disagree_mask.sum()),
             "disagree_pct": float(disagree_mask.mean()),
-            "teacher_only_correct": int(teacher_only_correct.sum()),
-            "teacher_only_correct_pct": float(teacher_only_correct.mean()),
-            "student_only_correct": int(student_only_correct.sum()),
-            "student_only_correct_pct": float(student_only_correct.mean()),
+            "model_only_correct": int(model_only_correct.sum()),
+            "model_only_correct_pct": float(model_only_correct.mean()),
+            "reference_only_correct": int(ref_only_correct.sum()),
+            "reference_only_correct_pct": float(ref_only_correct.mean()),
             "both_wrong_disagree": int((disagree_mask & both_wrong).sum()),
         },
         "correctness": {
@@ -208,18 +208,18 @@ def compute_disagreement_analysis(
             "both_correct_pct": float(both_correct.mean()),
             "both_wrong": int(both_wrong.sum()),
             "both_wrong_pct": float(both_wrong.mean()),
-            "teacher_only_correct": int(teacher_only_correct.sum()),
-            "student_only_correct": int(student_only_correct.sum()),
+            "model_only_correct": int(model_only_correct.sum()),
+            "reference_only_correct": int(ref_only_correct.sum()),
         },
         "accuracy": {
-            "teacher": float(teacher_correct.mean()),
-            "student": float(student_correct.mean()),
+            "model": float(model_correct.mean()),
+            "reference": float(ref_correct.mean()),
         },
         "confidence": {
-            "teacher_mean": float(teacher_confs.mean()),
-            "student_mean": float(student_confs.mean()),
-            "teacher_when_wrong": float(teacher_confs[~teacher_correct].mean()) if (~teacher_correct).any() else 0.0,
-            "student_when_wrong": float(student_confs[~student_correct].mean()) if (~student_correct).any() else 0.0,
+            "model_mean": float(model_confs.mean()),
+            "reference_mean": float(ref_confs.mean()),
+            "model_when_wrong": float(model_confs[~model_correct].mean()) if (~model_correct).any() else 0.0,
+            "reference_when_wrong": float(ref_confs[~ref_correct].mean()) if (~ref_correct).any() else 0.0,
         },
     }
 
@@ -231,15 +231,15 @@ def compute_disagreement_analysis(
             continue
 
         class_disagree = disagree_mask & class_mask
-        class_teacher_correct = teacher_correct & class_mask
-        class_student_correct = student_correct & class_mask
+        class_model_correct = model_correct & class_mask
+        class_ref_correct = ref_correct & class_mask
 
         class_breakdown[class_name] = {
             "count": int(class_mask.sum()),
             "disagree_count": int(class_disagree.sum()),
             "disagree_pct": float(class_disagree.sum() / class_mask.sum()),
-            "teacher_acc": float(class_teacher_correct.sum() / class_mask.sum()),
-            "student_acc": float(class_student_correct.sum() / class_mask.sum()),
+            "model_acc": float(class_model_correct.sum() / class_mask.sum()),
+            "reference_acc": float(class_ref_correct.sum() / class_mask.sum()),
         }
 
     results["per_class_disagreement"] = class_breakdown
@@ -323,8 +323,8 @@ def compute_per_class_accuracy(
 
 
 def run_disagreement_analysis(
-    teacher_model: str,
-    student_model: str,
+    model_name: str,
+    reference_model: str,
     task: str,
     device: str = "cuda",
     max_samples: int = None,
@@ -333,8 +333,8 @@ def run_disagreement_analysis(
     Run full prediction disagreement analysis.
 
     Args:
-        teacher_model: Teacher model path
-        student_model: Student model path
+        model_name: Model path
+        reference_model: Reference model path
         task: Task name
         device: Device
         max_samples: Limit samples
@@ -350,54 +350,54 @@ def run_disagreement_analysis(
     labels = np.array(labels)
 
     # Load models
-    logger.info("Loading teacher model...")
-    teacher, teacher_tok, teacher_config = load_classification_model(teacher_model, num_labels, device)
+    logger.info("Loading model...")
+    model, model_tok, model_config = load_classification_model(model_name, num_labels, device)
 
-    logger.info("Loading student model...")
-    student, student_tok, student_config = load_classification_model(student_model, num_labels, device)
+    logger.info("Loading reference model...")
+    ref, ref_tok, ref_config = load_classification_model(reference_model, num_labels, device)
 
     # Get label mappings for models with non-standard label orderings
-    teacher_label_map = get_label_map(teacher_model, task, teacher_config)
-    student_label_map = get_label_map(student_model, task, student_config)
+    model_label_map = get_label_map(model_name, task, model_config)
+    ref_label_map = get_label_map(reference_model, task, ref_config)
 
-    if teacher_label_map:
-        logger.info(f"Teacher label map: {teacher_label_map}")
-    if student_label_map:
-        logger.info(f"Student label map: {student_label_map}")
+    if model_label_map:
+        logger.info(f"Model label map: {model_label_map}")
+    if ref_label_map:
+        logger.info(f"Reference label map: {ref_label_map}")
 
     # Get predictions
-    logger.info("Getting teacher predictions...")
-    teacher_preds, teacher_confs = get_predictions(
-        teacher, teacher_tok, texts, device=device, label_map=teacher_label_map
+    logger.info("Getting model predictions...")
+    model_preds, model_confs = get_predictions(
+        model, model_tok, texts, device=device, label_map=model_label_map
     )
 
-    logger.info("Getting student predictions...")
-    student_preds, student_confs = get_predictions(
-        student, student_tok, texts, device=device, label_map=student_label_map
+    logger.info("Getting reference predictions...")
+    ref_preds, ref_confs = get_predictions(
+        ref, ref_tok, texts, device=device, label_map=ref_label_map
     )
 
     # Compute analyses
     logger.info("Computing disagreement analysis...")
     disagreement = compute_disagreement_analysis(
-        teacher_preds, teacher_confs,
-        student_preds, student_confs,
+        model_preds, model_confs,
+        ref_preds, ref_confs,
         labels, task
     )
 
     logger.info("Computing per-class breakdown...")
-    teacher_class = compute_per_class_accuracy(teacher_preds, labels, task, "teacher")
-    student_class = compute_per_class_accuracy(student_preds, labels, task, "student")
+    model_class = compute_per_class_accuracy(model_preds, labels, task, "model")
+    ref_class = compute_per_class_accuracy(ref_preds, labels, task, "reference")
 
     return {
-        "teacher": {
-            "model": teacher_model,
-            "per_class": teacher_class,
-            "label_map": teacher_label_map,
+        "model": {
+            "model": model_name,
+            "per_class": model_class,
+            "label_map": model_label_map,
         },
-        "student": {
-            "model": student_model,
-            "per_class": student_class,
-            "label_map": student_label_map,
+        "reference": {
+            "model": reference_model,
+            "per_class": ref_class,
+            "label_map": ref_label_map,
         },
         "disagreement": disagreement,
         "task": task,

@@ -1,6 +1,6 @@
 # FAR 03: Attention distillation only (attention pattern matching)
 # R=0, F=0, A=1
-# Transfer attention patterns from teacher to student
+# Transfer attention patterns from teacher to model
 
 inherit: base.yaml
 

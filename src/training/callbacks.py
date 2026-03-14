@@ -186,7 +186,7 @@ class TeacherEvalCallback(TrainerCallback):
     """
     Evaluate co-trained teacher at each eval step.
 
-    Runs the teacher through the same eval pipeline as the student and injects
+    Runs the teacher through the same eval pipeline as the model and injects
     metrics into the metrics dict with an ``eval_teacher_`` prefix. This makes
     teacher metrics visible in W&B charts and to downstream callbacks like
     PeakMetricsCallback (add this callback *before* PeakMetricsCallback).
@@ -205,13 +205,13 @@ class TeacherEvalCallback(TrainerCallback):
 
     def on_evaluate(self, args, state, control, metrics=None, **kwargs):
         """
-        Run teacher evaluation and inject metrics after each student eval.
+        Run teacher evaluation and inject metrics after each model eval.
 
         Args:
             args: Training arguments
             state: Trainer state
             control: Trainer control
-            metrics: Mutable metrics dict from student eval
+            metrics: Mutable metrics dict from model eval
         """
         if metrics is None:
             return
@@ -251,7 +251,7 @@ class TeacherEvalCallback(TrainerCallback):
         )
 
     def on_save(self, args, state, control, **kwargs):
-        """Save co-trained teacher alongside student at each checkpoint."""
+        """Save co-trained teacher alongside model at each checkpoint."""
         if self.trainer.freeze_teacher:
             return
         checkpoint_dir = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")

@@ -82,7 +82,7 @@ Testing on first 5 GLUE validation examples:
 
 - **Teacher logit reordering**: Use `teacher_label_map` in distillation configs to reorder teacher soft targets
 - **Teacher prediction mapping**: Apply inverse mapping when evaluating teacher models directly
-- **Student evaluation**: Distilled students should predict in GLUE order (no mapping needed)
+- **Model evaluation**: Distilled models should predict in GLUE order (no mapping needed)
 - **GLUE compliance**: All models should follow GLUE's `[entailment, neutral, contradiction]` standard
 
 ## Recommendations

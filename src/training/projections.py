@@ -1,6 +1,6 @@
-"""Projection strategies for dimension alignment between teacher and student.
+"""Projection strategies for dimension alignment between teacher and model.
 
-Used when teacher and student have different hidden dimensions.
+Used when teacher and model have different hidden dimensions.
 For example: BERT-large (1024) -> DistilBERT (768) requires projection.
 
 For BERT-base (768) -> DistilBERT (768), use IdentityProjection (no transform).
@@ -14,7 +14,7 @@ class IdentityProjection:
     """
     No projection - pass through unchanged.
 
-    Use when teacher and student have matching dimensions.
+    Use when teacher and model have matching dimensions.
     Example: BERT-base (768) -> DistilBERT (768)
     """
 
@@ -40,7 +40,7 @@ class LinearProjection(nn.Module):
     """
     Linear projection for dimension alignment.
 
-    Projects teacher hidden states to match student dimension.
+    Projects teacher hidden states to match model dimension.
     Example: BERT-large (1024) -> DistilBERT (768)
 
     This is a learnable projection - the weights are trained during distillation.
@@ -52,7 +52,7 @@ class LinearProjection(nn.Module):
 
         Args:
             input_dim: Teacher hidden dimension
-            output_dim: Student hidden dimension
+            output_dim: Model hidden dimension
         """
         super().__init__()
         self.input_dim = input_dim
@@ -88,7 +88,7 @@ class MLPProjection(nn.Module):
 
         Args:
             input_dim: Teacher hidden dimension
-            output_dim: Student hidden dimension
+            output_dim: Model hidden dimension
             hidden_dim: Hidden layer dimension (default: average of input/output)
             activation: Activation function (relu, gelu, tanh)
         """
@@ -140,7 +140,7 @@ def get_projection(
     Args:
         name: Strategy name (identity, linear, mlp)
         input_dim: Teacher hidden dimension
-        output_dim: Student hidden dimension
+        output_dim: Model hidden dimension
         **kwargs: Additional arguments (hidden_dim for mlp)
 
     Returns:
@@ -168,7 +168,7 @@ def get_projection(
 
 def create_projection_if_needed(
     teacher_dim: int,
-    student_dim: int,
+    model_dim: int,
     projection_type: str = "linear",
     **kwargs
 ):
@@ -177,19 +177,19 @@ def create_projection_if_needed(
 
     Args:
         teacher_dim: Teacher hidden dimension
-        student_dim: Student hidden dimension
+        model_dim: Model hidden dimension
         projection_type: Type of projection if needed (linear, mlp)
         **kwargs: Additional arguments for projection
 
     Returns:
         IdentityProjection if dims match, else specified projection type
     """
-    if teacher_dim == student_dim:
-        return IdentityProjection(dim=student_dim)
+    if teacher_dim == model_dim:
+        return IdentityProjection(dim=model_dim)
 
     return get_projection(
         projection_type,
         input_dim=teacher_dim,
-        output_dim=student_dim,
+        output_dim=model_dim,
         **kwargs
     )

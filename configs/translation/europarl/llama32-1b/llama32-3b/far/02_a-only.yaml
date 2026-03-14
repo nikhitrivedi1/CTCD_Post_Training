@@ -15,7 +15,7 @@ distillation:
   # temperature and alpha inherited from base.yaml
   loss_type: attention_kl
   layer_mapping:
-    type: uniform         # Maps 28 teacher layers → 16 student layers
+    type: uniform         # Maps 28 teacher layers → 16 model layers
   attention_mapping:
     type: average         # Average 24 heads → 8 heads (groups of 3)
 

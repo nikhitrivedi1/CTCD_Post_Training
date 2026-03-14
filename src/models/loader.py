@@ -1,4 +1,4 @@
-"""Load teacher and student model pairs for knowledge distillation."""
+"""Model loading primitives."""
 
 import logging
 
@@ -167,17 +167,17 @@ def _apply_lora(model, lora_cfg: dict):
     return get_peft_model(model, lora_config)
 
 
-def _log_params(role: str, name: str, model):
+def _log_params(name: str, model):
     """Log model parameter count."""
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     total = sum(p.numel() for p in model.parameters())
     if trainable == total:
-        logger.info(f"{role}: {name} ({total / 1e6:.1f}M params)")
+        logger.info(f"  {name} ({total / 1e6:.1f}M params)")
     else:
-        logger.info(f"{role}: {name} ({trainable / 1e6:.1f}M trainable / {total / 1e6:.1f}M total)")
+        logger.info(f"  {name} ({trainable / 1e6:.1f}M trainable / {total / 1e6:.1f}M total)")
 
 
-def _needs_attention_outputs(config: dict) -> bool:
+def needs_attention_outputs(config: dict) -> bool:
     """Check if config requires attention outputs for distillation."""
     distill = config.get("distillation", {})
 
@@ -258,147 +258,45 @@ def _resolve_checkpoint(name: str, task: str, device: str,
 
 
 # =============================================================================
-# Compositions: load teacher + student pairs
+# Public API
 # =============================================================================
 
-def load_models(config: dict, device: str, tokenizer: PreTrainedTokenizer, num_labels: int = None):
-    """
-    Load teacher and student models based on config.
+def load_model(name: str, task: str, device: str, *,
+               init: str = "pretrained",
+               tokenizer: PreTrainedTokenizer = None,
+               num_labels: int = None,
+               eager: bool = False,
+               lora_config: dict = None) -> torch.nn.Module:
+    """Load a single model, routing by task type.
 
-    Routes to classifier or causal LM loader based on task type.
-    Returns (None, student) if no teacher is needed (CE-only baselines).
-
-    Args:
-        config: Configuration dictionary
-        device: Device to load models on ('cuda', 'mps', 'cpu')
-        tokenizer: Tokenizer (may have been resized with custom tokens)
-        num_labels: Number of labels for classification tasks
-
-    Returns:
-        Tuple of (teacher, student). Teacher is None if not specified.
-    """
-    teacher_cfg = config["model"].get("teacher", {})
-    teacher_name = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
-    student_name = config["model"]["name"]
-    student_init = config["model"].get("init", "pretrained")
-    task = config.get("data", {}).get("task", "").lower()
-    alpha = config.get("distillation", {}).get("alpha", 0.5)
-
-    translation = is_translation_task(task)
-    ocr = is_ocr_task(task)
-    eager = _needs_attention_outputs(config)
-    if eager:
-        logger.info("Using eager attention (required for attention distillation)")
-
-    # No teacher needed for CE-only baselines
-    if teacher_name is None or alpha == 0.0:
-        reason = "teacher is null" if teacher_name is None else "alpha=0.0"
-        logger.info(f"No teacher needed ({reason}) - CE-only mode")
-        teacher = None
-    else:
-        # Try checkpoint loading first (handles merged + adapter-only local paths)
-        teacher = _resolve_checkpoint(
-            teacher_name, task, device, eager,
-            tokenizer=tokenizer, num_labels=num_labels,
-        )
-        if teacher is None:
-            # Fall back to Hub model loading
-            if ocr:
-                teacher = _load_vlm(teacher_name, "pretrained", device, eager)
-            elif translation:
-                teacher = _load_causal_lm(teacher_name, "pretrained", device, tokenizer, eager)
-            else:
-                teacher = _load_classifier(teacher_name, "pretrained", num_labels, device)
-
-    # Load student
-    if ocr:
-        student = _load_vlm(student_name, student_init, device, eager)
-        if config.get("training", {}).get("use_lora", False):
-            student = _apply_lora(student, config["training"]["lora"])
-    elif translation:
-        student = _load_causal_lm(student_name, student_init, device, tokenizer, eager)
-        if config.get("training", {}).get("use_lora", False):
-            student = _apply_lora(student, config["training"]["lora"])
-    else:
-        student = _load_classifier(student_name, student_init, num_labels, device)
-
-    # Log
-    if teacher is not None:
-        _log_params("Teacher", teacher_name, teacher)
-    _log_params("Student", student_name, student)
-
-    return teacher, student
-
-
-def load_models_from_checkpoint(
-    checkpoint_dir: str,
-    config: dict,
-    device: str,
-    tokenizer: PreTrainedTokenizer,
-    num_labels: int = None,
-):
-    """Load teacher and student from saved checkpoints.
-
-    Student is loaded from checkpoint_dir, teacher from checkpoint_dir/teacher
-    (if it exists, i.e., co-trained). Frozen teachers are reloaded from the
-    original model ID since their weights don't change.
+    Tries local checkpoint first (merged or adapter-only), falls back to Hub.
 
     Args:
-        checkpoint_dir: Path to the training output directory
-        config: Configuration dictionary (for model type routing)
-        device: Device to load models on
-        tokenizer: Tokenizer
-        num_labels: Number of labels for classification tasks
+        name: Model name (HF ID) or local checkpoint path
+        task: Task string (routes to VLM, causal LM, or classifier)
+        device: Device string
+        init: "pretrained" or "fresh"
+        tokenizer: Tokenizer (needed for causal LM embedding resize)
+        num_labels: Number of labels (needed for classifiers)
+        eager: Use eager attention (for attention distillation)
+        lora_config: LoRA config dict (if provided, wraps model with adapters)
 
     Returns:
-        Tuple of (teacher, student). Teacher is None if not applicable.
+        Loaded model on device
     """
-    from pathlib import Path
-
-    task = config.get("data", {}).get("task", "").lower()
-    translation = is_translation_task(task)
-    ocr = is_ocr_task(task)
-    teacher_cfg = config["model"].get("teacher", {})
-    teacher_name = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
-    alpha = config.get("distillation", {}).get("alpha", 0.5)
-    checkpoint_dir = Path(checkpoint_dir)
-
-    # Load student from checkpoint
-    student_path = str(checkpoint_dir)
-    if ocr:
-        student = _load_vlm(student_path, "pretrained", device)
-    elif translation:
-        student = _load_causal_lm(student_path, "pretrained", device, tokenizer)
-    else:
-        student = _load_classifier(student_path, "pretrained", num_labels, device)
-    _log_params("Student (checkpoint)", student_path, student)
-
-    # Load teacher
-    teacher = None
-    if teacher_name is not None and alpha > 0.0:
-        teacher_path = checkpoint_dir / "teacher"
-        if teacher_path.exists():
-            # Co-trained teacher saved alongside student
-            teacher_src = str(teacher_path)
+    model = _resolve_checkpoint(name, task, device, eager,
+                                tokenizer=tokenizer, num_labels=num_labels)
+    if model is None:
+        if is_ocr_task(task):
+            model = _load_vlm(name, init, device, eager)
+        elif is_translation_task(task):
+            model = _load_causal_lm(name, init, device, tokenizer, eager)
         else:
-            # Frozen teacher: reload from original model ID
-            teacher_src = teacher_name
+            model = _load_classifier(name, init, num_labels, device)
 
-        # Try checkpoint loading first (handles merged + adapter-only local paths)
-        teacher = _resolve_checkpoint(
-            teacher_src, task, device,
-            tokenizer=tokenizer, num_labels=num_labels,
-        )
-        if teacher is None:
-            if ocr:
-                teacher = _load_vlm(teacher_src, "pretrained", device)
-            elif translation:
-                teacher = _load_causal_lm(teacher_src, "pretrained", device, tokenizer)
-            else:
-                teacher = _load_classifier(teacher_src, "pretrained", num_labels, device)
-        _log_params("Teacher (checkpoint)", teacher_src, teacher)
+    if lora_config:
+        model = _apply_lora(model, lora_config)
 
-    return teacher, student
-
-
+    _log_params(name, model)
+    return model
 

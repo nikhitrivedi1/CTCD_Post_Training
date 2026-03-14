@@ -10,7 +10,7 @@ HuggingFace TrainerCallback extensions for SLURM signals, checkpointing, evaluat
 
 Forge uses six callbacks that hook into HF Trainer's lifecycle at specific points (`on_log`, `on_step_end`, `on_evaluate`, `on_save`, `on_epoch_end`, `on_train_end`). They are added to the trainer in `forge.py` and execute in registration order.
 
-**Registration order matters:** `CheckpointMarkerCallback` should be added LAST so it runs after `TeacherEvalCallback` saves the teacher model. This ensures the `latest_checkpoint` marker is only written after all checkpoint files (student + teacher) are safely on disk.
+**Registration order matters:** `CheckpointMarkerCallback` should be added LAST so it runs after `TeacherEvalCallback` saves the teacher model. This ensures the `latest_checkpoint` marker is only written after all checkpoint files (model + teacher) are safely on disk.
 
 ---
 
@@ -85,7 +85,7 @@ The `latest_checkpoint` file is only written after ALL files are saved. On resum
 
 ## TeacherEvalCallback
 
-Evaluates the co-trained teacher at each eval step and saves it alongside the student.
+Evaluates the co-trained teacher at each eval step and saves it alongside the model.
 
 ### `on_evaluate(args, state, control, metrics)`
 
@@ -98,7 +98,7 @@ Evaluates the co-trained teacher at each eval step and saves it alongside the st
 
 ### `on_save(args, state, control)`
 
-If co-training (`freeze_teacher=False`), saves the teacher model to `checkpoint-N/teacher/` alongside the student checkpoint. This is needed for resume - the co-trained teacher's weights change during training, so we can't just reload from the original model ID.
+If co-training (`freeze_teacher=False`), saves the teacher model to `checkpoint-N/teacher/` alongside the model checkpoint. This is needed for resume - the co-trained teacher's weights change during training, so we can't just reload from the original model ID.
 
 ---
 

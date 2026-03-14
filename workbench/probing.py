@@ -79,31 +79,31 @@ def run_probing(
     return results
 
 
-def compare_probes(teacher_results: dict, student_results: dict):
+def compare_probes(reference_probes: dict, target_probes: dict):
     """
-    Compare probing results between teacher and student.
+    Compare two sets of probing results.
 
     Args:
-        teacher_results: Dict of layer -> accuracy for teacher
-        student_results: Dict of layer -> accuracy for student
+        reference_probes: Dict of layer -> accuracy for baseline model
+        target_probes: Dict of layer -> accuracy for model being evaluated
 
     Returns:
         Dict with comparison metrics
     """
-    teacher_peak = max(teacher_results.items(), key=lambda x: x[1])
-    student_peak = max(student_results.items(), key=lambda x: x[1])
+    reference_peak = max(reference_probes.items(), key=lambda x: x[1])
+    target_peak = max(target_probes.items(), key=lambda x: x[1])
 
-    # Find where student saturates (first layer within 1% of peak)
-    student_peak_acc = student_peak[1]
+    # Find where target saturates (first layer within 1% of peak)
+    target_peak_acc = target_peak[1]
     saturation_layer = None
-    for layer, acc in sorted(student_results.items(), key=lambda x: int(x[0].split("_")[-1]) if "_" in x[0] else 0):
-        if acc >= student_peak_acc - 0.01:
+    for layer, acc in sorted(target_probes.items(), key=lambda x: int(x[0].split("_")[-1]) if "_" in x[0] else 0):
+        if acc >= target_peak_acc - 0.01:
             saturation_layer = layer
             break
 
     return {
-        "teacher_peak": {"layer": teacher_peak[0], "accuracy": teacher_peak[1]},
-        "student_peak": {"layer": student_peak[0], "accuracy": student_peak[1]},
-        "student_saturation_layer": saturation_layer,
-        "retention": student_peak[1] / teacher_peak[1] if teacher_peak[1] > 0 else 0,
+        "reference_peak": {"layer": reference_peak[0], "accuracy": reference_peak[1]},
+        "target_peak": {"layer": target_peak[0], "accuracy": target_peak[1]},
+        "target_saturation_layer": saturation_layer,
+        "retention": target_peak[1] / reference_peak[1] if reference_peak[1] > 0 else 0,
     }
