@@ -700,7 +700,7 @@ for rn, count in retries.items():
         fi
     done
 
-    # Restore cmd/env from submitted entries (dict format from newer registry)
+    # Restore cmd/env/job_id from submitted entries (dict format from newer registry)
     eval "$(echo "$_CHAIN_SUBMITTED" | python3 -c "
 import json, sys, shlex
 data = json.load(sys.stdin)
@@ -709,8 +709,11 @@ if isinstance(data, dict):
         if isinstance(info, dict):
             cmd = info.get('cmd', '')
             env = info.get('env', '')
+            job_id = info.get('job_id', '')
             print(f'STEP_CMD[{rn}]={shlex.quote(cmd)}')
             print(f'STEP_ENV[{rn}]={shlex.quote(env)}')
+            if job_id:
+                print(f'STEP_JOB_ID[{rn}]={shlex.quote(job_id)}')
 ")"
 
     # Reconcile submitted steps (handles both list and dict formats)
@@ -723,7 +726,7 @@ for x in keys: print(x)
         if [ -z "${STEP_STATE[$rn]+x}" ]; then
             continue
         fi
-        check_step_status "$rn" ""
+        check_step_status "$rn" "${STEP_JOB_ID[$rn]:-}"
         case "$_STEP_STATUS" in
             complete)
                 echo "  $rn: completed while orchestrator was down"
