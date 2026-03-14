@@ -413,7 +413,21 @@ if env:
         sbatch_cmd="sbatch $sbatch_args scripts/slurm/run_training.sh $run_name $config"
     fi
 
-    echo "  CMD: $sbatch_cmd"
+    # Log the sbatch command with env vars expanded inline
+    local display_cmd="sbatch"
+    if [ "$step_type" = "score" ]; then
+        display_cmd="$display_cmd scripts/slurm/run_score.sh $config"
+    elif [ "$step_type" = "bench" ]; then
+        display_cmd="$display_cmd scripts/slurm/run_bench.sh $config"
+    else
+        display_cmd="$display_cmd scripts/slurm/run_training.sh $run_name $config"
+    fi
+    if [ -n "$export_args" ]; then
+        echo "  CMD: $display_cmd"
+        echo "  ENV: $export_args"
+    else
+        echo "  CMD: $display_cmd"
+    fi
     job_output=$(eval "$sbatch_cmd" 2>&1)
     SUBMITTED_JOB_ID=$(echo "$job_output" | grep -oE '[0-9]+$' || echo "")
 
