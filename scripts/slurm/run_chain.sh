@@ -428,6 +428,8 @@ if env:
     else
         echo "  CMD: $display_cmd"
     fi
+    STEP_CMD[$_STEP_RUN_NAME]="$display_cmd"
+    STEP_ENV[$_STEP_RUN_NAME]="$export_args"
     job_output=$(eval "$sbatch_cmd" 2>&1)
     SUBMITTED_JOB_ID=$(echo "$job_output" | grep -oE '[0-9]+$' || echo "")
 
@@ -576,7 +578,21 @@ print(json.dumps([k for k, v in states.items() if v == 'complete']))
 import json
 states = dict()
 $(for rn in "${!STEP_STATE[@]}"; do echo "states['$rn'] = '${STEP_STATE[$rn]}'"; done)
-print(json.dumps([k for k, v in states.items() if v == 'submitted']))
+cmds = dict()
+$(for rn in "${!STEP_CMD[@]}"; do echo "cmds['$rn'] = '${STEP_CMD[$rn]}'"; done)
+envs = dict()
+$(for rn in "${!STEP_ENV[@]}"; do echo "envs['$rn'] = '${STEP_ENV[$rn]}'"; done)
+jobs = dict()
+$(for rn in "${!STEP_JOB_ID[@]}"; do echo "jobs['$rn'] = '${STEP_JOB_ID[$rn]}'"; done)
+submitted = {}
+for k, v in states.items():
+    if v == 'submitted':
+        entry = {}
+        if jobs.get(k): entry['job_id'] = jobs[k]
+        if cmds.get(k): entry['cmd'] = cmds[k]
+        if envs.get(k): entry['env'] = envs[k]
+        submitted[k] = entry
+print(json.dumps(submitted))
 ")
     retries_json=$(python3 -c "
 import json
@@ -656,6 +672,8 @@ declare -A STEP_STATE      # run_name -> "pending"|"submitted"|"complete"|"faile
 declare -A STEP_JOB_ID     # run_name -> SLURM job ID
 declare -A STEP_INDEX      # run_name -> index in chain YAML
 declare -A STEP_RETRIES    # run_name -> number of retries so far
+declare -A STEP_CMD        # run_name -> display command (script + args)
+declare -A STEP_ENV        # run_name -> env vars string
 
 # Build step index and initialize states
 for ((i=0; i<TOTAL_STEPS; i++)); do
@@ -682,8 +700,26 @@ for rn, count in retries.items():
         fi
     done
 
-    # Reconcile submitted steps
-    for rn in $(echo "$_CHAIN_SUBMITTED" | python3 -c "import json,sys; [print(x) for x in json.load(sys.stdin)]"); do
+    # Restore cmd/env from submitted entries (dict format from newer registry)
+    eval "$(echo "$_CHAIN_SUBMITTED" | python3 -c "
+import json, sys, shlex
+data = json.load(sys.stdin)
+if isinstance(data, dict):
+    for rn, info in data.items():
+        if isinstance(info, dict):
+            cmd = info.get('cmd', '')
+            env = info.get('env', '')
+            print(f'STEP_CMD[{rn}]={shlex.quote(cmd)}')
+            print(f'STEP_ENV[{rn}]={shlex.quote(env)}')
+")"
+
+    # Reconcile submitted steps (handles both list and dict formats)
+    for rn in $(echo "$_CHAIN_SUBMITTED" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+keys = data.keys() if isinstance(data, dict) else data
+for x in keys: print(x)
+"); do
         if [ -z "${STEP_STATE[$rn]+x}" ]; then
             continue
         fi
