@@ -221,10 +221,18 @@ def register_bench_job(output_dir: str, bench_type: str, shard: str = None):
     prev = os.environ.get("PREV_JOB_ID")
 
     with locked_incomplete_jobs() as jobs:
-        guard_duplicate_job(jobs, "output_dir", output_dir, key)
+        # Guard on a composite key so different shards of the same output_dir
+        # don't trigger duplicate detection, but re-submitting the same shard does.
+        guard_key = f"{output_dir}:{shard}" if shard else output_dir
+        guard_duplicate_job(jobs, "guard_key", guard_key, key)
         if prev and prev in jobs:
             del jobs[prev]
-        jobs[key] = {"type": bench_type, "output_dir": output_dir, "shard": shard or ""}
+        jobs[key] = {
+            "type": bench_type,
+            "output_dir": output_dir,
+            "shard": shard or "",
+            "guard_key": guard_key,
+        }
     logger.info(f"Registered bench job in incomplete registry: {key}")
 
 
