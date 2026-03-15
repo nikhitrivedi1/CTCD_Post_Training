@@ -228,7 +228,7 @@ class TeacherEvalCallback(TrainerCallback):
         teacher_metrics = evaluate_model(
             model=self.trainer.teacher,
             eval_dataset=self.trainer.eval_dataset,
-            tokenizer=self.trainer.tokenizer,
+            tokenizer=self.trainer.processing_class,
             compute_metrics=compute_fn,
             data_collator=self.trainer.data_collator,
             batch_size=args.per_device_eval_batch_size,
@@ -258,7 +258,7 @@ class TeacherEvalCallback(TrainerCallback):
         teacher_dir = os.path.join(checkpoint_dir, "teacher")
         logger.info(f"Saving co-trained teacher to {teacher_dir}...")
         self.trainer.teacher.save_pretrained(teacher_dir)
-        self.trainer.tokenizer.save_pretrained(teacher_dir)
+        self.trainer.processing_class.save_pretrained(teacher_dir)
 
 
 class TranslationMetricsCallback(TrainerCallback):
