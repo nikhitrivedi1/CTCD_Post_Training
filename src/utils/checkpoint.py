@@ -40,8 +40,14 @@ class TrainingState:
             Dictionary containing training state
         """
         if self.state_file.exists():
-            with open(self.state_file, 'r') as f:
-                return json.load(f)
+            try:
+                with open(self.state_file, 'r') as f:
+                    return json.load(f)
+            except ValueError:
+                logger.warning(
+                    "Corrupt training_state.json in %s — starting fresh",
+                    self.output_dir,
+                )
 
         return {
             "completed_epochs": 0,
@@ -129,13 +135,13 @@ class TrainingState:
             if raw_path:
                 checkpoint_path = Path(raw_path)
                 # Try as-is first (may be absolute or already include output_dir)
-                if checkpoint_path.exists():
+                if checkpoint_path.exists() and checkpoint_path.is_dir():
                     logger.info(f"Resuming from latest_checkpoint: {checkpoint_path}")
                     return str(checkpoint_path)
                 # Try relative to output_dir
                 if not checkpoint_path.is_absolute():
                     resolved = (output_dir / checkpoint_path).resolve()
-                    if resolved.exists():
+                    if resolved.exists() and resolved.is_dir():
                         logger.info(f"Resuming from latest_checkpoint: {resolved}")
                         return str(resolved)
             logger.warning(
@@ -143,7 +149,15 @@ class TrainingState:
             )
 
         # Fallback: glob for checkpoint dirs (backward compat)
-        checkpoints = list(output_dir.glob("checkpoint-*"))
+        checkpoints = []
+        for p in output_dir.glob("checkpoint-*"):
+            if not p.is_dir():
+                continue
+            try:
+                int(p.name.split("-")[1])
+                checkpoints.append(p)
+            except (ValueError, IndexError):
+                continue
         if not checkpoints:
             return None
 

@@ -12,8 +12,8 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
-from datasets import Dataset
 from PIL import Image
+from datasets import Dataset
 
 from .base import DatasetHandler
 

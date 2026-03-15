@@ -33,7 +33,6 @@ import argparse
 import json
 import logging
 import os
-import re
 import sys
 from pathlib import Path
 
@@ -61,9 +60,6 @@ from src.evaluation.bench_utils import (
     validate_bench_args,
 )
 from src.evaluation.formatting_metrics import (
-    extract_formatting_spans,
-    count_formatting,
-    fuzzy_set_match,
     score_formatting,
     compute_aggregate,
 )

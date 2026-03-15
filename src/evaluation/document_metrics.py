@@ -17,7 +17,6 @@ report as a secondary metric.
 
 import logging
 import re
-from collections import deque
 
 from rapidfuzz.distance import Levenshtein
 

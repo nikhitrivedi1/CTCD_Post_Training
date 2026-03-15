@@ -5,7 +5,6 @@ import os
 import signal
 from typing import List, Optional
 
-import torch
 from transformers import TrainerCallback
 
 from src.utils.checkpoint import mark_checkpoint_complete

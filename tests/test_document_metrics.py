@@ -1,6 +1,7 @@
 """Tests for OmniDocBench evaluation metrics."""
 
 import pytest
+
 from src.evaluation.document_metrics import (
     normalized_edit_distance,
     edit_similarity,

@@ -1,6 +1,14 @@
 """Training modules for knowledge distillation."""
 
 from .callbacks import SLURMSignalCallback, StepMetricsCallback
+from .layer_mapping import (
+    UniformMappingStrategy,
+    LastNMappingStrategy,
+    FirstLastMappingStrategy,
+    CustomMappingStrategy,
+    get_layer_mapping,
+    LAYER_MAPPING_REGISTRY,
+)
 from .losses import (
     DistillationLossStrategy,
     KLDistillationLoss,
@@ -13,14 +21,6 @@ from .losses import (
     LossOutput,
     get_loss_strategy,
     LOSS_REGISTRY,
-)
-from .layer_mapping import (
-    UniformMappingStrategy,
-    LastNMappingStrategy,
-    FirstLastMappingStrategy,
-    CustomMappingStrategy,
-    get_layer_mapping,
-    LAYER_MAPPING_REGISTRY,
 )
 from .projections import (
     IdentityProjection,

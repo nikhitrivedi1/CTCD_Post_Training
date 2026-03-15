@@ -27,12 +27,12 @@ import json
 import logging
 import os
 import sys
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import torch
 import pypdfium2
+import torch
 from PIL import Image
 from tqdm import tqdm
 

@@ -1,6 +1,7 @@
 """Tests for formatting bench scoring functions."""
 
 import pytest
+
 from src.evaluation.formatting_metrics import (
     extract_formatting_spans,
     fuzzy_set_match,

@@ -1,6 +1,9 @@
 """Tests for reward functions and scoring helpers."""
 
-import pytest
+from src.evaluation.formatting_metrics import (
+    extract_formatting_spans as _extract_formatting_spans,
+    fuzzy_set_match as _fuzzy_set_match,
+)
 from src.training.rewards import (
     _score_ocr,
     _score_format,
@@ -9,10 +12,7 @@ from src.training.rewards import (
     _score_reading_order,
     _score_inline_formatting,
     _extract_text_blocks,
-    _extract_markdown_tables,
-    _extract_latex,
     _match_block_order,
-    _lcs_length,
     _score_parallel,
     ocr_reward,
     format_reward,
@@ -21,10 +21,6 @@ from src.training.rewards import (
     reading_order_reward,
     inline_formatting_reward,
     ParallelRewardGroup,
-)
-from src.evaluation.formatting_metrics import (
-    extract_formatting_spans as _extract_formatting_spans,
-    fuzzy_set_match as _fuzzy_set_match,
 )
 
 

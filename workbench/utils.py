@@ -6,13 +6,13 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from datasets import load_dataset
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel, AutoConfig
-from datasets import load_dataset
 
 # Re-export label utilities from shared location
-from utils.labels import get_label_map, CLASS_LABELS, LABEL_MAP_REGISTRY
+from utils.labels import get_label_map, CLASS_LABELS, LABEL_MAP_REGISTRY  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,6 @@
 """Quick single-math-test across all bench models. Diagnoses KaTeX scoring."""
 import os
-import json
+
 from olmocr.bench.tests import load_single_test
 
 TEST = {

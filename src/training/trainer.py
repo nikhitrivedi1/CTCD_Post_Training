@@ -7,8 +7,8 @@ import torch
 import torch.nn.functional as F
 from transformers import Trainer
 
-from .losses import DistillationLossStrategy, KLDistillationLoss, get_loss_strategy
 from .layer_mapping import get_layer_mapping
+from .losses import DistillationLossStrategy, KLDistillationLoss, get_loss_strategy
 from .projections import create_projection_if_needed
 
 logger = logging.getLogger(__name__)
@@ -173,7 +173,7 @@ class DistillationTrainer(FinetuningTrainer):
         """
         # Create a shallow copy to avoid modifying the original
         # (we still need original .loss for teacher CE computation)
-        from dataclasses import fields, is_dataclass
+        from dataclasses import is_dataclass
 
         if is_dataclass(teacher_outputs):
             # HuggingFace model outputs are dataclasses

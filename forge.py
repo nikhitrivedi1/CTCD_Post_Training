@@ -12,10 +12,9 @@ import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
-
 import numpy as np
 import torch
+import yaml
 
 from src.utils.jobs import get_job_key, guard_duplicate_job, locked_incomplete_jobs
 
@@ -77,7 +76,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # (override=False means Colab/HPC env vars take precedence)
 from src.utils.environment import detect_environment, get_device, get_num_workers
 
-from transformers import Trainer, TrainingArguments, ProgressCallback, set_seed, DataCollatorForSeq2Seq
+from transformers import TrainingArguments, ProgressCallback, set_seed, DataCollatorForSeq2Seq
 
 
 def set_reproducibility_seed(seed: int = 42):
