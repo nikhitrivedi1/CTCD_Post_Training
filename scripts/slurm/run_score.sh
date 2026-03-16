@@ -1,14 +1,14 @@
 #!/bin/bash
 #SBATCH --job-name=forge-score
 #SBATCH --partition=short
+#SBATCH --cpus-per-task=8
 #SBATCH --time=08:00:00
-#SBATCH --mem=64G
-#SBATCH --cpus-per-task=32
+#SBATCH --mem=32G
 #SBATCH --output=logs/score_%j.out
 #SBATCH --error=logs/score_%j.out
 
 # SLURM scoring script (CPU-only). Re-scores existing benchmark results
-# without needing a GPU. Runs with 32 CPUs for parallel scoring.
+# without needing a GPU.
 #
 # Usage:
 #   sbatch scripts/slurm/run_score.sh {olmocr|omnidoc|formatting} --output <path>

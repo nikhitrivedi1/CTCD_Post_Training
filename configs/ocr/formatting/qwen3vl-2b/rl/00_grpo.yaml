@@ -1,6 +1,5 @@
-# Formatting GRPO: upweighted formatting reward + higher temperature
-# Formatting reward gets 3x weight so it dominates the advantage signal.
-# Temperature 1.3 forces more diversity in formatting behavior across generations.
+# Formatting GRPO v1: Qwen3-VL-2B
+# Upweighted formatting reward + higher temperature.
 #
 # Run:
 #   ADAPTER=outputs/fmt_sft \
@@ -9,13 +8,9 @@
 inherit: base.yaml
 
 rl:
-  algorithm: grpo
-  reward: [edit_similarity, inline_formatting]
-  reward_weights: [1.0, 3.0]
-  num_generations: 4
-  generation_batch_size: 4
-  max_completion_length: 1024
+  reward:
+    edit_similarity: 1.0
+    inline_formatting: 3.0
+  generation_batch_size: 16
   temperature: 1.3
   beta: 0.0
-  loss_type: grpo
-  log_completions: true

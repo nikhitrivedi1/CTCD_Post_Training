@@ -1,0 +1,3 @@
+# Formatting KD base: Qwen3.5-0.8B
+
+inherit: ../base.yaml

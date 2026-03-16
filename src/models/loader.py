@@ -89,13 +89,10 @@ def _load_causal_lm(name: str, init: str, device: str, tokenizer: PreTrainedToke
         if attn_impl:
             model_config._attn_implementation = attn_impl
         model = AutoModelForCausalLM.from_config(model_config).to(dtype)
-        if device == "cuda":
-            model = model.to(device)
     else:
         model = AutoModelForCausalLM.from_pretrained(
             name,
             dtype=dtype,
-            device_map=device if device == "cuda" else None,
             attn_implementation=attn_impl,
         )
 
@@ -104,7 +101,7 @@ def _load_causal_lm(name: str, init: str, device: str, tokenizer: PreTrainedToke
         logger.info(f"Resizing embeddings: {model.config.vocab_size} -> {len(tokenizer)}")
         model.resize_token_embeddings(len(tokenizer))
 
-    return model
+    return model.to(device)
 
 
 def _load_vlm(name: str, init: str, device: str, eager_attention: bool = False):
@@ -127,10 +124,7 @@ def _load_vlm(name: str, init: str, device: str, eager_attention: bool = False):
 
     attn_impl = _detect_attn_implementation(eager_attention, device)
 
-    kwargs = {
-        "dtype": dtype,
-        "device_map": "auto" if device == "cuda" else None,
-    }
+    kwargs = {"dtype": dtype}
 
     if attn_impl:
         kwargs["attn_implementation"] = attn_impl
@@ -142,7 +136,7 @@ def _load_vlm(name: str, init: str, device: str, eager_attention: bool = False):
     model = AutoModelForImageTextToText.from_pretrained(name, **kwargs)
     logger.info(f"Loaded VLM: {name}")
 
-    return model
+    return model.to(device)
 
 
 def _apply_lora(model, lora_cfg: dict):

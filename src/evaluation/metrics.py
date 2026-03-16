@@ -3,9 +3,9 @@
 import logging
 from typing import Dict, Any, Optional, Callable
 
-import evaluate
 import numpy as np
 
+import evaluate
 from src.tasks import is_classification_task, is_translation_task, is_ocr_task
 
 logger = logging.getLogger(__name__)

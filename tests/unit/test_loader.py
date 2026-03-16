@@ -250,24 +250,16 @@ class TestLoadCausalLM:
         mock_auto.from_config.assert_called_once_with(mock_config)
 
     @patch("src.models.loader.AutoModelForCausalLM")
-    def test_pretrained_cuda_uses_device_map(self, mock_auto):
-        model = _fake_model()
-        mock_auto.from_pretrained.return_value = model
-        tokenizer = MagicMock()
-        tokenizer.__len__ = MagicMock(return_value=32000)
-        _load_causal_lm("llama-1b", "pretrained", "cuda", tokenizer)
-        call_kwargs = mock_auto.from_pretrained.call_args
-        assert call_kwargs.kwargs["device_map"] == "cuda"
-
-    @patch("src.models.loader.AutoModelForCausalLM")
-    def test_pretrained_cpu_no_device_map(self, mock_auto):
+    def test_pretrained_no_device_map(self, mock_auto):
+        """device_map removed - all device placement via .to(device)."""
         model = _fake_model()
         mock_auto.from_pretrained.return_value = model
         tokenizer = MagicMock()
         tokenizer.__len__ = MagicMock(return_value=32000)
         _load_causal_lm("llama-1b", "pretrained", "cpu", tokenizer)
         call_kwargs = mock_auto.from_pretrained.call_args
-        assert call_kwargs.kwargs["device_map"] is None
+        assert "device_map" not in call_kwargs.kwargs
+        model.to.assert_called_with("cpu")
 
 
 # ===========================================================================

@@ -1,12 +1,13 @@
 """Incomplete jobs registry with file locking for concurrent SLURM access."""
 
 import contextlib
-import fcntl
 import json
 import logging
 import os
 import subprocess
 from pathlib import Path
+
+import fcntl
 
 logger = logging.getLogger(__name__)
 

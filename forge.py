@@ -495,6 +495,19 @@ def load_config_snapshot(output_dir: Path) -> dict | None:
     return None
 
 
+def should_load_best_model(config: dict) -> bool:
+    """Whether to enable load_best_model_at_end based on eval strategy.
+
+    Args:
+        config: Full training config dict.
+
+    Returns:
+        True only when evaluation is actively running (steps or epoch).
+    """
+    strategy = config.get("evaluation", {}).get("eval_strategy", "steps")
+    return strategy in ("steps", "epoch")
+
+
 def _save_base_ref(output_dir: Path, model_name: str, revision: str = None):
     """Save base model reference to base/ directory.
 
@@ -620,12 +633,65 @@ def _sync_wandb(config, task, metadata, output_dir):
         logger.debug(f"W&B config update failed: {e}")
 
 
-def _save_final_model(trainer, config, output_dir, processor=None, tokenizer=None):
-    """Save final model with unified structure (merged model + adapter + base ref).
+def _save_model(model, save_dir, model_name=None, processor=None, tokenizer=None):
+    """Save a model with unified structure (merged model + adapter + base ref).
 
     For LoRA: saves adapter, base reference, then merges and saves merged model.
     For Full FT: saves full model and base reference.
     Always saves processor/tokenizer.
+
+    Args:
+        model: Model to save (may be a PeftModel with LoRA adapters)
+        save_dir: Directory to save to
+        model_name: Fallback model name for base ref (used for full FT)
+        processor: AutoProcessor for VLMs (optional)
+        tokenizer: Tokenizer for causal LMs (optional)
+    """
+    from peft import PeftModel
+
+    save_dir = Path(save_dir)
+
+    # Unwrap DDP/FSDP wrapper if present (multi-GPU training)
+    model = getattr(model, "module", model)
+
+    if isinstance(model, PeftModel):
+        # LoRA: save adapter first (merge is destructive)
+        logger.info("Saving LoRA adapter...")
+        model.save_pretrained(save_dir)
+
+        # Save base ref if not already saved with full weights (--adapter case)
+        if not (save_dir / "base" / "config.json").exists():
+            base_config = model.get_base_model().config
+            _save_base_ref(
+                save_dir,
+                model_name=base_config._name_or_path,
+                revision=getattr(base_config, "_commit_hash", None),
+            )
+
+        logger.info("Merging LoRA and saving merged model...")
+        merged = model.merge_and_unload()
+        merged.save_pretrained(save_dir)
+    else:
+        # Full FT: save complete model
+        logger.info("Saving model...")
+        model.save_pretrained(save_dir)
+        if not (save_dir / "base" / "config.json").exists():
+            _save_base_ref(
+                save_dir,
+                model_name=model_name or model.config._name_or_path,
+                revision=getattr(model.config, "_commit_hash", None),
+            )
+
+    # Save processor/tokenizer
+    if processor is not None:
+        processor.save_pretrained(save_dir)
+    elif tokenizer is not None:
+        tokenizer.save_pretrained(save_dir)
+    logger.info(f"Model saved to {save_dir}")
+
+
+def _save_final_model(trainer, config, output_dir, processor=None, tokenizer=None):
+    """Save the student model after training. Delegates to _save_model.
 
     Args:
         trainer: HF Trainer instance (model accessible via trainer.model)
@@ -634,41 +700,9 @@ def _save_final_model(trainer, config, output_dir, processor=None, tokenizer=Non
         processor: AutoProcessor for VLMs (optional)
         tokenizer: Tokenizer for causal LMs (optional)
     """
-    if hasattr(trainer.model, "merge_and_unload"):
-        # LoRA: save adapter first (merge is destructive)
-        logger.info("Saving LoRA adapter to output dir...")
-        trainer.model.save_pretrained(output_dir)
-
-        # Save base ref if not already saved with full weights (--adapter case)
-        if not (output_dir / "base" / "config.json").exists():
-            base_config = trainer.model.get_base_model().config
-            _save_base_ref(
-                output_dir,
-                model_name=base_config._name_or_path,
-                revision=getattr(base_config, "_commit_hash", None),
-            )
-
-        logger.info("Merging LoRA and saving merged model...")
-        merged = trainer.model.merge_and_unload()
-        merged.save_pretrained(output_dir)
-    else:
-        # Full FT: save complete model
-        logger.info("Saving final model to output dir...")
-        trainer.save_model(output_dir)
-        # Save base ref if not already saved with full weights (--adapter case)
-        if not (output_dir / "base" / "config.json").exists():
-            _save_base_ref(
-                output_dir,
+    _save_model(trainer.model, output_dir,
                 model_name=config["model"]["name"],
-                revision=getattr(trainer.model.config, "_commit_hash", None),
-            )
-
-    # Save processor/tokenizer
-    if processor is not None:
-        processor.save_pretrained(output_dir)
-    elif tokenizer is not None:
-        tokenizer.save_pretrained(output_dir)
-    logger.info("Final model saved")
+                processor=processor, tokenizer=tokenizer)
 
 
 def _train(
@@ -723,6 +757,16 @@ def _train(
         teacher = load_model(teacher_name, task, device,
                              tokenizer=tokenizer, num_labels=num_labels,
                              eager=eager)
+        # Save teacher base reference for lineage tracking (mirrors base/model_ref.json)
+        teacher_base_dir = output_dir / "teacher" / "base"
+        teacher_base_dir.mkdir(parents=True, exist_ok=True)
+        ref = {"model_name_or_path": teacher_name}
+        revision = getattr(teacher.config, "_commit_hash", None)
+        if revision:
+            ref["revision"] = revision
+        with open(teacher_base_dir / "model_ref.json", 'w') as f:
+            json.dump(ref, f, indent=2)
+        logger.info(f"Teacher ref saved: {teacher_name}")
     else:
         reason = "no teacher configured" if not teacher_name else "alpha=0.0"
         logger.info(f"No teacher ({reason}) - CE-only mode")
@@ -749,7 +793,7 @@ def _train(
         dataloader_pin_memory=device == "cuda",  # Disable on MPS (not supported)
         run_name=run_name,
         max_steps=args.max_steps if args.max_steps > 0 else -1,
-        load_best_model_at_end=True,
+        load_best_model_at_end=should_load_best_model(config),
         # Select best checkpoint by task metric (accuracy/f1/mcc), not loss.
         # Loss and metric can diverge; metric-based selection ensures we report the best achieved.
         # For translation: use loss since BLEU is computed separately by callback (generation-based),
@@ -869,23 +913,19 @@ def _train(
 
         # Save co-trained teacher (weights changed during training)
         if teacher is not None and not config["model"].get("teacher", {}).get("freeze", True):
-            teacher_dir = output_dir / "teacher"
-            logger.info(f"Saving co-trained teacher to {teacher_dir}...")
-            teacher.save_pretrained(teacher_dir)
-            tokenizer.save_pretrained(teacher_dir)
             teacher_cfg = config["model"].get("teacher", {})
             teacher_name = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
-            if teacher_name:
-                _save_base_ref(
-                    teacher_dir,
-                    model_name=teacher_name,
-                    revision=getattr(teacher.config, "_commit_hash", None),
-                )
+            teacher_dir = output_dir / "teacher"
+            logger.info(f"Saving co-trained teacher to {teacher_dir}...")
+            _save_model(teacher, teacher_dir,
+                        model_name=teacher_name,
+                        processor=processor, tokenizer=tokenizer)
     else:
         logger.info("Training interrupted - skipping final model save (checkpoint already saved)")
 
 
-def _build_grpo_config(config, output_dir, run_name, args, device, report_to):
+def _build_grpo_config(config, output_dir, run_name, args, device, report_to,
+                       reward_weights=None):
     """Build a GRPOConfig from the Forge YAML config.
 
     Args:
@@ -895,6 +935,7 @@ def _build_grpo_config(config, output_dir, run_name, args, device, report_to):
         args: Parsed CLI arguments.
         device: Device string.
         report_to: Logging target.
+        reward_weights: Resolved reward weights from get_reward_funcs.
 
     Returns:
         GRPOConfig instance.
@@ -913,7 +954,7 @@ def _build_grpo_config(config, output_dir, run_name, args, device, report_to):
         beta=float(rl.get("beta", 0.0)),
         temperature=float(rl.get("temperature", 1.0)),
         loss_type=rl.get("loss_type", "grpo"),
-        reward_weights=rl.get("reward_weights"),
+        reward_weights=reward_weights,
         num_iterations=int(rl.get("num_iterations", 1)),
         scale_rewards=rl.get("scale_rewards", "group"),
         # Training params from config
@@ -976,11 +1017,12 @@ def _train_rl(
     from peft import LoraConfig
 
     # Build reward functions from config
-    reward_funcs = get_reward_funcs(config)
+    reward_funcs, reward_weights = get_reward_funcs(config)
     logger.info(f"Reward functions: {[f.__name__ for f in reward_funcs]}")
 
-    # Build GRPOConfig
-    grpo_config = _build_grpo_config(config, output_dir, run_name, args, device, report_to)
+    # Build GRPOConfig (pass resolved weights)
+    grpo_config = _build_grpo_config(config, output_dir, run_name, args, device, report_to,
+                                     reward_weights=reward_weights)
     logger.info(f"GRPO config: num_generations={grpo_config.num_generations}, "
                 f"max_completion_length={grpo_config.max_completion_length}, "
                 f"beta={grpo_config.beta}, loss_type={grpo_config.loss_type}")
@@ -1066,6 +1108,8 @@ def main():
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--adapter", type=str, default=None,
                         help="Path to adapter to merge before training (e.g. outputs/my_sft_run/)")
+    parser.add_argument("--teacher_adapter", type=str, default=None,
+                        help="Path to teacher checkpoint/adapter (overrides model.teacher.name)")
     parser.add_argument("--debug", action="store_true",
                         help="Enable DEBUG level logging for verbose output")
     args = parser.parse_args()
@@ -1235,6 +1279,12 @@ def main():
     if args.adapter is not None:
         config.setdefault("model", {})["adapter_path"] = args.adapter
         logger.info(f"CLI override: adapter_path={args.adapter}")
+    if args.teacher_adapter is not None:
+        model_cfg = config.setdefault("model", {})
+        if not isinstance(model_cfg.get("teacher"), dict):
+            model_cfg["teacher"] = {}
+        model_cfg["teacher"]["name"] = args.teacher_adapter
+        logger.info(f"CLI override: teacher={args.teacher_adapter}")
 
     logger.info(f"Output directory: {args.output_dir}")
 
@@ -1308,6 +1358,8 @@ def main():
         if args.adapter:
             metadata["base_model"] = config["model"]["name"]
             metadata["adapter"] = args.adapter
+        if args.teacher_adapter:
+            metadata["teacher_adapter"] = args.teacher_adapter
         output_dir.mkdir(parents=True, exist_ok=True)
         save_run_metadata(output_dir, metadata)
         save_config_snapshot(output_dir, config)

@@ -712,11 +712,23 @@ REWARD_REGISTRY = {
 def get_reward_funcs(config):
     """Build reward function list from config.
 
+    Supports three reward spec formats:
+        reward: verifiable              # task default
+        reward: edit_similarity         # single reward
+        reward:                         # dict with weights
+          edit_similarity: 0.25
+          inline_formatting_pertype: 1.0
+
+    The legacy list format is also supported:
+        reward: [edit_similarity, inline_formatting_pertype]
+        reward_weights: [0.25, 1.0]
+
     Args:
         config: Full config dict with 'rl' and 'data' sections.
 
     Returns:
-        List of reward callables for GRPOTrainer.
+        Tuple of (reward_funcs, reward_weights) where reward_weights is
+        a list of floats or None.
     """
     rl_config = config["rl"]
     task = config["data"]["task"]
@@ -730,9 +742,24 @@ def get_reward_funcs(config):
                 f"Set 'default_reward' in TASK_REGISTRY or use 'reward: <name>' explicitly."
             )
         logger.info(f"Using verifiable reward '{reward_name}' for task '{task}'")
-        return [REWARD_REGISTRY[reward_name]]
+        return [REWARD_REGISTRY[reward_name]], None
 
-    # List of reward names (check before dict lookup to avoid unhashable type error)
+    # Dict format: reward name -> weight
+    if isinstance(reward_spec, dict):
+        funcs = []
+        weights = []
+        for name, weight in reward_spec.items():
+            if name not in REWARD_REGISTRY:
+                raise ValueError(f"Unknown reward: {name}. Available: {list(REWARD_REGISTRY.keys())}")
+            funcs.append(REWARD_REGISTRY[name])
+            weights.append(float(weight))
+        logger.info(f"Using reward functions: {dict(zip(reward_spec.keys(), weights))}")
+        if len(funcs) > 1:
+            logger.info("Wrapping in ParallelRewardGroup for concurrent scoring")
+            funcs = ParallelRewardGroup(funcs).wrap()
+        return funcs, weights
+
+    # List of reward names (legacy format, weights from reward_weights)
     if isinstance(reward_spec, list):
         funcs = []
         for name in reward_spec:
@@ -743,15 +770,16 @@ def get_reward_funcs(config):
         if len(funcs) > 1:
             logger.info("Wrapping in ParallelRewardGroup for concurrent scoring")
             funcs = ParallelRewardGroup(funcs).wrap()
-        return funcs
+        weights = rl_config.get("reward_weights")
+        return funcs, weights
 
     # Single reward name
     if isinstance(reward_spec, str) and reward_spec in REWARD_REGISTRY:
         logger.info(f"Using reward function: {reward_spec}")
-        return [REWARD_REGISTRY[reward_spec]]
+        return [REWARD_REGISTRY[reward_spec]], None
 
     raise ValueError(
         f"Unknown reward spec: {reward_spec}. "
         f"Use 'verifiable', a reward name ({list(REWARD_REGISTRY.keys())}), "
-        f"or a list of names."
+        f"or a dict of name: weight pairs."
     )

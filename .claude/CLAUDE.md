@@ -11,6 +11,7 @@
 - Use descriptive variable names.
 - Prefer general naming over overly specific (e.g., `output.log` not `training.log`).
 - Add comments only where logic isn't self-evident.
+- **Defensive programming**: Make the safe behavior the default. Don't rely on each code path to remember invariants - enforce them in one place (e.g., `.to(device)` at the end of every loader, not scattered per-branch).
 
 ## Git Workflow
 - Commit messages: short summary line, optional body for context.
@@ -51,6 +52,7 @@
 - Use `python` not `python3` on the cluster
 
 ## Testing
+- **TDD**: When fixing bugs or changing behavior, write a failing test first, then implement the fix.
 - GPU clusters: H200 (140GB), A100 (40GB).
 - Watch for OOM during evaluation - hidden states/attentions accumulate.
 - Use --debug flag for verbose logging and W&B Test project.

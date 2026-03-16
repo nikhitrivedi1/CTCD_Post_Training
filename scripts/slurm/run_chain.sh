@@ -42,6 +42,7 @@ slurm_setup_env
 
 POLL_INTERVAL=${POLL_INTERVAL:-60}
 MAX_RETRIES=${MAX_RETRIES:-3}
+MAX_SUBMITTED=${MAX_SUBMITTED:-3}
 STALE_THRESHOLD=2
 CHAIN_REGISTRY=".incomplete_chains"
 
@@ -447,9 +448,15 @@ if env:
 # ---------------------------------------------------------------------------
 
 # Check if a run_name's .incomplete_jobs entry exists. Prints the job ID if found.
-# Matches training jobs by resume_path and bench jobs by output_dir.
+# Matches training jobs by resume_path, bench jobs by output_dir, and optionally
+# by guard_key (output_dir:shard) for bench/score jobs whose chain run_name
+# doesn't match the IJ output_dir.
+# NOTE: This is embedded Python so it can't be tested directly with pytest.
+# See tests/test_chain_detection.py for mocked equivalents that verify the
+# expected matching behavior (find_incomplete_job, build_guard_key, check_step_status).
 find_incomplete_job() {
     local run_name="$1"
+    local guard_key="${2:-}"
     python3 -c "
 import json
 from pathlib import Path
@@ -463,6 +470,8 @@ try:
 except json.JSONDecodeError:
     exit(1)
 
+guard_key = '$guard_key'
+
 for job_id, info in jobs.items():
     # Training jobs: match by resume_path
     rp = info.get('resume_path', '').rstrip('/')
@@ -474,6 +483,13 @@ for job_id, info in jobs.items():
     if od.endswith('/$run_name') or od == 'outputs/$run_name':
         print(job_id)
         exit(0)
+    # Guard key match for bench/score jobs whose chain run_name
+    # doesn't match the IJ output_dir (e.g. sharded bench steps)
+    if guard_key:
+        gk = info.get('guard_key', '').rstrip('/')
+        if gk == guard_key:
+            print(job_id)
+            exit(0)
 
 exit(1)
 " 2>/dev/null
@@ -484,6 +500,29 @@ job_in_squeue() {
     squeue -j "$1" --noheader 2>/dev/null | grep -q .
 }
 
+# Build guard_key from a step's env string (comma-separated KEY=VALUE pairs).
+# Used to match bench/score jobs in .incomplete_jobs by output_dir:shard.
+build_guard_key() {
+    local env_str="$1"
+    python3 -c "
+env_str = '$env_str'
+env = {}
+if env_str:
+    for pair in env_str.split(','):
+        if '=' in pair:
+            k, v = pair.split('=', 1)
+            env[k] = v
+output = env.get('OUTPUT', '')
+if not output:
+    exit(0)
+shard = env.get('SHARD', '')
+if shard:
+    print(f'{output}:{shard}')
+else:
+    print(output)
+" 2>/dev/null
+}
+
 # Check step status. Returns via _STEP_STATUS: "active", "complete", "failed"
 # _STEP_STALE_COUNT tracks consecutive polls where job is in .incomplete_jobs
 # but not in squeue (dead job with stale registry entry).
@@ -492,6 +531,7 @@ declare -A _STEP_STALE_COUNT
 check_step_status() {
     local run_name="$1"
     local tracked_job_id="$2"
+    local guard_key="${3:-}"
 
     # 1. Is the tracked job still in squeue?
     if [ -n "$tracked_job_id" ] && job_in_squeue "$tracked_job_id"; then
@@ -503,7 +543,7 @@ check_step_status() {
 
     # 2. Check .incomplete_jobs for a resubmitted job
     local ij_job
-    ij_job=$(find_incomplete_job "$run_name" 2>/dev/null) || true
+    ij_job=$(find_incomplete_job "$run_name" "$guard_key" 2>/dev/null) || true
     if [ -n "$ij_job" ]; then
         if job_in_squeue "$ij_job"; then
             _STEP_STATUS="active"
@@ -588,12 +628,17 @@ save_chain_state() {
 import json
 states = dict()
 $(for rn in "${!STEP_STATE[@]}"; do echo "states['$rn'] = '${STEP_STATE[$rn]}'"; done)
-print(json.dumps([k for k, v in states.items() if v == 'complete']))
+indices = dict()
+$(for rn in "${!STEP_INDEX[@]}"; do echo "indices['$rn'] = ${STEP_INDEX[$rn]}"; done)
+completed = sorted([k for k, v in states.items() if v == 'complete'], key=lambda k: indices.get(k, 999))
+print(json.dumps(completed))
 ")
     submitted_json=$(python3 -c "
 import json
 states = dict()
 $(for rn in "${!STEP_STATE[@]}"; do echo "states['$rn'] = '${STEP_STATE[$rn]}'"; done)
+indices = dict()
+$(for rn in "${!STEP_INDEX[@]}"; do echo "indices['$rn'] = ${STEP_INDEX[$rn]}"; done)
 cmds = dict()
 $(for rn in "${!STEP_CMD[@]}"; do echo "cmds['$rn'] = '${STEP_CMD[$rn]}'"; done)
 envs = dict()
@@ -601,13 +646,12 @@ $(for rn in "${!STEP_ENV[@]}"; do echo "envs['$rn'] = '${STEP_ENV[$rn]}'"; done)
 jobs = dict()
 $(for rn in "${!STEP_JOB_ID[@]}"; do echo "jobs['$rn'] = '${STEP_JOB_ID[$rn]}'"; done)
 submitted = {}
-for k, v in states.items():
-    if v == 'submitted':
-        entry = {}
-        if jobs.get(k): entry['job_id'] = jobs[k]
-        if cmds.get(k): entry['cmd'] = cmds[k]
-        if envs.get(k): entry['env'] = envs[k]
-        submitted[k] = entry
+for k in sorted([k for k, v in states.items() if v == 'submitted'], key=lambda k: indices.get(k, 999)):
+    entry = {}
+    if jobs.get(k): entry['job_id'] = jobs[k]
+    if cmds.get(k): entry['cmd'] = cmds[k]
+    if envs.get(k): entry['env'] = envs[k]
+    submitted[k] = entry
 print(json.dumps(submitted))
 ")
     retries_json=$(python3 -c "
@@ -713,10 +757,12 @@ declare -A STEP_INDEX      # run_name -> index in chain YAML
 declare -A STEP_RETRIES    # run_name -> number of retries so far
 declare -A STEP_CMD        # run_name -> display command (script + args)
 declare -A STEP_ENV        # run_name -> env vars string
+declare -a STEP_ORDER      # ordered list of run_names (YAML order)
 
 # Build step index and initialize states
 for ((i=0; i<TOTAL_STEPS; i++)); do
     read_chain_step "$_CHAIN_FILE" "$i"
+    STEP_ORDER+=("$_STEP_RUN_NAME")
     STEP_INDEX[$_STEP_RUN_NAME]=$i
     STEP_STATE[$_STEP_RUN_NAME]="pending"
     STEP_RETRIES[$_STEP_RUN_NAME]=0
@@ -765,7 +811,8 @@ for x in keys: print(x)
         if [ -z "${STEP_STATE[$rn]+x}" ]; then
             continue
         fi
-        check_step_status "$rn" "${STEP_JOB_ID[$rn]:-}"
+        _gk=$(build_guard_key "${STEP_ENV[$rn]:-}") || true
+        check_step_status "$rn" "${STEP_JOB_ID[$rn]:-}" "$_gk"
         case "$_STEP_STATUS" in
             complete)
                 echo "  $rn: completed while orchestrator was down"
@@ -856,9 +903,25 @@ while true; do
         exit 0
     fi
 
-    # Find and submit ready steps
-    for rn in "${!STEP_STATE[@]}"; do
+    # Find and submit ready steps (up to MAX_SUBMITTED in queue, YAML order)
+    for rn in "${STEP_ORDER[@]}"; do
         if [ "${STEP_STATE[$rn]}" = "pending" ] && deps_met "$rn"; then
+            # Check if step already completed (e.g. finished while orchestrator was down)
+            _already_complete=""
+            _already_complete=$(slurm_is_complete "./outputs/$rn")
+            if [ "$_already_complete" = "true" ] && [ -f "./outputs/$rn/training_state.json" ]; then
+                echo "  $rn: already complete, skipping submission"
+                STEP_STATE[$rn]="complete"
+                save_chain_state
+                continue
+            fi
+
+            # Respect max submitted jobs limit
+            n_submitted=$(count_state "submitted")
+            if [ "$n_submitted" -ge "$MAX_SUBMITTED" ]; then
+                break
+            fi
+
             local_idx="${STEP_INDEX[$rn]}"
             read_chain_step "$_CHAIN_FILE" "$local_idx"
 
@@ -913,7 +976,8 @@ while true; do
     # Check status of all submitted steps
     for rn in "${!STEP_STATE[@]}"; do
         if [ "${STEP_STATE[$rn]}" = "submitted" ]; then
-            check_step_status "$rn" "${STEP_JOB_ID[$rn]:-}"
+            _gk=$(build_guard_key "${STEP_ENV[$rn]:-}") || true
+            check_step_status "$rn" "${STEP_JOB_ID[$rn]:-}" "$_gk"
             case "$_STEP_STATUS" in
                 complete)
                     echo "  $rn: COMPLETE"

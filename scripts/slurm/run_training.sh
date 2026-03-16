@@ -69,8 +69,9 @@ ARGS=""
 [ -n "$SEED" ]      && ARGS="$ARGS --seed $SEED"           && echo "Seed: $SEED"
 [ -n "$MAX_STEPS" ] && ARGS="$ARGS --max_steps $MAX_STEPS" && echo "Max steps: $MAX_STEPS"
 [ -n "$EPOCHS" ]    && ARGS="$ARGS --epochs $EPOCHS"       && echo "Epochs: $EPOCHS"
-[ -n "$ADAPTER" ]   && ARGS="$ARGS --adapter $ADAPTER"     && echo "Adapter: $ADAPTER"
-[ -n "$DEBUG" ]     && ARGS="$ARGS --debug"                 && echo "Debug mode: verbose logging enabled"
+[ -n "$ADAPTER" ]           && ARGS="$ARGS --adapter $ADAPTER"                   && echo "Adapter: $ADAPTER"
+[ -n "$TEACHER_ADAPTER" ]   && ARGS="$ARGS --teacher_adapter $TEACHER_ADAPTER" && echo "Teacher adapter: $TEACHER_ADAPTER"
+[ -n "$DEBUG" ]             && ARGS="$ARGS --debug"                             && echo "Debug mode: verbose logging enabled"
 
 # Check if this is a resubmit (resume via _FORGE_RESUME_PATH env var)
 if [ -n "$_FORGE_RESUME_PATH" ]; then
@@ -156,7 +157,8 @@ if [ $EXIT_CODE -eq 0 ] && slurm_read_incomplete; then
             echo "========================================="
 
             _FORGE_RESUME_PATH="$_RESUME_PATH" PREV_JOB_ID="$SLURM_JOB_ID" \
-                SEED="$SEED" MAX_STEPS="$MAX_STEPS" EPOCHS="$EPOCHS" ADAPTER="$ADAPTER" DEBUG="$DEBUG" \
+                SEED="$SEED" MAX_STEPS="$MAX_STEPS" EPOCHS="$EPOCHS" ADAPTER="$ADAPTER" \
+                TEACHER_ADAPTER="$TEACHER_ADAPTER" DEBUG="$DEBUG" \
                 sbatch "$0"
         else
             echo ""

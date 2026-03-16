@@ -1,0 +1,12 @@
+# P1 KD: alpha=0.3 (less teacher influence)
+#
+# Run:
+#   TEACHER_ADAPTER=outputs/fmt_grpo_qwen35-9b \
+#     sbatch scripts/slurm/run_training.sh kd_fmt_2b_a03 configs/ocr/formatting/qwen35-2b/kd/qwen35-9b/02_a03.yaml
+
+inherit: base.yaml
+
+distillation:
+  loss_type: response_kl
+  temperature: 2.0
+  alpha: 0.3

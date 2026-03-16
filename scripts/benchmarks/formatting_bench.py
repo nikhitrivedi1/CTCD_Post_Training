@@ -7,8 +7,11 @@ olmOCR-Bench to avoid contaminating those standardized metrics.
 Uses the same dataset handlers as training for consistency.
 
 Usage:
-    # New run with checkpoint (default: data/ocr/formatting, eval split)
+    # Default: all eval pages
     python scripts/benchmarks/formatting_bench.py --checkpoint outputs/fmt_sft
+
+    # Stratified sample (faster, for diagnostic runs)
+    python scripts/benchmarks/formatting_bench.py --checkpoint outputs/fmt_sft --max_pages 60
 
     # New run with base model
     python scripts/benchmarks/formatting_bench.py --model Qwen/Qwen3-VL-2B-Instruct
@@ -203,6 +206,44 @@ def score_from_markdowns(paths: list[dict], markdowns_dir: str, num_workers: int
 # compute_aggregate imported from src/evaluation/formatting_metrics
 
 
+def select_stratified(paths: list[dict], n: int, seed: int = 42) -> list[dict]:
+    """Sample n pages stratified by formatting type presence.
+
+    Ensures rare formatting types are represented by reserving ~1/3 of slots
+    for pages that contain the least common type. Deterministic via fixed seed.
+
+    Args:
+        paths: Eval path dicts with "gt_path".
+        n: Total pages to select.
+        seed: Random seed for reproducibility.
+
+    Returns:
+        List of n (or fewer, if dataset is small) path dicts.
+    """
+    import random
+    import re
+
+    if len(paths) <= n:
+        return paths
+
+    def has_rare_type(gt_path) -> bool:
+        try:
+            return bool(re.search(r'~~[^~]+~~', Path(gt_path).read_text(errors="replace")))
+        except Exception:
+            return False
+
+    rare_pages = [p for p in paths if has_rare_type(p["gt_path"])]
+    other_pages = [p for p in paths if not has_rare_type(p["gt_path"])]
+
+    rng = random.Random(seed)
+    n_rare = min(len(rare_pages), max(1, n // 3))
+    n_other = n - n_rare
+
+    selected = rng.sample(rare_pages, n_rare) + rng.sample(other_pages, min(n_other, len(other_pages)))
+    logger.info(f"Stratified sample: {n_rare} rare-type + {len(selected) - n_rare} other = {len(selected)} pages")
+    return selected
+
+
 def print_results(agg: dict):
     """Print formatted results.
 
@@ -287,7 +328,8 @@ def main():
 
     add_common_bench_args(parser, max_new_tokens=DEFAULT_MAX_NEW_TOKENS)
     parser.add_argument("--max_pages", type=int, default=None,
-                        help="Limit number of pages to score")
+                        help="Limit pages, sampled stratified by formatting type. "
+                             "Omit to run all eval pages.")
     args = parser.parse_args()
 
     # -----------------------------------------------------------------------
@@ -315,7 +357,7 @@ def main():
     # Load eval paths via handler
     paths = load_eval_paths(args.data_dir, args.dataset)
     if args.max_pages:
-        paths = paths[:args.max_pages]
+        paths = select_stratified(paths, args.max_pages)
     if args.shard:
         paths = apply_shard(paths, args.shard)
 
@@ -386,7 +428,7 @@ def main():
     # Reload all paths for scoring (not just this shard)
     all_paths = load_eval_paths(args.data_dir, args.dataset)
     if args.max_pages:
-        all_paths = all_paths[:args.max_pages]
+        all_paths = select_stratified(all_paths, args.max_pages)
     num_workers = get_num_workers()
     results = score_from_markdowns(all_paths, markdowns_dir, num_workers=num_workers)
     if not results:

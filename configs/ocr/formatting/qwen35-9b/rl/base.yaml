@@ -1,0 +1,21 @@
+# Formatting RL base: Qwen3.5-9B
+
+inherit: ../base.yaml
+
+data:
+  data_dir: data/ocr/formatting-rl
+
+training:
+  num_epochs: 1
+  batch_size: 2
+  gradient_accumulation_steps: 8
+
+evaluation:
+  eval_strategy: "no"
+
+rl:
+  algorithm: grpo
+  num_generations: 4
+  max_completion_length: 768
+  loss_type: grpo
+  log_completions: true
