@@ -36,7 +36,7 @@ steps:
   - name: OCR - Formatting bench
     run_name: ocr_lora_qwen35-27b_bench-formatting
     type: bench
-    depends_on: fmt_lora_qwen35-27b
+    depends_on: ocr_lora_qwen35-27b
     config: formatting
     env:
       CHECKPOINT: outputs/ocr_lora_qwen35-27b
