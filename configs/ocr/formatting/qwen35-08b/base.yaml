@@ -6,12 +6,6 @@ model:
   name: Qwen/Qwen3.5-0.8B
 
 training:
-  batch_size: 1
-  gradient_accumulation_steps: 1
+  batch_size: 2
+  gradient_accumulation_steps: 16
   learning_rate: 2e-6
-
-evaluation:
-  eval_strategy: "no"
-
-checkpointing:
-  save_steps: 999999

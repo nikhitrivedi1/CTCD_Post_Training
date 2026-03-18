@@ -1,0 +1,59 @@
+# Qwen3.5-0.8B pipeline
+# Train: OCR grounding -> Formatting SFT -> Formatting GRPO
+# Bench: formatting for each stage
+#
+# Usage:
+#   scripts/slurm/run_chain.sh chains/qwen35-08b_ocr_pipeline.yaml
+
+steps:
+  # -----------------------------------------------------------------------
+  # Training
+  # -----------------------------------------------------------------------
+  - name: OCR Grounding
+    run_name: ocr_sft-lora_qwen35-08b
+    config: configs/ocr/olmocr-mix/qwen35-08b/00_sft.yaml
+
+  - name: Formatting SFT
+    run_name: fmt_sft-lora_qwen35-08b
+    depends_on: ocr_sft-lora_qwen35-08b
+    config: configs/ocr/formatting/qwen35-08b/00_sft.yaml
+    env:
+      ADAPTER: outputs/ocr_sft-lora_qwen35-08b
+
+  - name: Formatting GRPO
+    run_name: fmt_grpo-lora_qwen35-08b
+    depends_on: fmt_sft-lora_qwen35-08b
+    config: configs/ocr/formatting/qwen35-08b/rl/00_grpo.yaml
+    env:
+      ADAPTER: outputs/fmt_sft-lora_qwen35-08b
+
+  # -----------------------------------------------------------------------
+  # Formatting bench
+  # -----------------------------------------------------------------------
+  - name: GRPO - Formatting bench
+    run_name: fmt_grpo-lora_qwen35-08b_bench-formatting
+    type: bench
+    depends_on: fmt_grpo-lora_qwen35-08b
+    config: formatting
+    env:
+      CHECKPOINT: outputs/fmt_grpo-lora_qwen35-08b
+      OUTPUT: outputs/bench/formatting/fmt_grpo-lora_qwen35-08b
+
+  - name: FMT - Formatting bench
+    run_name: fmt_sft-lora_qwen35-08b_bench-formatting
+    type: bench
+    depends_on: fmt_sft-lora_qwen35-08b
+    config: formatting
+    env:
+      CHECKPOINT: outputs/fmt_sft-lora_qwen35-08b
+      OUTPUT: outputs/bench/formatting/fmt_sft-lora_qwen35-08b
+
+  - name: OCR - Formatting bench
+    run_name: ocr_sft-lora_qwen35-08b_bench-formatting
+    type: bench
+    depends_on: fmt_sft-lora_qwen35-08b
+    config: formatting
+    env:
+      CHECKPOINT: outputs/ocr_sft-lora_qwen35-08b
+      OUTPUT: outputs/bench/formatting/ocr_sft-lora_qwen35-08b
+

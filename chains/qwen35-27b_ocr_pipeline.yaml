@@ -10,7 +10,7 @@ steps:
   # -----------------------------------------------------------------------
   # Training
   # -----------------------------------------------------------------------
-  - name: OCR grounding
+  - name: OCR Grounding
     run_name: ocr_lora_qwen35-27b
     config: configs/ocr/olmocr-mix/qwen35-27b/00_sft.yaml
 

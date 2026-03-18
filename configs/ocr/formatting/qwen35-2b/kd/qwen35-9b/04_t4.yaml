@@ -1,7 +1,7 @@
 # P1 KD: T=4.0 (softer teacher distribution)
 #
 # Run:
-#   TEACHER_ADAPTER=outputs/fmt_grpo_qwen35-9b \
+#   TEACHER_ADAPTER=outputs/fmt_lora_qwen35-9b \
 #     sbatch scripts/slurm/run_training.sh kd_fmt_2b_t4 configs/ocr/formatting/qwen35-2b/kd/qwen35-9b/04_t4.yaml
 
 inherit: base.yaml

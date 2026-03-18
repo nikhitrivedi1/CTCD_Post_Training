@@ -1,8 +1,8 @@
 # Formatting GRPO: Qwen3.5-9B
 #
 # Run:
-#   ADAPTER=outputs/fmt_lora_qwen35-9b \
-#     sbatch scripts/slurm/run_training.sh fmt_grpo_qwen35-9b configs/ocr/formatting/qwen35-9b/rl/00_grpo.yaml
+#   ADAPTER=outputs/fmt_sft-lora_qwen35-9b \
+#     sbatch scripts/slurm/run_training.sh fmt_grpo-lora_qwen35-9b configs/ocr/formatting/qwen35-9b/rl/00_grpo.yaml
 
 inherit: base.yaml
 

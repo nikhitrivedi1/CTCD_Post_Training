@@ -1,7 +1,7 @@
 # P0 KD: Response KL, alpha=0.5, T=2.0
 #
 # Run:
-#   TEACHER_ADAPTER=outputs/fmt_grpo_qwen35-9b \
+#   TEACHER_ADAPTER=outputs/fmt_lora_qwen35-9b \
 #     sbatch scripts/slurm/run_training.sh kd_fmt_2b_response-kl configs/ocr/formatting/qwen35-2b/kd/qwen35-9b/01_response-kl.yaml
 
 inherit: base.yaml

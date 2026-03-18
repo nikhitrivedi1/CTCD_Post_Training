@@ -99,13 +99,13 @@ class InferenceEngine:
     """Unified inference engine with auto SDPA attention.
 
     Supports two model types:
-    - "vlm": Vision-Language Models (Qwen2-VL, olmOCR) — image + text → text
-    - "causal_lm": Causal Language Models (Llama) — text → text
+    - "vlm": Vision-Language Models (Qwen2-VL, olmOCR) - image + text -> text
+    - "causal_lm": Causal Language Models (Llama) - text -> text
     """
 
     def __init__(self, model=None, tokenizer=None, processor=None,
                  model_type="vlm", device="cuda", model_name="unknown",
-                 commit_hash="unknown"):
+                 commit_hash="unknown", chat_template_kwargs=None):
         self._model = model
         self._tokenizer = tokenizer
         self._processor = processor
@@ -113,6 +113,7 @@ class InferenceEngine:
         self._device = device
         self._model_name = model_name
         self._commit_hash = commit_hash
+        self._chat_template_kwargs = chat_template_kwargs or {}
 
     # ------------------------------------------------------------------
     # Factory methods
@@ -120,7 +121,7 @@ class InferenceEngine:
 
     @classmethod
     def load(cls, model_id=None, checkpoint_path=None, model_type="vlm",
-             device="cuda"):
+             device="cuda", chat_template_kwargs=None, task=None):
         """Load a model for inference with optimal attention settings.
 
         Uses SDPA on CUDA for best performance. Supports LoRA checkpoint
@@ -131,10 +132,17 @@ class InferenceEngine:
             checkpoint_path: Path to LoRA checkpoint directory
             model_type: "vlm" or "causal_lm"
             device: Device string ("cuda", "cuda:0", "mps", "cpu")
+            chat_template_kwargs: Extra kwargs for apply_chat_template
+                (e.g. {"enable_thinking": False} for Qwen3.5). Merged
+                with model profile defaults (explicit wins).
+            task: Task name for task-specific profile lookup (e.g.
+                "ocr"). Used to select (family, task) profiles.
 
         Returns:
             InferenceEngine instance
         """
+        from .model_profiles import get_chat_template_kwargs
+
         if model_type not in _VALID_MODEL_TYPES:
             raise ValueError(
                 f"Unsupported model_type '{model_type}'. "
@@ -143,10 +151,23 @@ class InferenceEngine:
         if model_id is None and checkpoint_path is None:
             raise ValueError("Must provide either 'model_id' or 'checkpoint_path'.")
 
-        if model_type == "vlm":
-            return cls._load_hf_vlm(model_id, checkpoint_path, device)
+        # Resolve model name for profile lookup
+        if model_id:
+            profile_name = model_id
         else:
-            return cls._load_hf_causal(model_id, checkpoint_path, device)
+            profile_name = str(checkpoint_path)
+        resolved_kwargs = get_chat_template_kwargs(profile_name,
+                                                   chat_template_kwargs,
+                                                   task=task)
+        if resolved_kwargs:
+            logger.info(f"Chat template kwargs: {resolved_kwargs}")
+
+        if model_type == "vlm":
+            return cls._load_hf_vlm(model_id, checkpoint_path, device,
+                                    resolved_kwargs)
+        else:
+            return cls._load_hf_causal(model_id, checkpoint_path, device,
+                                       resolved_kwargs)
 
     @classmethod
     def from_model(cls, model, tokenizer=None, processor=None):
@@ -229,7 +250,8 @@ class InferenceEngine:
     # ------------------------------------------------------------------
 
     @classmethod
-    def _load_hf_vlm(cls, model_id, checkpoint_path, device):
+    def _load_hf_vlm(cls, model_id, checkpoint_path, device,
+                     chat_template_kwargs=None):
         """Load HF VLM with auto SDPA and optional LoRA merge."""
         from transformers import AutoModelForImageTextToText, AutoProcessor
         from peft import PeftModel
@@ -300,10 +322,12 @@ class InferenceEngine:
         return cls(
             model=model, processor=processor, model_type="vlm",
             device=device, model_name=model_name, commit_hash=commit_hash,
+            chat_template_kwargs=chat_template_kwargs,
         )
 
     @classmethod
-    def _load_hf_causal(cls, model_id, checkpoint_path, device):
+    def _load_hf_causal(cls, model_id, checkpoint_path, device,
+                        chat_template_kwargs=None):
         """Load HF causal LM with auto SDPA."""
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -377,6 +401,7 @@ class InferenceEngine:
         return cls(
             model=model, tokenizer=tokenizer, model_type="causal_lm",
             device=device, model_name=model_name, commit_hash=commit_hash,
+            chat_template_kwargs=chat_template_kwargs,
         )
 
     # ------------------------------------------------------------------
@@ -384,7 +409,7 @@ class InferenceEngine:
     # ------------------------------------------------------------------
 
     def _hf_generate_vlm(self, inputs, max_new_tokens):
-        """HF VLM generation — one image at a time.
+        """HF VLM generation, one image at a time.
 
         Args:
             inputs: List of (PIL.Image, str) tuples
@@ -400,7 +425,8 @@ class InferenceEngine:
                 {"type": "text", "text": prompt},
             ]}]
             text = self._processor.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
+                messages, tokenize=False, add_generation_prompt=True,
+                **self._chat_template_kwargs,
             )
             model_inputs = self._processor(
                 text=[text], images=[image], return_tensors="pt"
@@ -423,7 +449,7 @@ class InferenceEngine:
         return results
 
     def _hf_generate_causal(self, prompts, max_new_tokens, batch_size):
-        """HF causal LM generation — batched.
+        """HF causal LM generation, batched.
 
         Args:
             prompts: List of prompt strings (already formatted by caller)

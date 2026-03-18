@@ -26,7 +26,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _cache_key(processor_name: str, num_samples: int, max_length: int, split: str) -> str:
+def _cache_key(
+    processor_name: str, num_samples: int, max_length: int, split: str,
+    chat_template_kwargs: dict | None = None,
+) -> str:
     """Build a deterministic cache key from formatting parameters.
 
     Args:
@@ -34,6 +37,7 @@ def _cache_key(processor_name: str, num_samples: int, max_length: int, split: st
         num_samples: Number of samples in the dataset.
         max_length: Max sequence length.
         split: Dataset split ("train" or "eval").
+        chat_template_kwargs: Extra kwargs passed to apply_chat_template.
 
     Returns:
         Hex digest string.
@@ -43,6 +47,7 @@ def _cache_key(processor_name: str, num_samples: int, max_length: int, split: st
         "num_samples": num_samples,
         "max_length": max_length,
         "split": split,
+        "chat_template_kwargs": chat_template_kwargs or {},
     }, sort_keys=True)
     return hashlib.sha256(raw.encode()).hexdigest()[:12]
 
@@ -181,6 +186,7 @@ def format_for_sft(
     system_prompt: str | None = None,
     cache_dir: str | Path | None = None,
     split: str = "train",
+    chat_template_kwargs: dict | None = None,
 ) -> Dataset:
     """Shape raw samples into SFT format.
 
@@ -199,13 +205,16 @@ def format_for_sft(
             formatted results are saved to {cache_dir}/.formatted_cache/ and
             reused on subsequent calls with matching parameters.
         split: Dataset split name for cache key ("train" or "eval").
+        chat_template_kwargs: Extra kwargs for apply_chat_template (e.g.
+            {"enable_thinking": False}). Resolved from model profiles by
+            default, config overrides.
 
     Returns:
         Dataset formatted for SFT training.
     """
     # Try loading from cache
     proc_name = getattr(tokenizer_or_processor, "name_or_path", str(tokenizer_or_processor))
-    key = _cache_key(proc_name, len(dataset), max_length, split)
+    key = _cache_key(proc_name, len(dataset), max_length, split, chat_template_kwargs)
     fmt_cache_dir = Path(cache_dir) / ".formatted_cache" if cache_dir else None
 
     if fmt_cache_dir:
@@ -215,9 +224,9 @@ def format_for_sft(
 
     # Format
     if task_type == "ocr":
-        result = _format_ocr_sft(dataset, tokenizer_or_processor, max_length, system_prompt)
+        result = _format_ocr_sft(dataset, tokenizer_or_processor, max_length, system_prompt, chat_template_kwargs)
     elif task_type == "translation":
-        result = _format_translation_sft(dataset, tokenizer_or_processor, max_length)
+        result = _format_translation_sft(dataset, tokenizer_or_processor, max_length, chat_template_kwargs)
     elif task_type == "classification":
         result = _format_classification_sft(dataset, tokenizer_or_processor, max_length)
     else:
@@ -230,7 +239,10 @@ def format_for_sft(
     return result
 
 
-def _format_ocr_sft(dataset: Dataset, processor, max_length: int, system_prompt: str | None) -> Dataset:
+def _format_ocr_sft(
+    dataset: Dataset, processor, max_length: int, system_prompt: str | None,
+    chat_template_kwargs: dict | None = None,
+) -> Dataset:
     """Format OCR dataset for SFT training.
 
     Args:
@@ -238,12 +250,14 @@ def _format_ocr_sft(dataset: Dataset, processor, max_length: int, system_prompt:
         processor: AutoProcessor for VLM models.
         max_length: Max sequence length (used for text truncation).
         system_prompt: Override OCR system prompt.
+        chat_template_kwargs: Extra kwargs for apply_chat_template.
 
     Returns:
         Dataset with 'formatted_text' and 'image' columns.
     """
     from src.data.ocr_utils import OCR_SYSTEM_PROMPT
     prompt_text = system_prompt or OCR_SYSTEM_PROMPT
+    extra_kwargs = chat_template_kwargs or {}
 
     def preprocess(example):
         text = example.get("ground_truth") or ""
@@ -265,7 +279,8 @@ def _format_ocr_sft(dataset: Dataset, processor, max_length: int, system_prompt:
             },
         ]
         formatted_text = processor.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=False
+            messages, tokenize=False, add_generation_prompt=False,
+            **extra_kwargs,
         )
         return {"formatted_text": formatted_text}
 
@@ -277,17 +292,23 @@ def _format_ocr_sft(dataset: Dataset, processor, max_length: int, system_prompt:
     )
 
 
-def _format_translation_sft(dataset: Dataset, tokenizer, max_length: int) -> Dataset:
+def _format_translation_sft(
+    dataset: Dataset, tokenizer, max_length: int,
+    chat_template_kwargs: dict | None = None,
+) -> Dataset:
     """Format translation dataset for SFT training with prompt masking.
 
     Args:
         dataset: Raw dataset with 'source_text', 'ground_truth', 'system_message'.
         tokenizer: HuggingFace tokenizer.
         max_length: Max sequence length.
+        chat_template_kwargs: Extra kwargs for apply_chat_template.
 
     Returns:
         Tokenized dataset with prompt-masked labels.
     """
+    extra_kwargs = chat_template_kwargs or {}
+
     def format_fn(example):
         source_text = example["source_text"]
         target_text = example["ground_truth"]
@@ -300,14 +321,16 @@ def _format_translation_sft(dataset: Dataset, tokenizer, max_length: int) -> Dat
                 {"role": "assistant", "content": target_text},
             ]
             formatted_text = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=False
+                messages, tokenize=False, add_generation_prompt=False,
+                **extra_kwargs,
             )
             prompt_messages = [
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": source_text},
             ]
             prompt_text = tokenizer.apply_chat_template(
-                prompt_messages, tokenize=False, add_generation_prompt=True
+                prompt_messages, tokenize=False, add_generation_prompt=True,
+                **extra_kwargs,
             )
         else:
             prompt_text = f"{system_message}\n\n{source_text}\n"

@@ -24,23 +24,28 @@ Math scoring renders both reference and model LaTeX with KaTeX in headless Chrom
 
 ## Results by Category
 
-| Category | Tests | Q2.5-3B | Nano-3B | Q2.5-7B | olmOCR-7B | Q3-2B | ocr_sft | fmt_sft | Q3-4B | Q3-8B | Q3.5-0.8B | Q3.5-2B | Q3.5-4B | Q3.5-9B |
+> **NOTE**: Q3.5-* columns (0.8B, 2B, 4B, 9B) are **INVALID** - pending re-run.
+> Qwen3.5 models generate `<think>` blocks; `<think>` is stripped as a special token but the
+> thinking content and `</think>` tag survive as plain text in the output, corrupting scoring.
+> All other columns (Q2.5-*, Nano-3B, olmOCR-7B, Q3-*, ocr_sft, fmt_sft) are clean.
+
+| Category | Tests | Q2.5-3B | Nano-3B | Q2.5-7B | olmOCR-7B | Q3-2B | ocr_sft | fmt_sft | Q3-4B | Q3-8B | ~~Q3.5-0.8B~~ | ~~Q3.5-2B~~ | ~~Q3.5-4B~~ | ~~Q3.5-9B~~ |
 |----------|:-----:|:-------:|:-------:|:-------:|:---------:|:-----:|:-------:|:-------:|:-----:|:-----:|:---------:|:-------:|:-------:|:-------:|
-| arxiv_math | 2,927 | 72.4 | 55.6 | 74.2 | **85.8** | 77.3 | 77.9 | 77.3 | 79.6 | 82.9 | 69.8 | 76.6 | 61.0 | 66.7 |
-| headers_footers | 760 | 65.5 | 21.3 | 52.9 | **92.6** | 46.3 | 79.6 | 75.9 | 37.5 | 39.5 | 64.6 | 40.3 | 33.2 | 29.6 |
-| long_tiny_text | 442 | 46.8 | 65.6 | 65.8 | **69.7** | 49.5 | 59.3 | 57.2 | 52.7 | 59.3 | 34.2 | 57.9 | 36.0 | 44.3 |
-| multi_column | 884 | 62.9 | 80.2 | 75.5 | **82.6** | 70.1 | 76.4 | 74.4 | 74.5 | 78.6 | 56.9 | 73.9 | 64.0 | 67.4 |
-| old_scans | 526 | 35.5 | 38.0 | 44.9 | **48.1** | 38.0 | 39.2 | 35.7 | 38.6 | 45.2 | 30.8 | 37.8 | 36.3 | 40.1 |
-| old_scans_math | 458 | 70.5 | 34.5 | 71.2 | **78.6** | 49.8 | 65.1 | 67.7 | 67.2 | 73.6 | 62.7 | 71.4 | 62.0 | 64.8 |
-| table_tests | 1,022 | 69.7 | 82.5 | 77.1 | **83.5** | 61.5 | 72.2 | 75.5 | 80.5 | 80.0 | 54.4 | 61.1 | 57.0 | 55.8 |
+| arxiv_math | 2,927 | 72.4 | 55.6 | 74.2 | **85.8** | 77.3 | 77.9 | 77.3 | 79.6 | 82.9 | ~~69.8~~ | ~~76.6~~ | ~~61.0~~ | ~~66.7~~ |
+| headers_footers | 760 | 65.5 | 21.3 | 52.9 | **92.6** | 46.3 | 79.6 | 75.9 | 37.5 | 39.5 | ~~64.6~~ | ~~40.3~~ | ~~33.2~~ | ~~29.6~~ |
+| long_tiny_text | 442 | 46.8 | 65.6 | 65.8 | **69.7** | 49.5 | 59.3 | 57.2 | 52.7 | 59.3 | ~~34.2~~ | ~~57.9~~ | ~~36.0~~ | ~~44.3~~ |
+| multi_column | 884 | 62.9 | 80.2 | 75.5 | **82.6** | 70.1 | 76.4 | 74.4 | 74.5 | 78.6 | ~~56.9~~ | ~~73.9~~ | ~~64.0~~ | ~~67.4~~ |
+| old_scans | 526 | 35.5 | 38.0 | 44.9 | **48.1** | 38.0 | 39.2 | 35.7 | 38.6 | 45.2 | ~~30.8~~ | ~~37.8~~ | ~~36.3~~ | ~~40.1~~ |
+| old_scans_math | 458 | 70.5 | 34.5 | 71.2 | **78.6** | 49.8 | 65.1 | 67.7 | 67.2 | 73.6 | ~~62.7~~ | ~~71.4~~ | ~~62.0~~ | ~~64.8~~ |
+| table_tests | 1,022 | 69.7 | 82.5 | 77.1 | **83.5** | 61.5 | 72.2 | 75.5 | 80.5 | 80.0 | ~~54.4~~ | ~~61.1~~ | ~~57.0~~ | ~~55.8~~ |
 
 ### Aggregates
 
-| Metric | Q2.5-3B | Nano-3B | Q2.5-7B | olmOCR-7B | Q3-2B | ocr_sft | fmt_sft | Q3-4B | Q3-8B | Q3.5-0.8B | Q3.5-2B | Q3.5-4B | Q3.5-9B |
+| Metric | Q2.5-3B | Nano-3B | Q2.5-7B | olmOCR-7B | Q3-2B | ocr_sft | fmt_sft | Q3-4B | Q3-8B | ~~Q3.5-0.8B~~ | ~~Q3.5-2B~~ | ~~Q3.5-4B~~ | ~~Q3.5-9B~~ |
 |--------|:-------:|:-------:|:-------:|:---------:|:-----:|:-------:|:-------:|:-----:|:-----:|:---------:|:-------:|:-------:|:-------:|
-| **Overall** | 60.5 | 54.0 | 65.9 | **77.3** | 56.1 | 67.1 | 66.3 | 61.5 | 65.6 | 53.3 | 59.9 | 49.9 | 52.7 |
-| **Non-math Avg** | 56.1 | 57.5 | 63.2 | **75.3** | 53.1 | 65.3 | 63.7 | 56.8 | 60.5 | 48.2 | 54.2 | 45.3 | 47.5 |
-| **Extraction Avg** | 53.7 | **66.6** | 65.8 | **71.0** | 54.8 | 61.8 | 60.7 | 61.6 | 65.8 | 44.1 | 57.7 | 48.3 | 51.9 |
+| **Overall** | 60.5 | 54.0 | 65.9 | **77.3** | 56.1 | 67.1 | 66.3 | 61.5 | 65.6 | ~~53.3~~ | ~~59.9~~ | ~~49.9~~ | ~~52.7~~ |
+| **Non-math Avg** | 56.1 | 57.5 | 63.2 | **75.3** | 53.1 | 65.3 | 63.7 | 56.8 | 60.5 | ~~48.2~~ | ~~54.2~~ | ~~45.3~~ | ~~47.5~~ |
+| **Extraction Avg** | 53.7 | **66.6** | 65.8 | **71.0** | 54.8 | 61.8 | 60.7 | 61.6 | 65.8 | ~~44.1~~ | ~~57.7~~ | ~~48.3~~ | ~~51.9~~ |
 
 ## Models
 
@@ -66,7 +71,7 @@ Math scoring renders both reference and model LaTeX with KaTeX in headless Chrom
 
 **CE recovered 52% of the base-to-olmOCR gap.** Q3-VL-2B base (56.1%) to ocr_sft (67.1%) = +11.0pp. Remaining 10.2pp gap to olmOCR-7B (77.3%) is the target for RL/KD.
 
-**Qwen3.5 scaling is non-monotonic.** Peaks at 2B (59.9%), regresses at 4B (49.9%), partially recovers at 9B (52.7%). Mixed attention architecture trades visual quality for efficiency, worsening with scale.
+**Qwen3.5 scaling is non-monotonic** *(pending re-run - current numbers contaminated)*. Peaks at 2B (59.9%), regresses at 4B (49.9%), partially recovers at 9B (52.7%). Mixed attention architecture trades visual quality for efficiency, worsening with scale.
 
 **headers_footers shows inverse scaling.** Larger base models score worse (absent tests - passing means NOT including metadata). Fine-tuning reverses this: olmOCR-7B (92.6%), ocr_sft (79.6%).
 

@@ -6,7 +6,7 @@
 #   sbatch scripts/slurm/run_chain.sh chains/formatting_pipeline.yaml  # CPU node
 
 steps:
-  - name: OCR grounding
+  - name: OCR Grounding
     run_name: ocr_sft
     config: configs/ocr/olmocr-mix/qwen3vl-2b/base.yaml
 

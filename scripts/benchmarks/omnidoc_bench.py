@@ -27,7 +27,6 @@ import json
 import logging
 import os
 import sys
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import torch
@@ -44,7 +43,7 @@ from src.evaluation.bench_utils import (
     add_common_bench_args,
     apply_shard,
     build_metadata,
-    cleanup_temp_files,
+    generate_markdowns,
     is_shutdown_requested,
     register_bench_job,
     remove_bench_job,
@@ -241,25 +240,22 @@ def main():
 
     output_dir, markdowns_dir = validate_bench_args(args, parser, DEFAULT_OUTPUT_BASE)
 
-    # Load pages via handler (prepare + load_paths)
-    pages = load_pages(args.data_dir)
-
-    # Apply sharding
-    if args.shard:
-        if not args.output:
-            parser.error("--shard requires --output so all shards write to the same directory")
-        pages = apply_shard(pages, args.shard)
-
-    # Register in incomplete jobs
-    if not args.score_only:
-        register_bench_job(output_dir, "omnidoc", args.shard)
-
     # Generation phase
     if not args.score_only:
+        # Load pages via handler (prepare + load_paths)
+        pages = load_pages(args.data_dir)
+
+        # Apply sharding
+        if args.shard:
+            if not args.output:
+                parser.error("--shard requires --output so all shards write to the same directory")
+            pages = apply_shard(pages, args.shard)
+
+        register_bench_job(output_dir, "omnidoc", args.shard)
         device = "cuda" if torch.cuda.is_available() else "cpu"
         engine = InferenceEngine.load(
             model_id=args.model, checkpoint_path=args.checkpoint,
-            model_type="vlm", device=device,
+            model_type="vlm", device=device, task="ocr",
         )
 
         metadata = build_metadata(args, engine, "omnidoc", {
@@ -269,92 +265,25 @@ def main():
         })
         save_metadata(output_dir, metadata)
 
-        cleanup_temp_files(markdowns_dir)
+        # Build work items
+        work_items = [
+            {"md_path": os.path.join(markdowns_dir, p["stem"] + ".md"),
+             "image_path": p["image_path"],
+             "stem": p["stem"]}
+            for p in pages
+        ]
 
-        # Count already done
-        already_done = sum(
-            1 for p in pages
-            if os.path.exists(os.path.join(markdowns_dir, p["stem"] + ".md"))
-        )
-
-        logger.info(f"Starting generation ({already_done} done, {len(pages) - already_done} remaining)...")
-        generated = 0
-        errors = 0
-
-        # Build work list (skip already done)
-        pending = []
-        for page in pages:
-            stem, image_path = page["stem"], page["image_path"]
-            md_path = os.path.join(markdowns_dir, stem + ".md")
-            if not os.path.exists(md_path):
-                pending.append((stem, image_path, md_path))
-
-        def _load_image(image_path):
-            """Load and convert image (runs in background thread)."""
-            with Image.open(image_path) as im:
+        def _load_image(item):
+            with Image.open(item["image_path"]) as im:
                 image = im.convert("RGB")
                 image.load()
             return image
 
-        pbar = tqdm(total=len(pages), desc="Generating", unit="pg", initial=already_done)
-        first_generate = True
-
-        # Prefetch: load next image while GPU generates current one
-        prefetch_pool = ThreadPoolExecutor(max_workers=1)
-        prefetch_future = None
-
-        for idx, (stem, image_path, md_path) in enumerate(pending):
-            if is_shutdown_requested():
-                logger.info(f"Shutting down gracefully. Generated {generated} this session.")
-                break
-
-            try:
-                # Get current image (from prefetch or direct load)
-                if prefetch_future is not None:
-                    image = prefetch_future.result()
-                else:
-                    image = _load_image(image_path)
-
-                # Start prefetching next image
-                if idx + 1 < len(pending):
-                    prefetch_future = prefetch_pool.submit(_load_image, pending[idx + 1][1])
-                else:
-                    prefetch_future = None
-
-                if first_generate:
-                    pbar.clear()
-                results = engine.generate(
-                    [(image, OCR_PROMPT)], max_new_tokens=args.max_new_tokens
-                )
-                if first_generate:
-                    first_generate = False
-                    pbar.refresh()
-
-                markdown = results[0]
-                tmp_path = md_path + ".tmp"
-                with open(tmp_path, "w") as f:
-                    f.write(markdown)
-                os.replace(tmp_path, md_path)
-                generated += 1
-
-            except Exception as e:
-                if is_shutdown_requested():
-                    logger.info(f"Interrupted on {stem} - will retry on resume")
-                    break
-                logger.error(f"Failed on {stem}: {e}")
-                errors += 1
-                prefetch_future = None
-
-            pbar.set_postfix(gen=generated, err=errors)
-            pbar.update(1)
-
-        prefetch_pool.shutdown(wait=False)
-
-        pbar.close()
-        logger.info(f"Generation complete: {generated} generated, {already_done} skipped, {errors} errors")
-
-        cleanup_temp_files(markdowns_dir)
-
+        generate_markdowns(
+            engine, work_items, OCR_PROMPT, args.max_new_tokens,
+            markdowns_dir, image_fn=_load_image,
+            label_fn=lambda item: item["stem"],
+        )
         save_metadata(output_dir, metadata)
 
         if is_shutdown_requested():

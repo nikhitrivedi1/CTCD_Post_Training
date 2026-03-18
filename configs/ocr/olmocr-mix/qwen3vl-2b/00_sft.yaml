@@ -1,6 +1,6 @@
 # OCR SFT: Qwen3-VL-2B on olmocr-mix
 #
 # Run:
-#   sbatch scripts/slurm/run_training.sh ocr_sft configs/ocr/olmocr-mix/qwen3vl-2b/00_sft.yaml
+#   sbatch scripts/slurm/run_training.sh ocr_sft-lora_qwen3vl-2b configs/ocr/olmocr-mix/qwen3vl-2b/00_sft.yaml
 
 inherit: base.yaml

@@ -2,6 +2,29 @@
 
 Training RL (GRPO) on a larger VL model, then distilling into Qwen3-VL-2B via KD. Motivated by two failed GRPO attempts on 2B and validated by DeepSeek R1's approach.
 
+## Status (2026-03-17)
+
+Phase 1 and Phase 2 are complete for Qwen3.5-9B:
+
+| Run | Status | Notes |
+|-----|--------|-------|
+| `ocr_lora_qwen35-9b` (Phase 1, Stage 1) | Done | OCR SFT on 5K olmocr-mix |
+| `fmt_lora_qwen35-9b` (Phase 1, Stage 2) | Done | Formatting SFT, 3 epochs |
+| `fmt_grpo_qwen35-9b` (Phase 2) | Done | GRPO with edit_sim + fmt_pertype |
+| Formatting bench (all 3 runs) | **Invalid** - pending re-run | `</think>` contamination (172-187/250 files); model_profiles fix added 2026-03-17 |
+
+Re-runs of all three formatting bench jobs are queued. The GRPO reward regression pattern (see `fmt_grpo_regression.md`) needs to be resolved before Phase 2 results are trustworthy as a teacher signal - E1-E4 experiments will inform whether `fmt_grpo_9b` or `fmt_lora_9b` is the better Phase 3 teacher.
+
+**Available baselines (clean):**
+
+| Model | Overall F1 | Pred spans (bold/italic/strike) | Notes |
+|-------|:----------:|:-------------------------------:|-------|
+| `pt_qwen35-0.8b` | 0.258 | 903 / 149 / 0 | Base, no training |
+| `pt_qwen35-2b` | 0.277 | 509 / 325 / 0 | Base, no training |
+| `pt_qwen35-9b` | pending | - | Running (job 5140618) |
+
+These establish the Qwen3.5 family baseline before any OCR/formatting training.
+
 ## Motivation
 
 Two GRPO runs on Qwen3-VL-2B have failed to improve on fmt_sft:
@@ -78,13 +101,30 @@ All Qwen3.5 models are Image-Text-to-Text. No separate VL line.
 
 ### Student Model
 
-Currently using Qwen3-VL-2B. Qwen3.5-2B is also available and natively multimodal. Worth evaluating as an alternative student:
+Primary target: **Qwen3.5-2B** (same family as the 9B teacher). Secondary: **Qwen3.5-0.8B** for a lighter deployment option.
 
-- Qwen3.5-2B inherits the Qwen3.5 architecture improvements (hybrid Gated Delta Networks)
-- Natively multimodal, no separate vision encoder bolt-on
-- If the teacher is Qwen3.5-9B, same-family distillation may transfer better
+Rationale for switching from Qwen3-VL-2B to Qwen3.5-2B:
+- Same architecture family as the teacher - representations, tokenizer, and attention mechanism match, making KD transfer more direct
+- Natively multimodal (no separate vision encoder bolt-on, unlike Qwen3-VL)
+- Base model baselines are now available: pt_qwen35-0.8b (F1=0.258) and pt_qwen35-2b (F1=0.277). These are pre-training baselines, not pre-SFT - both families start near zero on formatting before OCR/fmt SFT
+- Qwen3-VL-2B is still a valid comparison point (fmt_sft F1=0.766 remains the target to beat)
 
-However, switching student models means re-running all baselines (SFT, benches). Only worth doing if the KD pipeline proves successful with the current Qwen3-VL-2B student first.
+**Student pipeline (same two-stage structure as teacher):**
+
+```
+Qwen3.5-2B base
+    |
+    v  Stage 1: OCR SFT on olmocr-mix (grounding)
+ocr_sft_qwen35-2b
+    |
+    v  Stage 2: Formatting SFT (baseline for KD comparison)
+fmt_sft_qwen35-2b
+    |
+    v  Phase 4: KD from 9B teacher outputs
+fmt_kd_qwen35-2b
+```
+
+Run the same pipeline on Qwen3.5-0.8B in parallel if GPU time allows - the 0.8B is fast enough that both students can be evaluated without significant overhead.
 
 ---
 

@@ -435,6 +435,11 @@ if env:
     SUBMITTED_JOB_ID=$(echo "$job_output" | grep -oE '[0-9]+$' || echo "")
 
     if [ -z "$SUBMITTED_JOB_ID" ]; then
+        # Distinguish queue-full (transient) from real submission errors
+        if echo "$job_output" | grep -qiE "QOSMaxSubmitJobPerUserLimit|MaxSubmitJobsPerUser|job violates"; then
+            echo "  SLURM queue full, will retry later"
+            return 2
+        fi
         echo "  ERROR: Failed to submit job"
         echo "  Output: $job_output"
         return 1
@@ -930,10 +935,15 @@ while true; do
             echo "Submitting: $_STEP_NAME ($rn)"
             echo "-----------------------------------------"
 
-            if submit_step; then
+            submit_step
+            submit_rc=$?
+            if [ "$submit_rc" -eq 0 ]; then
                 STEP_STATE[$rn]="submitted"
                 STEP_JOB_ID[$rn]="$SUBMITTED_JOB_ID"
                 save_chain_state
+            elif [ "$submit_rc" -eq 2 ]; then
+                # Queue full - stay pending, stop trying to submit more this cycle
+                break
             else
                 if ! handle_step_failure "$rn" "submission failed"; then
                     exit 1

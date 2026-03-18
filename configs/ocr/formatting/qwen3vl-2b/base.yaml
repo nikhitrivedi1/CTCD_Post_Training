@@ -6,4 +6,6 @@ model:
   name: Qwen/Qwen3-VL-2B-Instruct
 
 training:
-  learning_rate: 5e-6
+  batch_size: 2
+  gradient_accumulation_steps: 16
+  learning_rate: 2e-6

@@ -1,0 +1,59 @@
+# Qwen3-VL-4B pipeline
+# Train: OCR grounding -> Formatting SFT -> Formatting GRPO
+# Bench: formatting for each stage
+#
+# Usage:
+#   scripts/slurm/run_chain.sh chains/qwen3vl-4b_ocr_pipeline.yaml
+
+steps:
+  # -----------------------------------------------------------------------
+  # Training
+  # -----------------------------------------------------------------------
+  - name: OCR Grounding
+    run_name: ocr_sft-lora_qwen3vl-4b
+    config: configs/ocr/olmocr-mix/qwen3vl-4b/00_sft.yaml
+
+  - name: Formatting SFT
+    run_name: fmt_sft-lora_qwen3vl-4b
+    depends_on: ocr_sft-lora_qwen3vl-4b
+    config: configs/ocr/formatting/qwen3vl-4b/00_sft.yaml
+    env:
+      ADAPTER: outputs/ocr_sft-lora_qwen3vl-4b
+
+  - name: Formatting GRPO
+    run_name: fmt_grpo-lora_qwen3vl-4b
+    depends_on: fmt_sft-lora_qwen3vl-4b
+    config: configs/ocr/formatting/qwen3vl-4b/rl/00_grpo.yaml
+    env:
+      ADAPTER: outputs/fmt_sft-lora_qwen3vl-4b
+
+  # -----------------------------------------------------------------------
+  # Formatting bench
+  # -----------------------------------------------------------------------
+  - name: GRPO - Formatting bench
+    run_name: fmt_grpo-lora_qwen3vl-4b_bench-formatting
+    type: bench
+    depends_on: fmt_grpo-lora_qwen3vl-4b
+    config: formatting
+    env:
+      CHECKPOINT: outputs/fmt_grpo-lora_qwen3vl-4b
+      OUTPUT: outputs/bench/formatting/fmt_grpo-lora_qwen3vl-4b
+
+  - name: FMT - Formatting bench
+    run_name: fmt_sft-lora_qwen3vl-4b_bench-formatting
+    type: bench
+    depends_on: fmt_sft-lora_qwen3vl-4b
+    config: formatting
+    env:
+      CHECKPOINT: outputs/fmt_sft-lora_qwen3vl-4b
+      OUTPUT: outputs/bench/formatting/fmt_sft-lora_qwen3vl-4b
+
+  - name: OCR - Formatting bench
+    run_name: ocr_sft-lora_qwen3vl-4b_bench-formatting
+    type: bench
+    depends_on: fmt_sft-lora_qwen3vl-4b
+    config: formatting
+    env:
+      CHECKPOINT: outputs/ocr_sft-lora_qwen3vl-4b
+      OUTPUT: outputs/bench/formatting/ocr_sft-lora_qwen3vl-4b
+

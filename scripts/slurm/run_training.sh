@@ -37,6 +37,7 @@
 #   MAX_STEPS=10                - Limit steps (for testing)
 #   EPOCHS=5                    - Override num_epochs from config
 #   ADAPTER=path                - SFT adapter to merge before RL training
+#   TEACHER_ADAPTER=path        - Teacher checkpoint/adapter for KD (overrides model.teacher.name)
 #   TIMESTAMP=1                 - Append timestamp to run_name
 #   FORCE=1                     - Overwrite existing run
 #   DEBUG=1                     - Enable verbose DEBUG logging

@@ -28,7 +28,7 @@ import logging
 import os
 import sys
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import pypdfium2
@@ -45,7 +45,7 @@ from src.evaluation.bench_utils import (
     add_common_bench_args,
     apply_shard,
     build_metadata,
-    cleanup_temp_files,
+    generate_markdowns,
     is_shutdown_requested,
     register_bench_job,
     remove_bench_job,
@@ -182,7 +182,7 @@ def collect_unique_pages(all_tests):
 def _ensure_playwright_chromium():
     """Auto-install Playwright's Chromium if not already present.
 
-    Playwright bundles its own patched Chromium — this can't be installed via
+    Playwright bundles its own patched Chromium - this can't be installed via
     conda/pip. We detect and install it automatically on first run.
 
     Returns:
@@ -191,13 +191,13 @@ def _ensure_playwright_chromium():
     try:
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
-            # Try to get the executable — raises if not installed
+            # Try to get the executable - raises if not installed
             p.chromium.executable_path
         return True
     except Exception:
         pass
 
-    # Chromium not found — try to install it
+    # Chromium not found - try to install it
     logger.info("Playwright Chromium not found. Installing...")
     try:
         import subprocess
@@ -543,26 +543,23 @@ def main():
     # Load benchmark data
     logger.info(f"Loading olmOCR-Bench from {args.bench_dir}...")
     all_tests, pdf_base_dir = load_bench_data(args.bench_dir)
-    unique_pages = collect_unique_pages(all_tests)
-
-    # Apply sharding
-    if args.shard:
-        if not args.output:
-            parser.error("--shard requires --output so all shards write to the same directory")
-        unique_pages = apply_shard(unique_pages, args.shard)
-
-    logger.info(f"Unique (pdf, page) pairs to process: {len(unique_pages)}")
-
-    # Register in incomplete jobs for SLURM auto-resubmission
-    if not args.score_only:
-        register_bench_job(output_dir, "olmocr", args.shard)
 
     # Generation phase
     if not args.score_only:
+        unique_pages = collect_unique_pages(all_tests)
+
+        # Apply sharding
+        if args.shard:
+            if not args.output:
+                parser.error("--shard requires --output so all shards write to the same directory")
+            unique_pages = apply_shard(unique_pages, args.shard)
+
+        logger.info(f"Unique (pdf, page) pairs to process: {len(unique_pages)}")
+        register_bench_job(output_dir, "olmocr", args.shard)
         device = "cuda" if torch.cuda.is_available() else "cpu"
         engine = InferenceEngine.load(
             model_id=args.model, checkpoint_path=args.checkpoint,
-            model_type="vlm", device=device,
+            model_type="vlm", device=device, task="ocr",
         )
 
         metadata = build_metadata(args, engine, "olmocr", {
@@ -573,115 +570,47 @@ def main():
         })
         save_metadata(output_dir, metadata)
 
-        cleanup_temp_files(markdowns_dir)
-
-        # Count already-generated pages for accurate progress bar
-        already_done = sum(
-            1 for pdf_rel, page_num in unique_pages
-            if os.path.exists(os.path.join(markdowns_dir, pdf_to_md_name(pdf_rel, page_num)))
-        )
-
-        logger.info(f"Starting generation ({already_done} already done, {len(unique_pages) - already_done} remaining)...")
-        generated = 0
-        errors = 0
-
-        # Build work list (skip already done and missing PDFs)
-        pending = []
+        # Build work items (skip missing PDFs upfront)
+        work_items = []
         for pdf_rel, page_num in unique_pages:
-            md_name = pdf_to_md_name(pdf_rel, page_num)
-            md_path = os.path.join(markdowns_dir, md_name)
-            if os.path.exists(md_path):
-                continue
+            md_path = os.path.join(markdowns_dir, pdf_to_md_name(pdf_rel, page_num))
             pdf_abs = os.path.join(pdf_base_dir, pdf_rel)
             if not os.path.exists(pdf_abs):
                 logger.warning(f"PDF not found: {pdf_abs}")
-                errors += 1
                 continue
-            pending.append((pdf_rel, page_num, pdf_abs, md_path))
+            work_items.append({
+                "md_path": md_path,
+                "pdf_abs": pdf_abs,
+                "page_num": page_num,
+                "pdf_rel": pdf_rel,
+            })
 
-        def _render_page(pdf_abs, page_num):
-            """Render PDF page to image (runs in background thread)."""
-            return render_pdf_page(pdf_abs, page_num, dpi=args.dpi)
+        def _render_page(item):
+            return render_pdf_page(item["pdf_abs"], item["page_num"],
+                                   dpi=args.dpi)
 
-        pbar = tqdm(total=len(unique_pages), desc="Generating", unit="pg", initial=already_done + errors)
-        first_generate = True
-
-        # Prefetch: render next page while GPU generates current one
-        prefetch_pool = ThreadPoolExecutor(max_workers=1)
-        prefetch_future = None
-
-        for idx, (pdf_rel, page_num, pdf_abs, md_path) in enumerate(pending):
-            if is_shutdown_requested():
-                logger.info(f"Shutting down gracefully. Generated {generated} this session.")
-                break
-
-            try:
-                # Get current image (from prefetch or direct render)
-                if prefetch_future is not None:
-                    image = prefetch_future.result()
-                else:
-                    image = _render_page(pdf_abs, page_num)
-
-                # Start prefetching next page
-                if idx + 1 < len(pending):
-                    next_pdf_abs, next_page_num = pending[idx + 1][2], pending[idx + 1][1]
-                    prefetch_future = prefetch_pool.submit(_render_page, next_pdf_abs, next_page_num)
-                else:
-                    prefetch_future = None
-
-                if first_generate:
-                    pbar.clear()
-                results = engine.generate(
-                    [(image, OCR_PROMPT)], max_new_tokens=args.max_new_tokens
-                )
-                if first_generate:
-                    first_generate = False
-                    pbar.refresh()
-                markdown = results[0]
-
-                tmp_path = md_path + ".tmp"
-                with open(tmp_path, "w") as f:
-                    f.write(markdown)
-                os.replace(tmp_path, md_path)
-                generated += 1
-
-            except Exception as e:
-                if is_shutdown_requested():
-                    logger.info(f"Interrupted on {pdf_rel} page {page_num} - will retry on resume")
-                    break
-                logger.error(f"Failed on {pdf_rel} page {page_num}: {e}")
-                errors += 1
-                prefetch_future = None
-
-            pbar.set_postfix(gen=generated, err=errors)
-            pbar.update(1)
-
-        prefetch_pool.shutdown(wait=False)
-
-        pbar.close()
-
-        logger.info(f"Generation complete: {generated} generated, {already_done} skipped, {errors} errors")
-
-        cleanup_temp_files(markdowns_dir)
-
+        generate_markdowns(
+            engine, work_items, OCR_PROMPT, args.max_new_tokens,
+            markdowns_dir, image_fn=_render_page,
+            label_fn=lambda item: f"{item['pdf_rel']} page {item['page_num']}",
+        )
         save_metadata(output_dir, metadata)
 
         if is_shutdown_requested():
-            # Leave registry entry as incomplete — shell will auto-resubmit
             logger.info(f"Interrupted. Auto-resubmit will resume from: {output_dir}")
             sys.exit(0)
     else:
-        logger.info("Score-only mode — skipping generation")
+        logger.info("Score-only mode - skipping generation")
         metadata = {}
         meta_path = os.path.join(output_dir, "metadata.json")
         if os.path.exists(meta_path):
             with open(meta_path) as f:
                 metadata = json.load(f)
 
-    # Scoring phase (skip for sharded runs — score with --score_only after all shards complete)
+    # Scoring phase (skip for sharded runs)
     if args.shard and not args.score_only:
         remove_bench_job()
-        logger.info(f"Shard {args.shard} complete — run with --score_only to score after all shards finish")
+        logger.info(f"Shard {args.shard} complete - run with --score_only to score after all shards finish")
         return
 
     # Completeness check: report how many markdowns are available

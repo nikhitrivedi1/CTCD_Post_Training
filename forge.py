@@ -925,7 +925,7 @@ def _train(
 
 
 def _build_grpo_config(config, output_dir, run_name, args, device, report_to,
-                       reward_weights=None):
+                       reward_weights=None, chat_template_kwargs=None):
     """Build a GRPOConfig from the Forge YAML config.
 
     Args:
@@ -984,6 +984,8 @@ def _build_grpo_config(config, output_dir, run_name, args, device, report_to,
         data_seed=args.seed,
         # Log generated completions to W&B for inspection
         log_completions=rl.get("log_completions", True),
+        # Chat template kwargs (e.g. enable_thinking) from model profiles + config
+        chat_template_kwargs=chat_template_kwargs,
     )
     return grpo_args
 
@@ -992,7 +994,7 @@ def _train_rl(
     config, device, tokenizer, task,
     train_dataset, eval_dataset,
     output_dir, run_name, args, state, resume_checkpoint,
-    env, report_to, metadata, processor=None,
+    env, report_to, metadata, processor=None, chat_template_kwargs=None,
 ):
     """Run RL (GRPO) training.
 
@@ -1022,7 +1024,8 @@ def _train_rl(
 
     # Build GRPOConfig (pass resolved weights)
     grpo_config = _build_grpo_config(config, output_dir, run_name, args, device, report_to,
-                                     reward_weights=reward_weights)
+                                     reward_weights=reward_weights,
+                                     chat_template_kwargs=chat_template_kwargs)
     logger.info(f"GRPO config: num_generations={grpo_config.num_generations}, "
                 f"max_completion_length={grpo_config.max_completion_length}, "
                 f"beta={grpo_config.beta}, loss_type={grpo_config.loss_type}")
@@ -1449,12 +1452,23 @@ def main():
             if tokenizer.pad_token is None:
                 tokenizer.pad_token = tokenizer.eos_token
 
+        # Resolve chat_template_kwargs: model profile defaults + config override
+        from src.inference.model_profiles import get_chat_template_kwargs
+        ct_kwargs = get_chat_template_kwargs(
+            config["model"]["name"],
+            explicit=config.get("model", {}).get("chat_template_kwargs"),
+            task=task,
+        )
+        if ct_kwargs:
+            logger.info(f"Chat template kwargs: {ct_kwargs}")
+
         set_reproducibility_seed(args.seed)
         _train_rl(
             config, device, tokenizer, task,
             train_dataset, eval_dataset,
             output_dir, display_name, args, state, resume_checkpoint,
             env, report_to, metadata, processor=processor,
+            chat_template_kwargs=ct_kwargs or None,
         )
     else:
         # =================================================================
@@ -1498,14 +1512,27 @@ def main():
         # Format for SFT (cached to output_dir/.formatted_cache/ for fast restarts)
         max_length = config.get("data", {}).get("max_length", 1024)
         tokenizer_or_processor = processor if processor else tokenizer
+
+        # Resolve chat_template_kwargs: model profile defaults + config override
+        from src.inference.model_profiles import get_chat_template_kwargs
+        ct_kwargs = get_chat_template_kwargs(
+            config["model"]["name"],
+            explicit=config.get("model", {}).get("chat_template_kwargs"),
+            task=task,
+        )
+        if ct_kwargs:
+            logger.info(f"Chat template kwargs: {ct_kwargs}")
+
         train_dataset = format_for_sft(
             train_dataset, task_type, tokenizer_or_processor, max_length,
             cache_dir=output_dir, split="train",
+            chat_template_kwargs=ct_kwargs or None,
         )
         if eval_dataset is not None:
             eval_dataset = format_for_sft(
                 eval_dataset, task_type, tokenizer_or_processor, max_length,
                 cache_dir=output_dir, split="eval",
+                chat_template_kwargs=ct_kwargs or None,
             )
 
         # Resolve --adapter: merge into base/ on first run, reuse on resume

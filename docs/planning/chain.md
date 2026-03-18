@@ -24,7 +24,7 @@ This is a DAG. Order of steps in the YAML is irrelevant - the dependency graph d
 # chains/formatting_pipeline.yaml
 # Sequential: ocr_sft -> fmt_sft -> fmt_grpo -> bench
 steps:
-  - name: OCR grounding
+  - name: OCR Grounding
     run_name: ocr_sft
     config: configs/ocr/olmocr-mix/qwen3vl-2b/base.yaml
 
@@ -87,7 +87,7 @@ steps:
 Per-step env overrides:
 
 ```yaml
-  - name: OCR grounding (debug)
+  - name: OCR Grounding (debug)
     run_name: ocr_sft_debug
     config: configs/ocr/olmocr-mix/qwen3vl-2b/base.yaml
     env:

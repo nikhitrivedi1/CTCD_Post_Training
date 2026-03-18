@@ -53,7 +53,7 @@ from src.evaluation.bench_utils import (
     add_common_bench_args,
     apply_shard,
     build_metadata,
-    cleanup_temp_files,
+    generate_markdowns,
     is_shutdown_requested,
     register_bench_job,
     remove_bench_job,
@@ -286,6 +286,15 @@ def print_results(agg: dict):
     pred = agg["pred_span_totals"]
     logger.info(f"GT spans:   bold={gt['bold']}, italic={gt['italic']}, strike={gt['strikethrough']}")
     logger.info(f"Pred spans: bold={pred['bold']}, italic={pred['italic']}, strike={pred['strikethrough']}")
+
+    hall = agg.get("hallucination", {})
+    if hall.get("total_pred", 0) > 0:
+        logger.info("-" * 60)
+        logger.info("Predicted span breakdown:")
+        logger.info(f"  Matched:        {hall['matched']:>5}  (correct formatting)")
+        logger.info(f"  Over-formatted: {hall['over_formatted']:>5}  (real text, wrong formatting)")
+        logger.info(f"  Hallucinated:   {hall['hallucinated']:>5}  (fabricated content)")
+        logger.info(f"  Hallucination rate: {hall['hallucination_rate']*100:.2f}%")
     logger.info("=" * 60)
 
 
@@ -354,22 +363,23 @@ def main():
     # -----------------------------------------------------------------------
     output_dir, markdowns_dir = validate_bench_args(args, parser, DEFAULT_OUTPUT_BASE)
 
-    # Load eval paths via handler
-    paths = load_eval_paths(args.data_dir, args.dataset)
-    if args.max_pages:
-        paths = select_stratified(paths, args.max_pages)
-    if args.shard:
-        paths = apply_shard(paths, args.shard)
-
+    # Generation phase
     if not args.score_only:
+        # Load eval paths via handler
+        paths = load_eval_paths(args.data_dir, args.dataset)
+        if args.max_pages:
+            paths = select_stratified(paths, args.max_pages)
+        # Apply sharding
+        if args.shard:
+            if not args.output:
+                parser.error("--shard requires --output so all shards write to the same directory")
+            paths = apply_shard(paths, args.shard)
+
         register_bench_job(output_dir, "formatting", args.shard)
-
-    # --- Inference phase ---
-    if not args.score_only:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         engine = InferenceEngine.load(
             model_id=args.model, checkpoint_path=args.checkpoint,
-            model_type="vlm", device=device,
+            model_type="vlm", device=device, task="ocr",
         )
 
         metadata = build_metadata(args, engine, "formatting", {
@@ -378,53 +388,42 @@ def main():
         })
         save_metadata(output_dir, metadata)
 
-        cleanup_temp_files(markdowns_dir)
+        # Build work items
+        work_items = [
+            {"md_path": os.path.join(markdowns_dir, p["image_path"].stem + ".md"),
+             "image_path": p["image_path"]}
+            for p in paths
+        ]
 
-        already_done = sum(
-            1 for p in paths
-            if os.path.exists(os.path.join(markdowns_dir, p["image_path"].stem + ".md"))
-        )
-        logger.info(f"Starting generation ({already_done} already done, "
-                     f"{len(paths) - already_done} remaining)...")
-
-        for entry in tqdm(paths, desc="Inference"):
-            stem = entry["image_path"].stem
-            md_path = os.path.join(markdowns_dir, f"{stem}.md")
-            if os.path.exists(md_path):
-                continue
-            if is_shutdown_requested():
-                logger.warning("Shutdown requested - stopping generation")
-                break
-
-            with Image.open(entry["image_path"]) as im:
+        def _load_image(item):
+            with Image.open(item["image_path"]) as im:
                 image = im.convert("RGB")
                 image.load()
+            return image
 
-            outputs = engine.generate(
-                [(image, OCR_SYSTEM_PROMPT)], max_new_tokens=args.max_new_tokens,
-            )
-            pred_md = outputs[0] if outputs else ""
-
-            # Atomic write via temp file
-            tmp_path = md_path + ".tmp"
-            with open(tmp_path, "w") as f:
-                f.write(pred_md)
-            os.replace(tmp_path, md_path)
-
-        cleanup_temp_files(markdowns_dir)
+        generate_markdowns(
+            engine, work_items, OCR_SYSTEM_PROMPT, args.max_new_tokens,
+            markdowns_dir, image_fn=_load_image,
+        )
         save_metadata(output_dir, metadata)
 
         if is_shutdown_requested():
             logger.info(f"Interrupted. Auto-resubmit will resume from: {output_dir}")
             sys.exit(0)
+    else:
+        logger.info("Score-only mode - skipping generation")
+        metadata = {}
+        meta_path = os.path.join(output_dir, "metadata.json")
+        if os.path.exists(meta_path):
+            with open(meta_path) as f:
+                metadata = json.load(f)
 
-    # Sharded runs skip scoring - run --score_only after all shards complete
+    # Scoring phase (skip for sharded runs)
     if args.shard and not args.score_only:
         remove_bench_job()
         logger.info(f"Shard {args.shard} complete - run with --score_only to score after all shards finish")
         return
 
-    # --- Scoring phase ---
     # Reload all paths for scoring (not just this shard)
     all_paths = load_eval_paths(args.data_dir, args.dataset)
     if args.max_pages:
@@ -437,20 +436,9 @@ def main():
 
     agg = compute_aggregate(results)
     print_results(agg)
-
-    # Load existing metadata for score_only runs
-    metadata = None
-    meta_path = os.path.join(output_dir, "metadata.json")
-    if os.path.exists(meta_path):
-        with open(meta_path) as f:
-            metadata = json.load(f)
-
     save_formatting_results(output_dir, agg, results, metadata)
 
-    if not args.score_only:
-        remove_bench_job()
-
-    logger.info("Done.")
+    remove_bench_job()
 
 
 if __name__ == "__main__":

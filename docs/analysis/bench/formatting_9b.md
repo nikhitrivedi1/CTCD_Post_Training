@@ -2,6 +2,16 @@
 
 Bench date: 2026-03-15
 
+> **RESULTS INVALID - PENDING RE-RUN**
+>
+> All Qwen3.5-9B results in this doc are contaminated by `</think>` block leakage.
+> `<think>` is a registered special token (stripped by `skip_special_tokens=True`), but the
+> thinking content and closing `</think>` tag are plain text and survive in the output.
+> Confirmed via grep on generated markdowns: ocr_lora_qwen35-9b (187/250 files),
+> fmt_lora_qwen35-9b (186/250 files), fmt_grpo_qwen35-9b (172/250 files).
+> The Qwen3-VL-2B results below are clean (no thinking tokens in that family).
+> Re-run all three Qwen3.5 bench jobs after fixing think-block stripping in the inference engine.
+
 ## Training Configs
 
 All values from saved `outputs/{run}/config.yaml`.
@@ -48,13 +58,13 @@ The two GRPO runs are not directly comparable. They differ in dataset, reward fo
 
 ## Scores
 
-### Qwen3.5-9B (3 stages)
+### Qwen3.5-9B (3 stages) - INVALID (</think> contamination)
 
 | Model | Stage | P | R | F1 |
 |-------|-------|---|---|-----|
-| `ocr_lora_qwen35-9b` | OCR only | 0.263 | 0.393 | 0.295 |
-| `fmt_lora_qwen35-9b` | + fmt SFT | 0.346 | 0.563 | **0.405** |
-| `fmt_grpo_qwen35-9b` | + fmt GRPO | 0.321 | 0.496 | 0.365 |
+| `ocr_lora_qwen35-9b` | OCR only | ~~0.263~~ | ~~0.393~~ | ~~0.295~~ |
+| `fmt_lora_qwen35-9b` | + fmt SFT | ~~0.346~~ | ~~0.563~~ | ~~0.405~~ |
+| `fmt_grpo_qwen35-9b` | + fmt GRPO | ~~0.321~~ | ~~0.496~~ | ~~0.365~~ |
 
 ### Qwen3-VL-2B (for comparison)
 
@@ -64,13 +74,13 @@ The two GRPO runs are not directly comparable. They differ in dataset, reward fo
 | `fmt_sft` | + fmt SFT | 0.837 | 0.721 | **0.766** |
 | `fmt_grpo` | + fmt GRPO | 0.726 | 0.575 | 0.622 |
 
-### Per-type breakdown (9B)
+### Per-type breakdown (9B) - INVALID (</think> contamination)
 
 | Model | Bold F1 | Italic F1 | Strike F1 |
 |-------|---------|-----------|-----------|
-| `ocr_lora_qwen35-9b` | 0.259 | 0.167 | 0.073 |
-| `fmt_lora_qwen35-9b` | 0.364 | 0.248 | **0.222** |
-| `fmt_grpo_qwen35-9b` | 0.327 | 0.209 | 0.100 |
+| `ocr_lora_qwen35-9b` | ~~0.259~~ | ~~0.167~~ | ~~0.073~~ |
+| `fmt_lora_qwen35-9b` | ~~0.364~~ | ~~0.248~~ | ~~0.222~~ |
+| `fmt_grpo_qwen35-9b` | ~~0.327~~ | ~~0.209~~ | ~~0.100~~ |
 
 ### Per-type breakdown (2B)
 
@@ -80,13 +90,13 @@ The two GRPO runs are not directly comparable. They differ in dataset, reward fo
 | `fmt_sft` | 0.698 | 0.445 | 0.218 |
 | `fmt_grpo` | 0.563 | 0.283 | 0.000 |
 
-### Span counts (9B)
+### Span counts (9B) - INVALID (</think> contamination)
 
 | Model | Bold (gt=2070) | Italic (gt=951) | Strike (gt=756) |
 |-------|----------------|-----------------|-----------------|
-| `ocr_lora_qwen35-9b` | 3652 | 883 | 74 |
-| `fmt_lora_qwen35-9b` | 4095 | 1214 | 279 |
-| `fmt_grpo_qwen35-9b` | 4060 | 1116 | 104 |
+| `ocr_lora_qwen35-9b` | ~~3652~~ | ~~883~~ | ~~74~~ |
+| `fmt_lora_qwen35-9b` | ~~4095~~ | ~~1214~~ | ~~279~~ |
+| `fmt_grpo_qwen35-9b` | ~~4060~~ | ~~1116~~ | ~~104~~ |
 
 ### Span counts (2B)
 

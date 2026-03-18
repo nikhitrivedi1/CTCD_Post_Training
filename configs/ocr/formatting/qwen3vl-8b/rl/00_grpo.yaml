@@ -1,0 +1,16 @@
+# Formatting GRPO: Qwen3-VL-8B
+# Per-type F1 reward, KL regularization.
+#
+# Run:
+#   ADAPTER=outputs/fmt_sft-lora_qwen3vl-8b \
+#     sbatch scripts/slurm/run_training.sh fmt_grpo-lora_qwen3vl-8b configs/ocr/formatting/qwen3vl-8b/rl/00_grpo.yaml
+
+inherit: base.yaml
+
+rl:
+  reward:
+    edit_similarity: 0.25
+    inline_formatting_pertype: 1.0
+  generation_batch_size: 8
+  temperature: 1.0
+  beta: 0.1

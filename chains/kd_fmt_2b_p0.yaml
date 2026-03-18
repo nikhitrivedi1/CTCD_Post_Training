@@ -1,6 +1,9 @@
-# KD P0: Does 9B GRPO -> 2B distillation help?
+# KD P0: Does 9B LoRA -> 2B distillation help?
 # Two parallel training runs (baseline vs KD), then bench both on formatting + olmOCR.
-# Requires: outputs/fmt_grpo_qwen35-9b (teacher checkpoint)
+# Requires: outputs/fmt_lora_qwen35-9b (teacher checkpoint)
+#
+# Note: Skips OCR SFT stage. OCR LoRA kills formatting in 9B (31.4% -> 0.7% F1),
+# so we train formatting directly from pretrained to preserve base capability.
 #
 # Usage:
 #   scripts/slurm/run_chain.sh chains/kd_fmt_2b_p0.yaml
@@ -13,11 +16,11 @@ steps:
     run_name: fmt_lora_qwen35-2b
     config: configs/ocr/formatting/qwen35-2b/00_sft.yaml
 
-  - name: Response KL (9B GRPO teacher)
+  - name: Response KL (9B LoRA teacher)
     run_name: kd_fmt_2b_response-kl
     config: configs/ocr/formatting/qwen35-2b/kd/qwen35-9b/01_response-kl.yaml
     env:
-      TEACHER_ADAPTER: outputs/fmt_grpo_qwen35-9b
+      TEACHER_ADAPTER: outputs/fmt_lora_qwen35-9b
 
   # -----------------------------------------------------------------------
   # Formatting bench

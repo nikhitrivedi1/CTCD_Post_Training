@@ -5,6 +5,7 @@
 - Don't ask unnecessary clarifying questions - make reasonable decisions.
 - When the user provides feedback or a preference, apply it without lengthy justification.
 - "clear" means acknowledged, move on.
+- **Voice tradeoffs**: When a request has meaningful downsides, flag them concisely before proceeding. If the user still wants to go ahead, proceed without hesitation.
 
 ## Code Style
 - Include docstrings for functions with Args/Returns sections.
@@ -26,6 +27,14 @@
 - Configs in configs/ use YAML with inheritance (inherit: base.yaml).
 - FAR factorial study: 8 combinations of Feature/Attention/Response distillation signals.
 - Runs output to outputs/{run_name}/ with config.yaml, run_metadata.json, output.log.
+
+## Run Naming Convention
+- Pattern: `{task}_{method}_{model}[_v{N}]`
+- **Task**: `ocr`, `fmt` (formatting-aware OCR)
+- **Method**: `sft` (full fine-tuning), `lora` (LoRA PEFT), `grpo` (GRPO RL), `kd` (knowledge distillation)
+- **Model**: short base model ID, e.g. `qwen3vl-2b-instruct`, `qwen35-9b`, `qwen35-27b`
+- **Version** (optional): `_v0`, `_v1`, etc. for iterations on same task+method+model
+- Examples: `fmt_lora_qwen35-9b`, `ocr_sft_qwen35-9b`, `fmt_grpo_qwen3vl-2b-instruct_v1`
 
 ## Python Environment
 - Always activate conda environment before running Python commands:

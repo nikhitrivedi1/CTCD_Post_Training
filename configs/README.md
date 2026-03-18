@@ -132,6 +132,12 @@ ADAPTER=outputs/<sft_checkpoint> \
     sbatch scripts/slurm/run_training.sh configs/ocr/formatting/qwen3vl-2b/rl/00_grpo.yaml
 ```
 
+Similarly, the KD teacher checkpoint is injected via `TEACHER_ADAPTER`:
+```bash
+TEACHER_ADAPTER=outputs/<teacher_checkpoint> \
+    sbatch scripts/slurm/run_training.sh <run_name> configs/.../kd/01_response-kl.yaml
+```
+
 ## FAR Factorial Design
 
 **F**eature → **A**ttention → **R**esponse ordering:

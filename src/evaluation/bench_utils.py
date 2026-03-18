@@ -56,6 +56,8 @@ import logging
 import os
 import signal
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -76,6 +78,7 @@ def setup_logging(level: int = logging.INFO):
         datefmt="%Y-%m-%d %H:%M:%S",
         stream=sys.stdout,
     )
+    logging.Formatter.converter = time.gmtime
 
 
 # ---------------------------------------------------------------------------
@@ -328,7 +331,7 @@ def add_common_bench_args(parser, max_new_tokens: int = 2048):
     """Add CLI args shared across all bench scripts.
 
     Adds --model/--checkpoint (mutually exclusive), --output, --shard,
-    --max_new_tokens, and --score_only.
+    --max_new_tokens, --score_only.
 
     Args:
         parser: ArgumentParser to add args to.
@@ -344,6 +347,7 @@ def add_common_bench_args(parser, max_new_tokens: int = 2048):
     parser.add_argument("--max_new_tokens", type=int, default=max_new_tokens)
     parser.add_argument("--score_only", action="store_true",
                         help="Skip generation, only score existing markdowns")
+
 
 
 def validate_bench_args(args, parser, default_output_base: str) -> tuple[str, str]:
@@ -390,3 +394,112 @@ def cleanup_temp_files(markdowns_dir: str):
     """
     for tmp_file in glob.glob(os.path.join(markdowns_dir, "*.tmp")):
         os.remove(tmp_file)
+
+
+def generate_markdowns(engine, work_items, prompt, max_new_tokens,
+                       markdowns_dir, image_fn, label_fn=None):
+    """Shared generation loop with prefetch and atomic writes.
+
+    Each bench script builds its own work_items list and provides an image_fn
+    to load/render images. This function handles the common loop: skip done,
+    prefetch next image, generate, atomic write, shutdown handling.
+
+    Args:
+        engine: InferenceEngine instance.
+        work_items: List of dicts, each must have "md_path" key.
+            Remaining keys are passed to image_fn/label_fn.
+        prompt: Text prompt for generation.
+        max_new_tokens: Max tokens per generation.
+        markdowns_dir: Directory for markdown output files.
+        image_fn: Callable(work_item) -> PIL.Image. Loads or renders the
+            image for a work item.
+        label_fn: Optional callable(work_item) -> str for log messages.
+            Defaults to using the md_path basename.
+
+    Returns:
+        Tuple of (generated_count, skipped_count, error_count).
+    """
+    from tqdm import tqdm
+
+    if label_fn is None:
+        label_fn = lambda item: os.path.basename(item["md_path"])
+
+    # Build pending list (skip already done)
+    pending = []
+    skipped = 0
+    for item in work_items:
+        if os.path.exists(item["md_path"]):
+            skipped += 1
+        else:
+            pending.append(item)
+
+    logger.info(f"Starting generation ({skipped} already done, "
+                f"{len(pending)} remaining)...")
+
+    generated = 0
+    errors = 0
+    first_generate = True
+
+    pbar = tqdm(total=len(work_items), desc="Generating", unit="pg",
+                initial=skipped)
+
+    prefetch_pool = ThreadPoolExecutor(max_workers=1)
+    prefetch_future = None
+
+    for idx, item in enumerate(pending):
+        if is_shutdown_requested():
+            logger.info(f"Shutting down gracefully. Generated {generated} "
+                        f"this session.")
+            break
+
+        try:
+            # Get current image (from prefetch or direct load)
+            if prefetch_future is not None:
+                image = prefetch_future.result()
+            else:
+                image = image_fn(item)
+
+            # Prefetch next image
+            if idx + 1 < len(pending):
+                prefetch_future = prefetch_pool.submit(
+                    image_fn, pending[idx + 1])
+            else:
+                prefetch_future = None
+
+            if first_generate:
+                pbar.clear()
+            results = engine.generate(
+                [(image, prompt)], max_new_tokens=max_new_tokens)
+            if first_generate:
+                first_generate = False
+                pbar.refresh()
+
+            markdown = results[0] if results else ""
+            md_path = item["md_path"]
+            tmp_path = md_path + ".tmp"
+            with open(tmp_path, "w") as f:
+                f.write(markdown)
+            os.replace(tmp_path, md_path)
+            generated += 1
+
+        except Exception as e:
+            if is_shutdown_requested():
+                logger.info(f"Interrupted on {label_fn(item)} - will retry "
+                            f"on resume")
+                break
+            logger.error(f"Failed on {label_fn(item)}: {e}")
+            errors += 1
+            prefetch_future = None
+
+        pbar.set_postfix(gen=generated, err=errors)
+        pbar.update(1)
+
+    prefetch_pool.shutdown(wait=False)
+    pbar.close()
+
+    logger.info(f"Generation complete: {generated} generated, "
+                f"{skipped} skipped, {errors} errors")
+
+    cleanup_temp_files(markdowns_dir)
+
+    return generated, skipped, errors

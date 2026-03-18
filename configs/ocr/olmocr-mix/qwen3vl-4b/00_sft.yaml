@@ -1,0 +1,6 @@
+# OCR SFT: Qwen3-VL-4B on olmocr-mix
+#
+# Run:
+#   sbatch scripts/slurm/run_training.sh ocr_sft-lora_qwen3vl-4b configs/ocr/olmocr-mix/qwen3vl-4b/00_sft.yaml
+
+inherit: base.yaml

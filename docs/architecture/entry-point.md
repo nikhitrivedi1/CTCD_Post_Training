@@ -25,6 +25,7 @@ Main training script for fine-tuning, knowledge distillation, and reinforcement 
 | `--force` | flag | False | Overwrite existing named run (deletes outputs and W&B run) |
 | `--timestamp` | flag | False | Append timestamp to `--run_name` (e.g. `seed42` becomes `seed42_20260308-1200Z`) |
 | `--adapter` | str | None | Path to adapter to merge before training (SFT, KD, or RL) |
+| `--teacher_adapter` | str | None | Path to teacher checkpoint/adapter (overrides `model.teacher.name`) |
 | `--debug` | flag | False | Enable DEBUG logging + W&B Test project |
 
 ---
