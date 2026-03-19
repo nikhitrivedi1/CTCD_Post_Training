@@ -1,0 +1,132 @@
+Loading pages...
+Loaded 250 pages
+Running analysis...
+================================================================================
+FAILURE MODE ANALYSIS: fmt_sft-lora_qwen35-9b
+================================================================================
+
+================================================================================
+1. HALLUCINATED SPANS (3 total)
+   Pred spans where plain text doesn't appear anywhere in GT document
+================================================================================
+  [  1] 01_tables_eval_00013 | bold            | id:
+  [  2] 04_legal_eval_00018 | italic          | Intellectual property rights in all deliverables shall vest in the client upon full payment. The con...
+  [  3] 05_technical_eval_00024 | strikethrough   | loose coupling: (observed behavior)
+
+================================================================================
+2. OVER-FORMATTED SPANS (590 total)
+   Pred spans matching real GT text but shouldn't be formatted
+================================================================================
+
+  By formatting type:
+    bold: 284
+    italic: 161
+    strikethrough: 145
+
+  Top 20 most common over-formatted texts:
+  [  1] (x10) [strikethrough, italic, bold] emphasis
+  [  2] (x7) [italic, bold] initial estimate
+  [  3] (x7) [bold] Algorithm
+  [  4] (x6) [bold] draft version
+  [  5] (x6) [italic, bold] previously reported
+  [  6] (x6) [strikethrough, italic] in vivo
+  [  7] (x6) [strikethrough, bold] significant
+  [  8] (x6) [italic] de novo
+  [  9] (x6) [italic, bold] prior methodology
+  [ 10] (x6) [bold] Total
+  [ 11] (x5) [strikethrough, italic, bold] per se
+  [ 12] (x5) [bold] Table
+  [ 13] (x5) [bold] Theorem
+  [ 14] (x5) [bold] critical
+  [ 15] (x5) [bold] essential
+  [ 16] (x5) [strikethrough, bold] attention
+  [ 17] (x5) [strikethrough, italic, bold] in vitro
+  [ 18] (x4) [strikethrough, italic, bold] Net Income
+  [ 19] (x4) [italic, bold] Conclusion
+  [ 20] (x4) [bold] Required
+
+================================================================================
+3. TYPE SWAPS (4 total)
+   GT spans matched by pred but under wrong formatting type
+================================================================================
+
+  Confusion matrix (GT type -> Pred type):
+    strikethrough -> italic: 2
+    strikethrough -> bold: 2
+
+  Top 10 examples of most common swap (strikethrough -> italic):
+  [  1] 06_books_eval_00012 | per-se
+  [  2] 07_slides_eval_00010 | see-also
+
+  Top 10 examples of second most common swap (strikethrough -> bold):
+  [  1] 07_slides_eval_00010 | de-neve
+  [  2] 08_news_eval_00019 | Genfig 1
+
+================================================================================
+4. TABLE FORMATTING DROPS (578 total)
+   Missed GT spans inside markdown table rows
+================================================================================
+
+  By formatting type:
+    bold: 398
+    italic: 135
+    strikethrough: 45
+
+  5 examples:
+  [1] 00_text_eval_00001 | bold            | Duration
+  [2] 00_text_eval_00001 | bold            | Pass/Fail
+  [3] 00_text_eval_00001 | bold            | Test Case
+  [4] 00_text_eval_00002 | bold            | Metric
+  [5] 00_text_eval_00002 | bold            | Q1
+
+================================================================================
+5. MERGE ERRORS (51 total)
+   Pred span contains multiple GT spans merged together
+================================================================================
+  [1] 00_text_eval_00007 | strikethrough
+       Pred: through synapses (previously reported).
+       GT spans (2): ['through synapses (', 'previously reported']
+  [2] 00_text_eval_00009 | strikethrough
+       Pred: where citizens participated directly
+       GT spans (2): ['where', 'participated directly']
+  [3] 00_text_eval_00018 | bold
+       Pred: The periodic table organizes chemical elements by atomic number and electron con...
+       GT spans (3): ['chemical elements by', 'The periodic', 'and electron configuration.']
+  [4] 01_tables_eval_00000 | italic
+       Pred: Comparative analysis of the three approaches is shown below (our approach). Stri...
+       GT spans (3): ['values', 'Comparative analysis', 'below (our approach). Strikethrough values']
+  [5] 01_tables_eval_00000 | italic
+       Pred: Comparative analysis of the three approaches is shown below. Strikethrough value...
+       GT spans (2): ['values', 'Comparative analysis']
+
+================================================================================
+6. TEXT MISSING ENTIRELY (28 total)
+   GT formatted text not found anywhere in pred output
+================================================================================
+
+  By formatting type:
+    strikethrough: 17
+    italic: 9
+    bold: 2
+
+  Top 10 examples:
+  [  1] 00_text_eval_00001 | bold            | through synapses.
+  [  2] 00_text_eval_00001 | italic          | through synapses.
+  [  3] 00_text_eval_00001 | strikethrough   | through synapses.
+  [  4] 01_tables_eval_00013 | strikethrough   | ibid.
+  [  5] 01_tables_eval_00019 | strikethrough   | Model B
+  [  6] 02_academic_eval_00017 | italic          | -13.2%
+  [  7] 02_academic_eval_00020 | italic          | group.
+  [  8] 02_academic_eval_00020 | strikethrough   | group.
+  [  9] 04_legal_eval_00018 | bold            | techniques.
+  [ 10] 05_technical_eval_00001 | strikethrough   | Config 2
+
+================================================================================
+SUMMARY
+================================================================================
+  Hallucinated spans:     3
+  Over-formatted spans:   590
+  Type swaps:             4
+  Table formatting drops: 578
+  Merge errors:           51
+  Text missing entirely:  28
