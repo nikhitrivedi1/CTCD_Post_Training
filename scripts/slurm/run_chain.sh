@@ -35,8 +35,7 @@
 # ---------------------------------------------------------------------------
 # Source essentials for slurm_is_complete and slurm_setup_env.
 # When run on login node, SBATCH headers are ignored.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/slurm_essentials.sh"
+source scripts/slurm/slurm_essentials.sh
 
 slurm_setup_env
 
