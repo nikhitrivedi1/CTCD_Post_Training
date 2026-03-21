@@ -585,9 +585,7 @@ check_step_status() {
 
     # 3b. For bench/score jobs (output dir != outputs/$run_name):
     #     check sacct for clean exit of the tracked job.
-    #     Skip this for training jobs (they have outputs/$run_name) since sacct
-    #     reports 0:0 for cancelled jobs, which would false-positive as complete.
-    if [ -n "$tracked_job_id" ] && [ ! -d "./outputs/$run_name" ]; then
+    if [ -n "$tracked_job_id" ]; then
         local exit_code
         exit_code=$(sacct -j "$tracked_job_id" --format=ExitCode --parsable2 --noheader 2>/dev/null | head -1)
         if [ "$exit_code" = "0:0" ]; then
