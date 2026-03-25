@@ -153,7 +153,7 @@ rl:
 
 | Task | Models | Fine-tuning | Eval Metric |
 |------|--------|-------------|-------------|
-| **Classification** (MNLI, QQP, SST-2, CoLA) | Encoder (BERT, DistilBERT) | Full params (66M-110M) | Accuracy / F1 / MCC |
+| **Classification** (MNLI, QQP, SST-2, CoLA, MRPC, QNLI, RTE, WNLI) | Encoder (BERT, DistilBERT) | Full params (66M-110M) | Accuracy / F1 / MCC |
 | **Translation** (Europarl EN-FR) | Decoder (Llama 3.2) | LoRA (1B-3B) | BLEU |
 | **OCR** (olmocr-mix) | VLM (Qwen3-VL) | LoRA (2B-7B) | Edit similarity |
 
@@ -177,7 +177,7 @@ training:
 forge/
 ├── configs/              # YAML configurations with inheritance
 │   ├── base.yaml         # Shared defaults
-│   ├── classification/   # MNLI, QQP, SST-2, CoLA configs
+│   ├── classification/   # GLUE configs (MNLI, QQP, SST-2, CoLA, MRPC, QNLI, RTE, WNLI)
 │   ├── translation/      # Europarl EN-FR configs
 │   └── ocr/              # olmocr-mix configs
 ├── src/

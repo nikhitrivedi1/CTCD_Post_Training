@@ -1,0 +1,6 @@
+# QNLI dataset defaults
+inherit: ../base.yaml
+
+data:
+  task: qnli
+  max_length: 128

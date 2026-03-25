@@ -4,7 +4,7 @@ Catalog of tasks for systematically understanding knowledge distillation across 
 
 ## Quick Summary
 
-**Current:** 3 tasks (MNLI, QQP, EN→FR Translation) with BERT/DistilBERT and Llama-3B/1B
+**Current:** 9 tasks (8 GLUE classification + EN→FR Translation) with BERT/DistilBERT and Llama-3B/1B
 **Proposed:** 43 additional Model-Pair_Dataset combinations across:
 - 14 classification tasks (GLUE benchmark + domain-specific + RoBERTa variants)
 - 16 translation tasks (10 language pairs + 3 datasets + 4 model architectures)
@@ -20,6 +20,12 @@ Catalog of tasks for systematically understanding knowledge distillation across 
 |------|------|---------|------|-------------------|
 | **MNLI** | 3-class NLI | GLUE MNLI | 393k train | bert-base-uncased → distilbert-base-uncased |
 | **QQP** | Binary classification | GLUE QQP | 363k train | bert-base-uncased → distilbert-base-uncased |
+| **SST-2** | Binary sentiment | GLUE SST-2 | 67k train | bert-base-uncased → distilbert-base-uncased |
+| **CoLA** | Binary grammar acceptability | GLUE CoLA | 8.5k train | bert-base-uncased → distilbert-base-uncased |
+| **MRPC** | Binary paraphrase | GLUE MRPC | 3.7k train | bert-base-uncased → distilbert-base-uncased |
+| **QNLI** | Binary QA entailment | GLUE QNLI | 105k train | bert-base-uncased → distilbert-base-uncased |
+| **RTE** | Binary entailment | GLUE RTE | 2.5k train | bert-base-uncased → distilbert-base-uncased |
+| **WNLI** | Binary coreference | GLUE WNLI | 635 train | bert-base-uncased → distilbert-base-uncased |
 | **Translation (EN→FR)** | Seq2seq generation | Europarl en-fr | 46k examples | Llama-3.2-3B → Llama-3.2-1B |
 
 ---
@@ -32,13 +38,13 @@ Catalog of tasks for systematically understanding knowledge distillation across 
 |---|---------|---------|---------|------|------|--------|
 | 1 | GLUE MNLI | bert-base-uncased | distilbert-base-uncased | 393k | 3-class NLI | ✓ Implemented |
 | 2 | GLUE QQP | bert-base-uncased | distilbert-base-uncased | 363k | Binary | ✓ Implemented |
-| 3 | GLUE SST-2 | bert-base-uncased | distilbert-base-uncased | 67k | Binary sentiment | Proposed |
-| 4 | GLUE CoLA | bert-base-uncased | distilbert-base-uncased | 8.5k | Binary grammar | Proposed |
-| 5 | GLUE RTE | bert-base-uncased | distilbert-base-uncased | 2.5k | Binary entailment | Proposed |
-| 6 | GLUE MRPC | bert-base-uncased | distilbert-base-uncased | 3.7k | Binary paraphrase | Proposed |
+| 3 | GLUE SST-2 | bert-base-uncased | distilbert-base-uncased | 67k | Binary sentiment | ✓ Implemented |
+| 4 | GLUE CoLA | bert-base-uncased | distilbert-base-uncased | 8.5k | Binary grammar | ✓ Implemented |
+| 5 | GLUE RTE | bert-base-uncased | distilbert-base-uncased | 2.5k | Binary entailment | ✓ Implemented |
+| 6 | GLUE MRPC | bert-base-uncased | distilbert-base-uncased | 3.7k | Binary paraphrase | ✓ Implemented |
 | 7 | GLUE STS-B | bert-base-uncased | distilbert-base-uncased | 5.7k | Regression | Proposed |
-| 8 | GLUE QNLI | bert-base-uncased | distilbert-base-uncased | 105k | Binary QA | Proposed |
-| 9 | GLUE WNLI | bert-base-uncased | distilbert-base-uncased | 635 | Binary coreference | Proposed |
+| 8 | GLUE QNLI | bert-base-uncased | distilbert-base-uncased | 105k | Binary QA | ✓ Implemented |
+| 9 | GLUE WNLI | bert-base-uncased | distilbert-base-uncased | 635 | Binary coreference | ✓ Implemented |
 | 10 | GLUE MNLI | roberta-base | distilroberta-base | 393k | 3-class NLI | Proposed |
 | 11 | GLUE QQP | roberta-base | distilroberta-base | 363k | Binary | Proposed |
 | 12 | GLUE SST-2 | roberta-large | roberta-base | 67k | Binary sentiment | Proposed |

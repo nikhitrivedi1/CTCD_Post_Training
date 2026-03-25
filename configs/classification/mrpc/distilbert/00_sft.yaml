@@ -1,0 +1,41 @@
+# 00_no-teacher_ce-only: Baseline without teacher
+# Student trains on MRPC with cross-entropy loss only
+# No teacher supervision - establishes baseline for distillation comparison
+# Note: MRPC uses F1 as primary metric
+
+inherit: base.yaml
+
+model:
+  name: distilbert-base-uncased
+  init: pretrained
+  teacher:
+    name: bert-base-uncased   # Not loaded (alpha=0.0), kept for config consistency
+    freeze: true
+data:
+  task: mrpc
+  max_length: 128
+  eval_split: validation
+
+training:
+  num_epochs: 3
+  batch_size: 16
+  learning_rate: 0.00002
+  warmup_steps: 100
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: true
+
+distillation:
+  temperature: 2
+  alpha: 0.0              # CE only, no KL loss
+checkpointing:
+  save_steps: 200
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 25
+
+evaluation:
+  eval_steps: 200
+  eval_strategy: steps

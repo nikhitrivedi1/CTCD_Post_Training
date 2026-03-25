@@ -1,6 +1,6 @@
 """GLUE classification dataset handler.
 
-Handles MNLI, QQP, SST-2, and CoLA from the GLUE benchmark.
+Handles MNLI, QQP, SST-2, CoLA, MRPC, QNLI, RTE, and WNLI from the GLUE benchmark.
 All are downloaded from HF Hub at load time.
 
 Pipeline: no prep needed, download inline during load().
@@ -37,11 +37,32 @@ _GLUE_TASKS = {
         "input_columns": ("sentence",),
         "eval_split": "validation",
     },
+    "mrpc": {
+        "subset": "mrpc",
+        "input_columns": ("sentence1", "sentence2"),
+        # Note that test split is available for MRPC
+        "eval_split": "validation", 
+    },
+    "qnli": {
+        "subset": "qnli",
+        "input_columns": ("question", "sentence"),
+        "eval_split": "validation",
+    },
+    "rte": {
+        "subset": "rte",
+        "input_columns": ("sentence1", "sentence2"),
+        "eval_split": "validation",
+    },
+    "wnli": {
+        "subset": "wnli",
+        "input_columns": ("sentence1", "sentence2"),
+        "eval_split": "validation",
+    },
 }
 
 
 class GLUEHandler(DatasetHandler):
-    """Handler for GLUE classification tasks (MNLI, QQP, SST-2, CoLA).
+    """Handler for GLUE classification tasks (MNLI, QQP, SST-2, CoLA, MRPC, QNLI, RTE, WNLI).
 
     Instantiated per-task: GLUEHandler(task="mnli"), GLUEHandler(task="qqp"), etc.
     """
@@ -50,7 +71,7 @@ class GLUEHandler(DatasetHandler):
         """Initialize with a specific GLUE task.
 
         Args:
-            task: One of "mnli", "qqp", "sst2", "cola".
+            task: One of "mnli", "qqp", "sst2", "cola", "mrpc", "qnli", "rte", "wnli".
         """
         if task not in _GLUE_TASKS:
             raise ValueError(f"Unknown GLUE task: '{task}'. Supported: {list(_GLUE_TASKS.keys())}")

@@ -21,7 +21,11 @@ configs/
 │   │           └── gpu/                   # GPU-specific batch/LR configs (10)
 │   ├── qqp/                               # QQP paraphrase detection (SFT + 4 ablations)
 │   ├── sst2/                              # SST-2 sentiment (SFT + 4 ablations)
-│   └── cola/                              # CoLA linguistic acceptability (SFT + 4 ablations)
+│   ├── cola/                              # CoLA linguistic acceptability (SFT + 4 ablations)
+│   ├── mrpc/                              # MRPC paraphrase detection (SFT + 4 ablations)
+│   ├── qnli/                              # QNLI QA entailment (SFT + 4 ablations)
+│   ├── rte/                               # RTE textual entailment (SFT + 4 ablations)
+│   └── wnli/                              # WNLI Winograd NLI (SFT + 4 ablations)
 ├── translation/
 │   ├── base.yaml                          # Translation defaults (T=15, α=0.2, BLEU eval)
 │   └── europarl/
@@ -57,8 +61,8 @@ configs/
 
 | Category | Count |
 |----------|-------|
-| Classification SFT | 4 (1 per task) |
-| Classification Ablations | 17 (4 per task + 1 obsolete) |
+| Classification SFT | 8 (1 per task) |
+| Classification Ablations | 33 (4 per task + 1 obsolete) |
 | Classification FAR | 8 (MNLI) |
 | Classification Staged | 4 (MNLI) |
 | Classification GPU | 10 (MNLI hardware variants) |
@@ -69,7 +73,7 @@ configs/
 | OCR SFT + KD | 6 |
 | OCR GRPO | 4 (1 per dataset) |
 | Examples | 4 |
-| **Total Runnable** | **70** |
+| **Total Runnable** | **90** |
 
 Plus 38 base.yaml files + TEMPLATE.yaml = 113 total YAML files.
 

@@ -1,0 +1,6 @@
+# RTE dataset defaults
+inherit: ../base.yaml
+
+data:
+  task: rte
+  max_length: 128

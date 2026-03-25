@@ -1,0 +1,39 @@
+# 04_cotrain_sft-teacher_kl: Co-training with fine-tuned teacher
+# Both teacher and student train together
+# Teacher starts from fine-tuned checkpoint and continues training
+
+inherit: ../base.yaml
+
+model:
+  name: distilbert-base-uncased
+  init: pretrained
+  teacher:
+    name: textattack/bert-base-uncased-RTE
+    freeze: false
+data:
+  task: rte
+  max_length: 128
+
+training:
+  num_epochs: 3
+  batch_size: 16
+  learning_rate: 0.00002
+  warmup_steps: 50
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: true
+
+distillation:
+  temperature: 2
+  alpha: 0.5
+checkpointing:
+  save_steps: 100
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 25
+
+evaluation:
+  eval_steps: 100
+  eval_strategy: steps

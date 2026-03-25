@@ -2,7 +2,7 @@
 
 Centralized task registry - single source of truth for task properties.
 
-**Source:** `src/tasks/registry.py` (~89 lines)
+**Source:** `src/tasks/registry.py`
 
 ---
 
@@ -15,7 +15,7 @@ The task registry defines all supported tasks and their properties. Other module
 ## TASKS Dictionary
 
 ```python
-TASKS = {
+TASK_REGISTRY = {
     "mnli": {
         "num_labels": 3,
         "type": "classification",
@@ -43,6 +43,34 @@ TASKS = {
         "dataset": "glue",
         "subset": "cola",
         "primary_metric": "mcc",
+    },
+    "mrpc": {
+        "num_labels": 2,
+        "type": "classification",
+        "dataset": "glue",
+        "subset": "mrpc",
+        "primary_metric": "f1",
+    },
+    "qnli": {
+        "num_labels": 2,
+        "type": "classification",
+        "dataset": "glue",
+        "subset": "qnli",
+        "primary_metric": "accuracy",
+    },
+    "rte": {
+        "num_labels": 2,
+        "type": "classification",
+        "dataset": "glue",
+        "subset": "rte",
+        "primary_metric": "accuracy",
+    },
+    "wnli": {
+        "num_labels": 2,
+        "type": "classification",
+        "dataset": "glue",
+        "subset": "wnli",
+        "primary_metric": "accuracy",
     },
     "europarl": {
         "num_labels": None,
@@ -82,6 +110,10 @@ The primary metric determines which metric is used for:
 | QQP | f1 | Handles class imbalance (70/30 split) |
 | SST-2 | accuracy | Balanced binary classification |
 | CoLA | mcc | Matthews Correlation Coefficient handles imbalanced binary with chance correction |
+| MRPC | f1 | F1 is standard due to class imbalance in paraphrase detection |
+| QNLI | accuracy | Standard GLUE metric for binary QA entailment |
+| RTE | accuracy | Standard metric for low-resource binary entailment |
+| WNLI | accuracy | Standard GLUE metric for binary coreference/entailment |
 | Europarl | bleu | Standard machine translation metric |
 | OCR | edit_similarity | Character-level similarity (1 - CER) |
 

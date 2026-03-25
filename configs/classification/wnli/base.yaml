@@ -1,0 +1,6 @@
+# WNLI dataset defaults
+inherit: ../base.yaml
+
+data:
+  task: wnli
+  max_length: 128

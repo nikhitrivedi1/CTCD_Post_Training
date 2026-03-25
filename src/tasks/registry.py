@@ -33,6 +33,34 @@ TASK_REGISTRY = {
         "subset": "cola",
         "primary_metric": "mcc",
     },
+    "mrpc": {
+        "num_labels": 2,
+        "type": "classification",
+        "dataset": "glue",
+        "subset": "mrpc",
+        "primary_metric": "f1",
+    },
+    "qnli": {
+        "num_labels": 2,
+        "type": "classification",
+        "dataset": "glue",
+        "subset": "qnli",
+        "primary_metric": "accuracy",
+    },
+    "rte": {
+        "num_labels": 2,
+        "type": "classification",
+        "dataset": "glue",
+        "subset": "rte",
+        "primary_metric": "accuracy",
+    },
+    "wnli": {
+        "num_labels": 2,
+        "type": "classification",
+        "dataset": "glue",
+        "subset": "wnli",
+        "primary_metric": "accuracy",
+    },
     # Translation tasks
     "europarl": {
         "num_labels": None,

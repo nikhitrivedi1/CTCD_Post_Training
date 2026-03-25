@@ -28,6 +28,10 @@ DATASET_REGISTRY: dict[str, DatasetHandler] = {
     "qqp": GLUEHandler(task="qqp"),
     "sst2": GLUEHandler(task="sst2"),
     "cola": GLUEHandler(task="cola"),
+    "mrpc": GLUEHandler(task="mrpc"),
+    "qnli": GLUEHandler(task="qnli"),
+    "rte": GLUEHandler(task="rte"),
+    "wnli": GLUEHandler(task="wnli"),
 }
 
 

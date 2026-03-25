@@ -1,0 +1,2 @@
+# Ablations base - passthrough to model pair
+inherit: ../base.yaml

@@ -1,0 +1,39 @@
+# 02_frozen_sft-teacher_kl: Frozen fine-tuned teacher
+# Teacher is bert-base-uncased fine-tuned on RTE, then frozen
+# Standard distillation setup - teacher provides task-specific knowledge
+
+inherit: ../base.yaml
+
+model:
+  name: distilbert-base-uncased
+  init: pretrained
+  teacher:
+    name: textattack/bert-base-uncased-RTE
+    freeze: true
+data:
+  task: rte
+  max_length: 128
+
+training:
+  num_epochs: 3
+  batch_size: 16
+  learning_rate: 0.00002
+  warmup_steps: 50
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: true
+
+distillation:
+  temperature: 2
+  alpha: 0.5
+checkpointing:
+  save_steps: 100
+  save_total_limit: 3
+
+logging:
+  report_to: wandb
+  logging_steps: 25
+
+evaluation:
+  eval_steps: 100
+  eval_strategy: steps

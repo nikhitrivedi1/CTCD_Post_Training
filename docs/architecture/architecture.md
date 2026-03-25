@@ -13,7 +13,7 @@ Each module has its own detailed doc. Click through for full API coverage, desig
 | Doc | Source | Description |
 |-----|--------|-------------|
 | [Entry Point](entry-point.md) | `forge.py` | CLI, pipeline orchestration, training mode dispatch |
-| [Tasks](tasks.md) | `src/tasks/registry.py` | Task registry (MNLI, QQP, SST-2, CoLA, Europarl, OCR) |
+| [Tasks](tasks.md) | `src/tasks/registry.py` | Task registry (MNLI, QQP, SST-2, CoLA, MRPC, QNLI, RTE, WNLI, Europarl, OCR) |
 
 ### Training
 
@@ -232,7 +232,7 @@ docs/                             # Documentation
 
 | Task | Architecture | Models | Status |
 |------|-------------|--------|--------|
-| **Classification** (MNLI, QQP, SST-2, CoLA) | Encoder-only | BERT -> DistilBERT | Complete |
+| **Classification** (MNLI, QQP, SST-2, CoLA, MRPC, QNLI, RTE, WNLI) | Encoder-only | BERT -> DistilBERT | Complete |
 | **Translation** (Europarl EN-FR) | Decoder-only | Llama-3.2-3B -> 1B | Complete |
 | **OCR** (olmOCR-mix, synthmix, OmniDocBench) | Vision-Language | Qwen3-VL-2B, Qwen2.5-VL-3B | Active |
 

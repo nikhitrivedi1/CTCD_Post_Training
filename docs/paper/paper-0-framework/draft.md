@@ -172,6 +172,10 @@ python forge.py --config outputs/run_name/config.yaml --seed 42
 | QQP | F1 | BERT-base | DistilBERT |
 | SST-2 | Accuracy | BERT-base | DistilBERT |
 | CoLA | MCC | BERT-base | DistilBERT |
+| MRPC | F1 | BERT-base | DistilBERT |
+| QNLI | Accuracy | BERT-base | DistilBERT |
+| RTE | Accuracy | BERT-base | DistilBERT |
+| WNLI | Accuracy | BERT-base | DistilBERT |
 
 ### 5.2 Translation (Europarl)
 
