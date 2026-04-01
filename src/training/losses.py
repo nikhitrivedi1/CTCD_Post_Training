@@ -102,6 +102,20 @@ def compute_kl_divergence(
     return kl.to(original_dtype)
 
 
+def compute_entropy_of_output(logits: torch.Tensor) -> torch.Tensor:
+    """Batch-mean Shannon entropy of the output distribution induced by logits.
+
+    Interprets the last dimension of ``logits`` as classes, applies softmax, and computes
+    H(p) = -E_p[log p] in nats, averaged over all leading dimensions (e.g., batch).
+    """
+    original_dtype = logits.dtype
+    logits_f = logits.float()
+    log_probs = F.log_softmax(logits_f, dim=-1)
+    probs = log_probs.exp()
+    entropy = -(probs * log_probs).sum(dim=-1).mean()
+    return entropy.to(original_dtype)
+
+
 @dataclass
 class LossOutput:
     """Container for loss computation results."""

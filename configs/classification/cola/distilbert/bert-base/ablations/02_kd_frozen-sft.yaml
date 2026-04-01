@@ -25,8 +25,8 @@ training:
 
 distillation:
   temperature: 2
-  alpha_h: 0.5
-  alpha_s: 0.5
+  alpha_h: 1.0
+  alpha_s: 1.0
 checkpointing:
   save_steps: 500
   save_total_limit: 3

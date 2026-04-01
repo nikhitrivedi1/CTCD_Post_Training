@@ -8,7 +8,7 @@ model:
   name: distilbert-base-uncased
   init: pretrained
   teacher:
-    name: bert-base-uncased   # Not loaded (alpha=0.0), kept for config consistency
+    name: bert-base-uncased   # Not loaded (alpha_s=0.0), kept for config consistency
     freeze: true
 data:
   task: sst2

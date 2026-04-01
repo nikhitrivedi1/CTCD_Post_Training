@@ -15,6 +15,7 @@ from .losses import (
     build_distill_topology_strategy,
     build_layer_mapping_and_projector,
     build_teacher_response_only_strategy,
+    compute_entropy_of_output,
     get_loss_strategy,
 )
 
@@ -301,6 +302,11 @@ class DistillationTrainer(FinetuningTrainer):
             model_logits = model_logits[..., :min_vocab]
             teacher_logits_for_distill = teacher_logits_for_distill[..., :min_vocab]
 
+        # Always-on entropy metrics for monitoring teacher vs student confidence.
+        with torch.no_grad():
+            teacher_entropy = compute_entropy_of_output(teacher_logits_for_distill)
+            student_entropy = compute_entropy_of_output(model_logits.detach())
+
         # Also detach hidden states and attentions for Feature/Attention losses
         # This prevents the bug where teacher gets pulled toward model representations
         teacher_outputs_for_distill = teacher_outputs
@@ -368,7 +374,11 @@ class DistillationTrainer(FinetuningTrainer):
             total_loss = total_loss + teacher_loss_output.total_loss
 
         # Accumulate loss components and log averages at logging_steps intervals.
-        step_dict = {"total_loss": total_loss.item()}
+        step_dict = {
+            "total_loss": total_loss.item(),
+            "teacher_entropy": teacher_entropy.item(),
+            "student_entropy": student_entropy.item(),
+        }
         for name, value in student_loss_output.components.items():
             step_dict[name] = value.item() if torch.is_tensor(value) else value
         if teacher_loss_output is not None:

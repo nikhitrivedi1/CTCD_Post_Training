@@ -8,7 +8,7 @@ model:
   name: distilbert-base-uncased
   init: pretrained
   teacher:
-    name: bert-base-uncased   # Not loaded (alpha=0.0), kept for config consistency
+    name: bert-base-uncased   # Not loaded (alpha_s=0.0), kept for config consistency
     freeze: true
 data:
   task: qnli
@@ -25,7 +25,8 @@ training:
 
 distillation:
   temperature: 2
-  alpha: 0.0              # CE only, no KL loss
+  alpha_h: 1.0            # CE only, no KL loss
+  alpha_s: 0.0
 checkpointing:
   save_steps: 2000
   save_total_limit: 3

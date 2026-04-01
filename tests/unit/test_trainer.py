@@ -660,6 +660,17 @@ class TestTrainingProgressAndMetrics:
         assert trainer._metric_count == 0, "Metrics should be flushed after logging_steps"
         assert len(trainer._metric_accumulator) == 0
 
+    def test_entropy_metrics_are_logged(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+        """compute_loss should populate teacher_entropy and student_entropy metrics."""
+        trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model, tmp_path=tmp_path)
+        tiny_bert_model.train()
+        batch = _make_batch()
+
+        trainer.compute_loss(tiny_bert_model, batch)
+
+        assert "teacher_entropy" in trainer._metric_accumulator
+        assert "student_entropy" in trainer._metric_accumulator
+
 
 # ===========================================================================
 # 8. Co-training Teacher CE Loss
