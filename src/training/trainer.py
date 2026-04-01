@@ -103,14 +103,7 @@ class DistillationTrainer(FinetuningTrainer):
         self.teacher_label_map = teacher_label_map
         self.temperature = temperature
 
-                # Store layer mapping and projector for feature/attention distillation
-        self.layer_mapping = layer_mapping
-        self.layer_mapping_type = layer_mapping_type
-        self.projector = projector
 
-        # Track what outputs we need based on loss strategy requirements
-        self.output_hidden_states = getattr(self.loss_strategy, 'requires_hidden_states', False)
-        self.output_attentions = getattr(self.loss_strategy, 'requires_attentions', False)
 
         # Accumulate per-step metrics for averaged logging at logging_steps intervals.
         # Without this, self.log() fires every step, creating noisy W&B charts.
@@ -123,7 +116,7 @@ class DistillationTrainer(FinetuningTrainer):
         self.alpha_h = float(alpha_h)
         self.alpha_s = float(alpha_s)
 
-        # Set up loss strategy (Strategy Pattern) - for the student 
+        # Set up loss strategy (Strategy Pattern) - for the student
         if loss_strategy is not None:
             # Use provided strategy instance
             self.loss_strategy = loss_strategy
@@ -143,7 +136,15 @@ class DistillationTrainer(FinetuningTrainer):
                 kd_loss_coeff=self.alpha_s,
             )
 
+        # Store layer mapping and projector for feature/attention distillation
+        self.layer_mapping = layer_mapping
+        self.layer_mapping_type = layer_mapping_type
+        self.projector = projector
 
+        # Track what outputs we need based on loss strategy requirements
+        self.output_hidden_states = getattr(self.loss_strategy, 'requires_hidden_states', False)
+        self.output_attentions = getattr(self.loss_strategy, 'requires_attentions', False)
+        
         # ===========================================================================
         #  Teacher Model Initialization
         # ===========================================================================
@@ -162,7 +163,7 @@ class DistillationTrainer(FinetuningTrainer):
             self.beta_h, self.beta_s = 1.0, 0.0
         else:
             self.beta_s = float(beta_s)
-            self.beta_h = float(beta_h) 
+            self.beta_h = float(beta_h)
 
 
         if freeze_teacher:
