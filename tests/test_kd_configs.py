@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, PropertyMock
 import pytest
 import torch
 
-from src.utils.config import load_config
+from src.utils.config import load_config, resolve_distillation_coefficients
 
 
 # =============================================================================
@@ -58,7 +58,8 @@ def config_tree(tmp_path):
         "distillation:\n"
         "  loss_type: response_kl\n"
         "  temperature: 2.0\n"
-        "  alpha: 0.5\n"
+        "  alpha_h: 0.5\n"
+        "  alpha_s: 0.5\n"
     )
 
     return {"task": task, "model": model, "kd": kd}
@@ -94,7 +95,8 @@ class TestKDConfigInheritance:
         # Distillation settings
         assert config["distillation"]["loss_type"] == "response_kl"
         assert config["distillation"]["temperature"] == 2.0
-        assert config["distillation"]["alpha"] == 0.5
+        assert config["distillation"]["alpha_h"] == 0.5
+        assert config["distillation"]["alpha_s"] == 0.5
         # LR from model/base.yaml
         assert float(config["training"]["learning_rate"]) == 5e-6
 
@@ -140,6 +142,30 @@ class TestTeacherAdapterOverride:
 
         assert config["model"]["teacher"]["name"] == "outputs/some_teacher"
         assert config["model"]["name"] == "Student/2B"
+
+
+class TestDistillationCoefficientResolution:
+    """Tests for alpha/beta coefficient resolution helper."""
+
+    def test_defaults_when_no_student_coeffs(self):
+        coeffs = resolve_distillation_coefficients({}, freeze_teacher=True)
+        assert coeffs["alpha_h"] == 1.0
+        assert coeffs["alpha_s"] == 1.0
+        assert coeffs["beta_h"] == 1.0
+        assert coeffs["beta_s"] == 0.0
+
+    def test_cotrain_teacher_defaults_beta_ce_only(self):
+        coeffs = resolve_distillation_coefficients({"alpha_s": 0.6, "alpha_h": 0.4}, freeze_teacher=False)
+        assert coeffs["beta_h"] == 1.0
+        assert coeffs["beta_s"] == 0.0
+
+    def test_explicit_beta_is_preserved(self):
+        coeffs = resolve_distillation_coefficients(
+            {"alpha_s": 0.6, "alpha_h": 0.4, "beta_s": 0.2, "beta_h": 0.8},
+            freeze_teacher=False,
+        )
+        assert coeffs["beta_h"] == 0.8
+        assert coeffs["beta_s"] == 0.2
 
 
 # =============================================================================

@@ -7,9 +7,16 @@ import torch
 import torch.nn.functional as F
 from transformers import Trainer
 
-from .layer_mapping import get_layer_mapping
-from .losses import DistillationLossStrategy, KLDistillationLoss, get_loss_strategy
-from .projections import create_projection_if_needed
+from src.utils.config import resolve_distillation_coefficients
+
+from .losses import (
+    DistillationLossStrategy,
+    KLDistillationLoss,
+    build_distill_topology_strategy,
+    build_layer_mapping_and_projector,
+    build_teacher_response_only_strategy,
+    get_loss_strategy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,21 +42,25 @@ class DistillationTrainer(FinetuningTrainer):
     2. Compute combined loss using pluggable loss strategies
     3. Log loss components separately for monitoring
 
-    Supports two modes:
-    - Traditional distillation: Teacher is frozen, provides fixed soft labels
-    - Co-training: Teacher trains alongside model, soft labels improve over time
+    Supports three modes:
+    - Traditional distillation: Teacher is frozen, provides fixed soft labels (beta_h = 0, beta_s = 0)
+    - Co-training: Teacher trains alongside model, soft labels improve over time (beta_h = 1, beta_s = 0)
+    - Co-training with codistillation: Teacher trains alongside model, soft labels improve over time (beta_h = 1, beta_s = 1)
 
-    Uses Strategy Pattern for loss functions - swap loss strategies
-    without modifying this class.
+    Uses Strategy Pattern for loss functions - swap loss strategies without modifying this class.
     """
 
     def __init__(
             self,
             teacher_model: torch.nn.Module,
             temperature: float = 2.0,
-            alpha: float = 0.5,
+            alpha_h: float = 1.0,
+            alpha_s: float = 1.0,
+            beta_h: Optional[float] = None,
+            beta_s: Optional[float] = None,
             freeze_teacher: bool = True,
             loss_strategy: Optional[DistillationLossStrategy] = None,
+            teacher_loss_strategy: Optional[DistillationLossStrategy] = None,
             loss_type: Optional[str] = None,
             teacher_label_map: Optional[list] = None,
             layer_mapping_type: Optional[str] = None,
@@ -64,10 +75,14 @@ class DistillationTrainer(FinetuningTrainer):
         Args:
             teacher_model: Pretrained teacher model
             temperature: Temperature for softening distributions
-            alpha: Weight for distillation loss (0=only CE, 1=only KL)
+            alpha_h: Hard (CE) weight for the student (default 0.5).
+            alpha_s: Soft (distill) weight for the student (default 0.5).
+            beta_h, beta_s: Hard / soft weights for the teacher when co-training (default 1, 0).
             freeze_teacher: If True, freeze teacher (traditional distillation).
                            If False, train teacher alongside model (co-training).
             loss_strategy: Pre-configured loss strategy instance (takes precedence)
+            teacher_loss_strategy: Co-training only: response strategy with β baked in; if omitted,
+                defaults to KL with ``ce_loss_coeff``/``kd_loss_coeff`` = ``beta_h``/``beta_s``.
             loss_type: Name of loss strategy to use (e.g., "kl_divergence", "mse_logits")
             teacher_label_map: Optional list to remap teacher logits to match dataset labels.
                               e.g., [1, 2, 0] means teacher label 1 -> dataset label 0, etc.
@@ -82,39 +97,13 @@ class DistillationTrainer(FinetuningTrainer):
         """
         super().__init__(*args, **kwargs)
 
+        # Overall Param Init
         self.teacher = teacher_model
         self.freeze_teacher = freeze_teacher
         self.teacher_label_map = teacher_label_map
-
-        if freeze_teacher:
-            self.teacher.eval()  # Evaluation mode (no dropout)
-            for param in self.teacher.parameters():
-                param.requires_grad = False
-        else:
-            self.teacher.train()  # Training mode for co-training
-
         self.temperature = temperature
-        self.alpha = alpha
 
-        # Set up loss strategy (Strategy Pattern)
-        if loss_strategy is not None:
-            # Use provided strategy instance
-            self.loss_strategy = loss_strategy
-        elif loss_type is not None:
-            # Create strategy from name
-            self.loss_strategy = get_loss_strategy(
-                loss_type,
-                temperature=temperature,
-                alpha=alpha
-            )
-        else:
-            # Default to KL divergence
-            self.loss_strategy = KLDistillationLoss(
-                temperature=temperature,
-                alpha=alpha
-            )
-
-        # Store layer mapping and projector for feature/attention distillation
+                # Store layer mapping and projector for feature/attention distillation
         self.layer_mapping = layer_mapping
         self.layer_mapping_type = layer_mapping_type
         self.projector = projector
@@ -128,11 +117,76 @@ class DistillationTrainer(FinetuningTrainer):
         self._metric_accumulator = {}
         self._metric_count = 0
 
+        # ===========================================================================
+        #  Student Model Initialization
+        # ===========================================================================
+        self.alpha_h = float(alpha_h)
+        self.alpha_s = float(alpha_s)
+
+        # Set up loss strategy (Strategy Pattern) - for the student 
+        if loss_strategy is not None:
+            # Use provided strategy instance
+            self.loss_strategy = loss_strategy
+        elif loss_type is not None:
+            # Create strategy from name
+            self.loss_strategy = get_loss_strategy(
+                loss_type,
+                temperature=temperature,
+                alpha_h=self.alpha_h,
+                alpha_s=self.alpha_s,
+            )
+        else:
+            # Default to KL divergence
+            self.loss_strategy = KLDistillationLoss(
+                temperature=temperature,
+                ce_loss_coeff=self.alpha_h,
+                kd_loss_coeff=self.alpha_s,
+            )
+
+
+        # ===========================================================================
+        #  Teacher Model Initialization
+        # ===========================================================================
+        if freeze_teacher:
+            self.teacher.eval()  # Evaluation mode (no dropout)
+            for param in self.teacher.parameters():
+                param.requires_grad = False
+        else:
+            self.teacher.train()  # Training mode for co-training
+
+
+        if freeze_teacher:
+            self.beta_h = 0.0
+            self.beta_s = 0.0
+        elif beta_h is None and beta_s is None:
+            self.beta_h, self.beta_s = 1.0, 0.0
+        else:
+            self.beta_s = float(beta_s)
+            self.beta_h = float(beta_h) 
+
+
+        if freeze_teacher:
+            self.teacher_loss_strategy = None
+        elif teacher_loss_strategy is not None:
+            self.teacher_loss_strategy = teacher_loss_strategy
+        else:
+            self.teacher_loss_strategy = KLDistillationLoss(
+                temperature=temperature,
+                ce_loss_coeff=self.beta_h,
+                kd_loss_coeff=self.beta_s,
+            )
+
+
+
         logger.info("DistillationTrainer initialized:")
         logger.info(f"  Loss strategy: {self.loss_strategy.name}")
         logger.info(f"  Temperature: {temperature}")
-        logger.info(f"  Alpha: {alpha}")
+        logger.info(f"  alpha_h: {self.alpha_h}, alpha_s: {self.alpha_s}")
+        if not freeze_teacher:
+            logger.info(f"  beta_h: {self.beta_h}, beta_s: {self.beta_s}")
         logger.info(f"  Teacher frozen: {freeze_teacher}")
+        if not freeze_teacher and self.teacher_loss_strategy is not None:
+            logger.info(f"  Teacher loss strategy: {self.teacher_loss_strategy.name}")
         if self.output_hidden_states:
             logger.info(f"  Output hidden states: True (required by {self.loss_strategy.name})")
         if self.output_attentions:
@@ -157,38 +211,35 @@ class DistillationTrainer(FinetuningTrainer):
 
         return self.optimizer
 
-    def _detach_teacher_intermediates(self, teacher_outputs):
+    def _detach_output_intermediates(self, outputs):
         """
-        Detach hidden states and attentions from teacher outputs.
+        Detach hidden states and attentions from model outputs (logits stay connected).
 
-        In co-training, teacher should only learn from CE loss, not from
-        distillation losses (F, A). This prevents the teacher from being
-        pulled toward matching the (worse) model's representations.
+        Used for the student branch in co-training so the teacher does not receive gradients
+        through student-side F/A distillation; v1 teacher CTCD uses detached student logits only.
 
         Args:
-            teacher_outputs: Model outputs containing hidden_states/attentions
+            outputs: Model outputs (e.g. teacher forward) with optional hidden_states/attentions
 
         Returns:
-            Modified outputs with detached intermediate representations
+            Shallow copy with detached intermediates when present
         """
         # Create a shallow copy to avoid modifying the original
         # (we still need original .loss for teacher CE computation)
         from dataclasses import is_dataclass
 
-        if is_dataclass(teacher_outputs):
-            # HuggingFace model outputs are dataclasses
+        if is_dataclass(outputs):
             updates = {}
-            if hasattr(teacher_outputs, "hidden_states") and teacher_outputs.hidden_states is not None:
-                updates["hidden_states"] = tuple(h.detach() for h in teacher_outputs.hidden_states)
-            if hasattr(teacher_outputs, "attentions") and teacher_outputs.attentions is not None:
-                updates["attentions"] = tuple(a.detach() for a in teacher_outputs.attentions)
+            if hasattr(outputs, "hidden_states") and outputs.hidden_states is not None:
+                updates["hidden_states"] = tuple(h.detach() for h in outputs.hidden_states)
+            if hasattr(outputs, "attentions") and outputs.attentions is not None:
+                updates["attentions"] = tuple(a.detach() for a in outputs.attentions)
 
             if updates:
-                # Use replace() to create a new instance with updated fields
                 from dataclasses import replace
-                return replace(teacher_outputs, **updates)
+                return replace(outputs, **updates)
 
-        return teacher_outputs
+        return outputs
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         """
@@ -253,9 +304,8 @@ class DistillationTrainer(FinetuningTrainer):
         # This prevents the bug where teacher gets pulled toward model representations
         teacher_outputs_for_distill = teacher_outputs
         if not self.freeze_teacher:
-            # In co-training, we need to detach intermediate outputs
-            # (when frozen, they're already detached via torch.no_grad context)
-            teacher_outputs_for_distill = self._detach_teacher_intermediates(teacher_outputs)
+            # Student branch: detach teacher F/A so gradients do not flow into teacher via KD/F/A.
+            teacher_outputs_for_distill = self._detach_output_intermediates(teacher_outputs)
 
         # Task loss (cross-entropy with labels)
         ce_loss = outputs.loss
@@ -276,8 +326,8 @@ class DistillationTrainer(FinetuningTrainer):
         else:
             loss_kwargs["training_progress"] = 0.0
 
-        # Compute loss using strategy (with detached teacher outputs)
-        loss_output = self.loss_strategy.compute(
+        # Student branch: CE + KD vs detached teacher (implemented by loss_strategy.compute)
+        student_loss_output = self.loss_strategy.compute(
             model_logits=model_logits,
             teacher_logits=teacher_logits_for_distill,
             ce_loss=ce_loss,
@@ -287,25 +337,43 @@ class DistillationTrainer(FinetuningTrainer):
             **loss_kwargs
         )
 
-        # Combine losses: model loss + teacher CE (if co-training)
-        total_loss = loss_output.total_loss
+        total_loss = student_loss_output.total_loss
+        teacher_loss_output = None
         if not self.freeze_teacher:
+            align_vocab = model_logits.size(-1)
+            teacher_logits_aligned = teacher_logits[..., :align_vocab]
             # When teacher_label_map is set, teacher_outputs.loss was computed with
             # misaligned labels (HuggingFace computes loss before we remap logits).
-            # Recompute teacher CE using remapped logits for correct gradients.
             if self.teacher_label_map is not None and labels is not None:
-                # teacher_logits already remapped at line 188
-                teacher_ce_loss = F.cross_entropy(teacher_logits, labels)
+                teacher_ce_loss = F.cross_entropy(teacher_logits_aligned, labels)
             else:
                 teacher_ce_loss = teacher_outputs.loss
-            total_loss = total_loss + teacher_ce_loss
+
+            teacher_loss_kwargs = {
+                "training_progress": loss_kwargs["training_progress"],
+            }
+            # Invariant: __init__ always sets a strategy when co-training (explicit or KL fallback).
+            tls = self.teacher_loss_strategy
+            assert tls is not None
+            teacher_loss_output = tls.compute(
+                model_logits=teacher_logits_aligned,
+                teacher_logits=model_logits.detach(),
+                ce_loss=teacher_ce_loss,
+                labels=labels,
+                model_outputs=None,
+                teacher_outputs=None,
+                **teacher_loss_kwargs,
+            )
+            total_loss = total_loss + teacher_loss_output.total_loss
 
         # Accumulate loss components and log averages at logging_steps intervals.
         step_dict = {"total_loss": total_loss.item()}
-        for name, value in loss_output.components.items():
+        for name, value in student_loss_output.components.items():
             step_dict[name] = value.item() if torch.is_tensor(value) else value
-        if not self.freeze_teacher:
-            step_dict["teacher_ce_loss"] = teacher_ce_loss.item()
+        if teacher_loss_output is not None:
+            for name, value in teacher_loss_output.components.items():
+                key = f"teacher_{name}"
+                step_dict[key] = value.item() if torch.is_tensor(value) else value
 
         for key, value in step_dict.items():
             self._metric_accumulator[key] = self._metric_accumulator.get(key, 0.0) + value
@@ -359,71 +427,43 @@ class DistillationTrainer(FinetuningTrainer):
             )
         """
         distill_config = config.get("distillation", {})
+        freeze_teacher = config.get("model", {}).get("teacher", {}).get("freeze", True)
+        coeffs = resolve_distillation_coefficients(distill_config, freeze_teacher=freeze_teacher)
 
         # Basic distillation parameters
         trainer_kwargs = {
             "temperature": distill_config.get("temperature", 2.0),
-            "alpha": distill_config.get("alpha", 0.5),
+            "alpha_h": coeffs["alpha_h"],
+            "alpha_s": coeffs["alpha_s"],
+            "beta_h": coeffs["beta_h"],
+            "beta_s": coeffs["beta_s"],
         }
 
-        # Handle staged distillation or simple loss type
-        if "stages" in distill_config:
-            # Staged distillation: build StagedDistillationLoss
-            from .losses import StagedDistillationLoss
-            trainer_kwargs["loss_strategy"] = StagedDistillationLoss(
-                stages=distill_config["stages"],
-                alpha=trainer_kwargs["alpha"],
-                temperature=trainer_kwargs["temperature"],
+        temp = trainer_kwargs["temperature"]
+        loss_strategy = build_distill_topology_strategy(
+            distill_config, coeffs["alpha_h"], coeffs["alpha_s"], temperature=temp,
+        )
+        trainer_kwargs["loss_strategy"] = loss_strategy
+        if not freeze_teacher:
+            trainer_kwargs["teacher_loss_strategy"] = build_teacher_response_only_strategy(
+                distill_config, coeffs["beta_h"], coeffs["beta_s"], temperature=temp,
             )
-        else:
-            trainer_kwargs["loss_type"] = distill_config.get("loss_type", "kl_divergence")
 
         # Teacher label remapping
         if "teacher_label_map" in distill_config:
             trainer_kwargs["teacher_label_map"] = distill_config["teacher_label_map"]
 
-        # Layer mapping for feature/attention distillation
-        layer_mapping = None
+        device = str(next(model.parameters()).device)
+        layer_mapping, projector = build_layer_mapping_and_projector(
+            distill_config, loss_strategy, model, teacher_model, device,
+        )
         layer_mapping_config = distill_config.get("layer_mapping", {})
         if layer_mapping_config:
-            mapping_type = layer_mapping_config.get("type", "uniform")
+            trainer_kwargs["layer_mapping_type"] = layer_mapping_config.get("type", "uniform")
 
-            # Get layer counts from model configs
-            teacher_layers = getattr(teacher_model.config, "num_hidden_layers", 12)
-            model_layers = getattr(model.config, "num_hidden_layers", 6)
-
-            if mapping_type == "custom" and "mapping" in layer_mapping_config:
-                # Explicit mapping provided
-                layer_mapping = [
-                    (pair["teacher"], pair["model"])
-                    for pair in layer_mapping_config["mapping"]
-                ]
-            else:
-                # Use a mapping strategy
-                mapper = get_layer_mapping(mapping_type)
-                layer_mapping = mapper.map(teacher_layers, model_layers)
-
-            trainer_kwargs["layer_mapping_type"] = mapping_type
-
-        # Projection for dimension alignment
-        projector = None
-        projection_config = distill_config.get("projection", {})
-        if projection_config:
-            teacher_dim = getattr(teacher_model.config, "hidden_size", 768)
-            model_dim = getattr(model.config, "hidden_size", 768)
-
-            if teacher_dim != model_dim or projection_config.get("force", False):
-                proj_type = projection_config.get("type", "linear")
-                projector = create_projection_if_needed(
-                    teacher_dim=teacher_dim,
-                    model_dim=model_dim,
-                    projection_type=proj_type,
-                    hidden_dim=projection_config.get("hidden_dim"),
-                    activation=projection_config.get("activation", "relu"),
-                )
-                # Move projector to same device and dtype as model
-                if hasattr(model, "device"):
-                    projector = projector.to(device=model.device, dtype=model.dtype)
+        if projector is not None:
+            p = next(model.parameters())
+            projector = projector.to(device=p.device, dtype=p.dtype)
 
         return trainer_kwargs, layer_mapping, projector
 

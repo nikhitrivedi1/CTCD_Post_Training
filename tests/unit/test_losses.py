@@ -53,7 +53,7 @@ class TestUniversalProperties:
         if needs_outputs:
             kwargs["layer_mapping"] = bert_distilbert_mapping
 
-        strategy = get_loss_strategy(name, alpha=0.5, temperature=2.0, **kwargs)
+        strategy = get_loss_strategy(name, alpha_h=0.5, alpha_s=0.5, temperature=2.0, **kwargs)
         compute_kwargs = {}
         if needs_outputs:
             compute_kwargs["model_outputs"] = mock_model_outputs
@@ -135,7 +135,7 @@ class TestKLDivergence:
 # ---------------------------------------------------------------------------
 
 class TestAlphaWeighting:
-    """Alpha=0 -> pure CE, alpha=1 -> no CE, alpha=0.5 -> between."""
+    """alpha_s=0 -> pure CE, alpha_h=0 -> no CE, balanced coeffs -> between."""
 
     STRATEGIES = [
         ("response_kl", {"temperature": 2.0}),
@@ -150,14 +150,14 @@ class TestAlphaWeighting:
 
     def test_alpha_zero_equals_ce(self, strategy_spec, model_logits, target_logits, ce_loss):
         name, kw = strategy_spec
-        out = get_loss_strategy(name, alpha=0.0, **kw).compute(
+        out = get_loss_strategy(name, alpha_h=1.0, alpha_s=0.0, **kw).compute(
             model_logits, target_logits, ce_loss,
         )
         torch.testing.assert_close(out.total_loss, ce_loss, rtol=1e-5, atol=1e-7)
 
     def test_alpha_one_ce_contribution_zero(self, strategy_spec, model_logits, target_logits, ce_loss):
         name, kw = strategy_spec
-        out = get_loss_strategy(name, alpha=1.0, **kw).compute(
+        out = get_loss_strategy(name, alpha_h=0.0, alpha_s=1.0, **kw).compute(
             model_logits, target_logits, ce_loss,
         )
         ce_key = [k for k in out.components if "ce" in k and "weighted" in k][0]
@@ -167,20 +167,20 @@ class TestAlphaWeighting:
 
     def test_alpha_half_between_extremes(self, strategy_spec, model_logits, target_logits, ce_loss):
         name, kw = strategy_spec
-        l0 = get_loss_strategy(name, alpha=0.0, **kw).compute(
+        l0 = get_loss_strategy(name, alpha_h=1.0, alpha_s=0.0, **kw).compute(
             model_logits, target_logits, ce_loss,
         ).total_loss.item()
-        l1 = get_loss_strategy(name, alpha=1.0, **kw).compute(
+        l1 = get_loss_strategy(name, alpha_h=0.0, alpha_s=1.0, **kw).compute(
             model_logits, target_logits, ce_loss,
         ).total_loss.item()
-        l_half = get_loss_strategy(name, alpha=0.5, **kw).compute(
+        l_half = get_loss_strategy(name, alpha_h=0.5, alpha_s=0.5, **kw).compute(
             model_logits, target_logits, ce_loss,
         ).total_loss.item()
 
         lo, hi = min(l0, l1), max(l0, l1)
         assert lo - 1e-5 <= l_half <= hi + 1e-5, (
-            f"alpha=0.5 loss {l_half:.4f} not between "
-            f"alpha=0 ({l0:.4f}) and alpha=1 ({l1:.4f})"
+            f"balanced coeffs loss {l_half:.4f} not between "
+            f"pure CE ({l0:.4f}) and pure KD ({l1:.4f})"
         )
 
 
@@ -196,7 +196,7 @@ class TestFeatureStrategies:
         assert CosineFeatureLoss.requires_hidden_states is True
 
     def test_raises_without_hidden_states(self, model_logits, target_logits, ce_loss):
-        s = FeatureLossStrategy(alpha=0.5, layer_mapping=[(0, 0)])
+        s = FeatureLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0)])
         with pytest.raises(ValueError, match="hidden_states"):
             s.compute(model_logits, target_logits, ce_loss)
 
@@ -204,7 +204,7 @@ class TestFeatureStrategies:
         self, model_logits, target_logits, ce_loss,
         mock_model_outputs, mock_target_outputs, bert_distilbert_mapping,
     ):
-        s = FeatureLossStrategy(alpha=0.5, layer_mapping=bert_distilbert_mapping)
+        s = FeatureLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=bert_distilbert_mapping)
         out = s.compute(
             model_logits, target_logits, ce_loss,
             model_outputs=mock_model_outputs,
@@ -217,7 +217,7 @@ class TestFeatureStrategies:
         self, model_logits, target_logits, ce_loss,
         mock_model_outputs, mock_target_outputs, bert_distilbert_mapping,
     ):
-        s = CosineFeatureLoss(alpha=0.5, layer_mapping=bert_distilbert_mapping)
+        s = CosineFeatureLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=bert_distilbert_mapping)
         out = s.compute(
             model_logits, target_logits, ce_loss,
             model_outputs=mock_model_outputs,
@@ -239,7 +239,7 @@ class TestFeatureStrategies:
         target_out = MagicMock()
         target_out.hidden_states = target_hidden
 
-        s = FeatureLossStrategy(alpha=0.5, layer_mapping=[(0, 0)])
+        s = FeatureLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0)])
         out = s.compute(
             model_logits, target_logits, ce_loss,
             model_outputs=model_out, teacher_outputs=target_out,
@@ -254,7 +254,7 @@ class TestAttentionStrategy:
         assert AttentionLossStrategy.requires_attentions is True
 
     def test_raises_without_attentions(self, model_logits, target_logits, ce_loss):
-        s = AttentionLossStrategy(alpha=0.5, layer_mapping=[(0, 0)])
+        s = AttentionLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0)])
         with pytest.raises(ValueError, match="attentions"):
             s.compute(model_logits, target_logits, ce_loss)
 
@@ -262,7 +262,7 @@ class TestAttentionStrategy:
         self, model_logits, target_logits, ce_loss,
         mock_model_outputs, mock_target_outputs, bert_distilbert_mapping,
     ):
-        s = AttentionLossStrategy(alpha=0.5, layer_mapping=bert_distilbert_mapping)
+        s = AttentionLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=bert_distilbert_mapping)
         out = s.compute(
             model_logits, target_logits, ce_loss,
             model_outputs=mock_model_outputs,
@@ -285,7 +285,7 @@ class TestAttentionStrategy:
         target_out = MagicMock()
         target_out.attentions = (t_attn,)
 
-        s = AttentionLossStrategy(alpha=0.5, layer_mapping=[(0, 0)])
+        s = AttentionLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0)])
         out = s.compute(
             model_logits, target_logits, ce_loss,
             model_outputs=model_out, teacher_outputs=target_out,
@@ -301,26 +301,26 @@ class TestCombinedLoss:
     """Combined loss normalizes weights, tracks components, respects zero weight."""
 
     def test_weights_normalize(self):
-        s1 = KLDistillationLoss(alpha=0.5)
-        s2 = MSEDistillationLoss(alpha=0.5)
-        combined = CombinedDistillationLoss([s1, s2], [2.0, 8.0], alpha=0.5)
+        s1 = KLDistillationLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5)
+        s2 = MSEDistillationLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5)
+        combined = CombinedDistillationLoss([s1, s2], [2.0, 8.0], alpha_h=0.5, alpha_s=0.5)
         assert abs(sum(combined.weights) - 1.0) < 1e-7
 
     def test_components_present_from_all(self, model_logits, target_logits, ce_loss):
-        s1 = KLDistillationLoss(alpha=0.5)
-        s2 = MSEDistillationLoss(alpha=0.5)
-        combined = CombinedDistillationLoss([s1, s2], [1.0, 1.0], alpha=0.5)
+        s1 = KLDistillationLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5)
+        s2 = MSEDistillationLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5)
+        combined = CombinedDistillationLoss([s1, s2], [1.0, 1.0], alpha_h=0.5, alpha_s=0.5)
         out = combined.compute(model_logits, target_logits, ce_loss)
         assert "kl_raw" in out.components
         assert "mse_raw" in out.components
 
     def test_zero_weight_excludes_contribution(self, model_logits, target_logits, ce_loss):
         """A sub-strategy with weight=0 should not change the loss vs weight=1e-30."""
-        s_kl = KLDistillationLoss(alpha=0.5)
-        s_mse = MSEDistillationLoss(alpha=0.5)
+        s_kl = KLDistillationLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5)
+        s_mse = MSEDistillationLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5)
 
-        combined_zero = CombinedDistillationLoss([s_kl, s_mse], [1.0, 0.0], alpha=0.5)
-        combined_only_kl = CombinedDistillationLoss([s_kl], [1.0], alpha=0.5)
+        combined_zero = CombinedDistillationLoss([s_kl, s_mse], [1.0, 0.0], alpha_h=0.5, alpha_s=0.5)
+        combined_only_kl = CombinedDistillationLoss([s_kl], [1.0], alpha_h=0.5, alpha_s=0.5)
 
         out_zero = combined_zero.compute(model_logits, target_logits, ce_loss)
         out_only = combined_only_kl.compute(model_logits, target_logits, ce_loss)
@@ -330,16 +330,16 @@ class TestCombinedLoss:
         )
 
     def test_aggregates_requirement_flags(self):
-        s1 = KLDistillationLoss(alpha=0.5)
-        s2 = FeatureLossStrategy(alpha=0.5)
-        combined = CombinedDistillationLoss([s1, s2], [1.0, 1.0], alpha=0.5)
+        s1 = KLDistillationLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5)
+        s2 = FeatureLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5)
+        combined = CombinedDistillationLoss([s1, s2], [1.0, 1.0], alpha_h=0.5, alpha_s=0.5)
         assert combined.requires_hidden_states is True
         assert combined.requires_attentions is False
 
     def test_name_contains_sub_strategy_names(self):
-        s1 = KLDistillationLoss(alpha=0.5)
-        s2 = MSEDistillationLoss(alpha=0.5)
-        combined = CombinedDistillationLoss([s1, s2], [1.0, 1.0], alpha=0.5)
+        s1 = KLDistillationLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5)
+        s2 = MSEDistillationLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5)
+        combined = CombinedDistillationLoss([s1, s2], [1.0, 1.0], alpha_h=0.5, alpha_s=0.5)
         assert "response_kl" in combined.name
         assert "response_mse" in combined.name
 
@@ -358,7 +358,8 @@ class TestStagedLoss:
                 {"strategy": "response_mse", "until_progress": 0.5},
                 {"strategy": "response_kl", "until_progress": 1.0},
             ],
-            alpha=0.5,
+            alpha_h=0.5,
+            alpha_s=0.5,
             temperature=2.0,
         )
 
@@ -399,7 +400,8 @@ class TestStagedLoss:
                 {"strategy": "feature_mse", "until_progress": 0.5},
                 {"strategy": "response_kl", "until_progress": 1.0},
             ],
-            alpha=0.5,
+            alpha_h=0.5,
+            alpha_s=0.5,
         )
         assert staged.requires_hidden_states is True
         assert staged.requires_attentions is False
@@ -428,7 +430,7 @@ class TestFactory:
         ("attention_kl", AttentionLossStrategy),
     ])
     def test_returns_correct_type(self, name, expected_type):
-        assert isinstance(get_loss_strategy(name, alpha=0.5), expected_type)
+        assert isinstance(get_loss_strategy(name, alpha_h=0.5, alpha_s=0.5), expected_type)
 
     def test_unknown_name_raises(self):
         with pytest.raises(ValueError, match="Unknown loss strategy"):
@@ -436,9 +438,9 @@ class TestFactory:
 
     def test_irrelevant_kwargs_filtered(self):
         """Temperature kwarg silently dropped for strategies that don't use it."""
-        s = get_loss_strategy("response_mse", alpha=0.3, temperature=5.0)
+        s = get_loss_strategy("response_mse", alpha_h=0.7, alpha_s=0.3, temperature=5.0)
         assert isinstance(s, MSEDistillationLoss)
-        assert s.alpha == 0.3
+        assert s.kd_loss_coeff == 0.3
 
     def test_backward_compat_aliases(self):
         assert isinstance(get_loss_strategy("kl_divergence"), KLDistillationLoss)
@@ -460,9 +462,9 @@ class TestFactory:
 
         LOSS_REGISTRY["_dummy_test"] = _DummyLoss
         try:
-            s = get_loss_strategy("_dummy_test", alpha=0.7, temperature=3.0)
+            s = get_loss_strategy("_dummy_test", alpha_h=0.3, alpha_s=0.7, temperature=3.0)
             assert isinstance(s, _DummyLoss)
-            assert s.alpha == 0.7
+            assert s.kd_loss_coeff == 0.7
         finally:
             del LOSS_REGISTRY["_dummy_test"]
 
@@ -475,7 +477,7 @@ class TestMSENormalizeFalse:
     """Exercise the normalize=False path in MSEDistillationLoss."""
 
     def test_mse_no_normalize(self, model_logits, target_logits, ce_loss):
-        s = MSEDistillationLoss(alpha=0.5, normalize=False)
+        s = MSEDistillationLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5, normalize=False)
         out = s.compute(model_logits, target_logits, ce_loss)
         expected_mse = F.mse_loss(model_logits, target_logits)
         torch.testing.assert_close(
@@ -490,7 +492,7 @@ class TestFeatureEmptyMapping:
         self, model_logits, target_logits, ce_loss,
         mock_model_outputs, mock_target_outputs,
     ):
-        s = FeatureLossStrategy(alpha=0.5, layer_mapping=[])
+        s = FeatureLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[])
         out = s.compute(
             model_logits, target_logits, ce_loss,
             model_outputs=mock_model_outputs,
@@ -523,7 +525,7 @@ class TestFeatureWithProjector:
             torch.randn(batch_size, seq_len, teacher_hidden_dim),
         )
 
-        s = FeatureLossStrategy(alpha=0.5, layer_mapping=[(0, 0)], projector=projector)
+        s = FeatureLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0)], projector=projector)
         out = s.compute(
             model_logits, target_logits, ce_loss,
             model_outputs=model_out, teacher_outputs=teacher_out,
@@ -538,7 +540,7 @@ class TestCosineFeatureCoverage:
         self, model_logits, target_logits, ce_loss,
         mock_model_outputs, mock_target_outputs,
     ):
-        s = CosineFeatureLoss(alpha=0.5, layer_mapping=[])
+        s = CosineFeatureLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[])
         out = s.compute(
             model_logits, target_logits, ce_loss,
             model_outputs=mock_model_outputs,
@@ -562,7 +564,7 @@ class TestCosineFeatureCoverage:
         teacher_out = MagicMock()
         teacher_out.hidden_states = (torch.randn(batch_size, seq_len, teacher_dim),)
 
-        s = CosineFeatureLoss(alpha=0.5, layer_mapping=[(0, 0)], projector=projector)
+        s = CosineFeatureLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0)], projector=projector)
         out = s.compute(
             model_logits, target_logits, ce_loss,
             model_outputs=model_out, teacher_outputs=teacher_out,
@@ -583,7 +585,7 @@ class TestCosineFeatureCoverage:
             torch.randn(batch_size, seq_len, hidden_size, dtype=torch.float16),
         )
 
-        s = CosineFeatureLoss(alpha=0.5, layer_mapping=[(0, 0)])
+        s = CosineFeatureLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0)])
         out = s.compute(
             model_logits, target_logits, ce_loss,
             model_outputs=model_out, teacher_outputs=teacher_out,
@@ -591,7 +593,7 @@ class TestCosineFeatureCoverage:
         assert torch.isfinite(out.total_loss)
 
     def test_cosine_raises_without_hidden_states(self, model_logits, target_logits, ce_loss):
-        s = CosineFeatureLoss(alpha=0.5, layer_mapping=[(0, 0)])
+        s = CosineFeatureLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0)])
         with pytest.raises(ValueError, match="hidden_states"):
             s.compute(model_logits, target_logits, ce_loss)
 
@@ -603,7 +605,7 @@ class TestAttentionEmptyMapping:
         self, model_logits, target_logits, ce_loss,
         mock_model_outputs, mock_target_outputs,
     ):
-        s = AttentionLossStrategy(alpha=0.5, layer_mapping=[])
+        s = AttentionLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[])
         out = s.compute(
             model_logits, target_logits, ce_loss,
             model_outputs=mock_model_outputs,
@@ -625,7 +627,8 @@ class TestStagedOutOfOrder:
                 {"strategy": "response_kl", "until_progress": 1.0},
                 {"strategy": "response_mse", "until_progress": 0.3},
             ],
-            alpha=0.5,
+            alpha_h=0.5,
+            alpha_s=0.5,
             temperature=2.0,
         )
         # After sorting, first stage should be the one with until_progress=0.3
@@ -634,13 +637,14 @@ class TestStagedOutOfOrder:
 
     def test_staged_with_strategy_instance(self, model_logits, target_logits, ce_loss):
         """Pass a pre-built strategy instance instead of a string name."""
-        mse_instance = MSEDistillationLoss(alpha=0.5)
+        mse_instance = MSEDistillationLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5)
         staged = StagedDistillationLoss(
             stages=[
                 {"strategy": mse_instance, "until_progress": 0.5},
                 {"strategy": "response_kl", "until_progress": 1.0},
             ],
-            alpha=0.5,
+            alpha_h=0.5,
+            alpha_s=0.5,
             temperature=2.0,
         )
         assert staged.stages[0]["strategy"] is mse_instance

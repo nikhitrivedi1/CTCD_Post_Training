@@ -103,14 +103,12 @@ from src.training.callbacks import (
 from src.training.trainer import FinetuningTrainer, DistillationTrainer
 from src.training.rewards import get_reward_funcs
 from src.training.losses import (
-    get_loss_strategy,
-    CombinedDistillationLoss,
-    StagedDistillationLoss,
+    build_distill_topology_strategy,
+    build_layer_mapping_and_projector,
+    build_teacher_response_only_strategy,
 )
-from src.training.layer_mapping import get_layer_mapping
-from src.training.projections import create_projection_if_needed
 from src.utils.checkpoint import TrainingState
-from src.utils.config import load_config
+from src.utils.config import load_config, resolve_distillation_coefficients
 
 # Keys forwarded from config["data"] to handler.load(**kwargs)
 _HANDLER_DATA_KEYS = (
@@ -144,6 +142,7 @@ def create_loss_strategy_from_config(
     model,
     teacher_model,
     device: str,
+    freeze_teacher: bool = True,
 ):
     """
     Create loss strategy from distillation config.
@@ -156,7 +155,8 @@ def create_loss_strategy_from_config(
     Config format for single strategy:
         distillation:
           loss_type: kl_divergence
-          alpha: 0.5
+          alpha_h: 0.5
+          alpha_s: 0.5
 
     Config format for combined strategies (FAR matrix):
         distillation:
@@ -175,99 +175,35 @@ def create_loss_strategy_from_config(
               until_progress: 1.0
 
     Returns:
-        Tuple of (loss_strategy, layer_mapping, projector)
+        Tuple of (loss_strategy, teacher_loss_strategy, layer_mapping, projector).
+        ``teacher_loss_strategy`` is None when ``freeze_teacher`` is True.
     """
-    alpha = distill_config.get("alpha", 0.5)
+    coeffs = resolve_distillation_coefficients(distill_config, freeze_teacher=freeze_teacher)
+    alpha_h = coeffs["alpha_h"]
+    alpha_s = coeffs["alpha_s"]
     temperature = distill_config.get("temperature", 2.0)
 
-    # Check for staged distillation (F→R, F→A→R, etc.)
-    stages_config = distill_config.get("stages")
-    if stages_config:
-        loss_strategy = StagedDistillationLoss(
-            stages=stages_config,
-            alpha=alpha,
+    loss_strategy = build_distill_topology_strategy(
+        distill_config, alpha_h, alpha_s, temperature=temperature,
+    )
+    teacher_loss_strategy = None
+    if not freeze_teacher:
+        teacher_loss_strategy = build_teacher_response_only_strategy(
+            distill_config,
+            coeffs["beta_h"],
+            coeffs["beta_s"],
             temperature=temperature,
         )
-    # Check for combined strategies (FAR matrix)
-    elif loss_strategies_config := distill_config.get("loss_strategies"):
-        # Multiple strategies: create CombinedDistillationLoss
-        strategies = []
-        weights = []
 
-        for strat_config in loss_strategies_config:
-            strat_type = strat_config["type"]
-            strat_weight = strat_config.get("weight", 1.0)
+    layer_mapping, projector = build_layer_mapping_and_projector(
+        distill_config, loss_strategy, model, teacher_model, device,
+    )
+    if layer_mapping is not None:
+        logger.debug(f"  Layer mapping: {layer_mapping}")
+    if projector is not None:
+        logger.debug("  Projection enabled for feature distillation")
 
-            strategy = get_loss_strategy(
-                strat_type,
-                temperature=temperature,
-                alpha=alpha,  # Each strategy gets same alpha
-            )
-            strategies.append(strategy)
-            weights.append(strat_weight)
-
-        combined = CombinedDistillationLoss(
-            strategies=strategies,
-            weights=weights,
-            alpha=alpha,
-        )
-        loss_strategy = combined
-    else:
-        # Single strategy
-        loss_type = distill_config.get("loss_type", "kl_divergence")
-        loss_strategy = get_loss_strategy(
-            loss_type,
-            temperature=temperature,
-            alpha=alpha,
-        )
-
-    # Setup layer mapping if needed (for feature/attention distillation)
-    layer_mapping = None
-    layer_mapping_config = distill_config.get("layer_mapping", {})
-    if layer_mapping_config or loss_strategy.requires_hidden_states or loss_strategy.requires_attentions:
-        mapping_type = layer_mapping_config.get("type", "uniform")
-
-        # Get layer counts from model configs
-        teacher_layers = getattr(teacher_model.config, "num_hidden_layers", 12)
-        model_layers = getattr(model.config, "num_hidden_layers", 6)
-
-        if mapping_type == "custom" and "mapping" in layer_mapping_config:
-            # Explicit mapping provided
-            layer_mapping = [
-                (pair["teacher"], pair["model"])
-                for pair in layer_mapping_config["mapping"]
-            ]
-        else:
-            # Use a mapping strategy
-            mapper = get_layer_mapping(mapping_type)
-            if not mapper.validate(teacher_layers, model_layers):
-                raise ValueError(
-                    f"Invalid layer mapping '{mapping_type}' for "
-                    f"teacher={teacher_layers}, model={model_layers} layers"
-                )
-            layer_mapping = mapper.map(teacher_layers, model_layers)
-
-        logger.debug(f"  Layer mapping ({mapping_type}): {layer_mapping}")
-
-    # Setup projection if needed (for feature distillation with dimension mismatch)
-    projector = None
-    projection_config = distill_config.get("projection", {})
-    if loss_strategy.requires_hidden_states:
-        teacher_dim = getattr(teacher_model.config, "hidden_size", 768)
-        model_dim = getattr(model.config, "hidden_size", 768)
-
-        if teacher_dim != model_dim or projection_config.get("force", False):
-            proj_type = projection_config.get("type", "linear")
-            projector = create_projection_if_needed(
-                teacher_dim=teacher_dim,
-                model_dim=model_dim,
-                projection_type=proj_type,
-            )
-            if projector is not None:
-                projector = projector.to(device)
-            logger.debug(f"  Projection: {model_dim} -> {teacher_dim} ({proj_type})")
-
-    return loss_strategy, layer_mapping, projector
+    return loss_strategy, teacher_loss_strategy, layer_mapping, projector
 
 
 def resolve_config_path(config_arg: str) -> Path:
@@ -751,8 +687,11 @@ def _train(
     teacher = None
     teacher_cfg = config["model"].get("teacher", {})
     teacher_name = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
-    alpha = config.get("distillation", {}).get("alpha", 0.5)
-    if teacher_name and alpha > 0.0:
+    freeze_t = teacher_cfg.get("freeze", True) if isinstance(teacher_cfg, dict) else True
+    distill_coeffs = resolve_distillation_coefficients(
+        config.get("distillation", {}), freeze_teacher=freeze_t
+    )
+    if teacher_name and distill_coeffs["student_soft_weight"] > 0.0:
         logger.info("Loading teacher...")
         teacher = load_model(teacher_name, task, device,
                              tokenizer=tokenizer, num_labels=num_labels,
@@ -768,7 +707,7 @@ def _train(
             json.dump(ref, f, indent=2)
         logger.info(f"Teacher ref saved: {teacher_name}")
     else:
-        reason = "no teacher configured" if not teacher_name else "alpha=0.0"
+        reason = "no teacher configured" if not teacher_name else "alpha_s=0.0"
         logger.info(f"No teacher ({reason}) - CE-only mode")
 
     # Training arguments
@@ -825,19 +764,24 @@ def _train(
     else:
         # Distillation: create loss strategy and use DistillationTrainer
         logger.info("Setting up distillation loss strategy...")
-        loss_strategy, layer_mapping, projector = create_loss_strategy_from_config(
+        loss_strategy, teacher_loss_strategy, layer_mapping, projector = create_loss_strategy_from_config(
             config["distillation"],
             model,
             teacher,
             device,
+            freeze_teacher=config["model"].get("teacher", {}).get("freeze", True),
         )
 
         trainer = DistillationTrainer(
             teacher_model=teacher,
             temperature=config["distillation"]["temperature"],
-            alpha=config["distillation"]["alpha"],
+            alpha_h=distill_coeffs["alpha_h"],
+            alpha_s=distill_coeffs["alpha_s"],
+            beta_h=distill_coeffs["beta_h"],
+            beta_s=distill_coeffs["beta_s"],
             freeze_teacher=config["model"].get("teacher", {}).get("freeze", True),
             loss_strategy=loss_strategy,
+            teacher_loss_strategy=teacher_loss_strategy,
             teacher_label_map=config["distillation"].get("teacher_label_map"),
             layer_mapping=layer_mapping,
             projector=projector,

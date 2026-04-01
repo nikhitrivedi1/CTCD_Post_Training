@@ -23,7 +23,8 @@ training:
 
 distillation:
   temperature: 4.0    # Higher for complex domain knowledge
-  alpha: 0.8          # Heavy emphasis on teacher
+  alpha_h: 0.2 # Heavy emphasis on teacher
+  alpha_s: 0.8
 
 checkpointing:
   save_steps: 200

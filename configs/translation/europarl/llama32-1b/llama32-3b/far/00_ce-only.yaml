@@ -12,7 +12,8 @@ model:
     freeze: true
 distillation:
   # temperature inherited from base.yaml (unused when α=0)
-  alpha: 0.0              # CE only: no distillation
+  alpha_h: 1.0 # CE only: no distillation
+  alpha_s: 0.0
   loss_type: none
 
 logging:

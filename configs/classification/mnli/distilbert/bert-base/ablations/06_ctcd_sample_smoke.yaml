@@ -1,0 +1,9 @@
+inherit: 06_ctcd_sample.yaml
+
+data:
+  # Keep smoke validation lightweight and avoid large cache writes.
+  max_train_samples: 1024
+
+evaluation:
+  # Skip full pre/post eval passes in smoke checks.
+  log_pre_post_metrics: false

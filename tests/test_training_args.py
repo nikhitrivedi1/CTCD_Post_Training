@@ -55,7 +55,12 @@ def kd_config_tree(tmp_path):
     # Leaf config (response_kl)
     (teacher_dir / "01_response_kl.yaml").write_text(yaml.dump({
         "inherit": "base.yaml",
-        "distillation": {"loss_type": "response_kl", "temperature": 2.0, "alpha": 0.5},
+        "distillation": {
+            "loss_type": "response_kl",
+            "temperature": 2.0,
+            "alpha_h": 0.5,
+            "alpha_s": 0.5,
+        },
     }))
 
     return teacher_dir / "01_response_kl.yaml"
@@ -112,7 +117,8 @@ class TestKDConfigResolution:
         config = load_config(str(kd_config_tree))
         assert config["distillation"]["loss_type"] == "response_kl"
         assert config["distillation"]["temperature"] == 2.0
-        assert config["distillation"]["alpha"] == 0.5
+        assert config["distillation"]["alpha_h"] == 0.5
+        assert config["distillation"]["alpha_s"] == 0.5
 
     def test_inherits_formatting_dataset(self, kd_config_tree):
         config = load_config(str(kd_config_tree))

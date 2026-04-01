@@ -26,7 +26,8 @@ training:
 
 distillation:
   temperature: 2            # Paper tested 2, 11, 20 - lower was better
-  alpha: 0.5                # Paper's best
+  alpha_h: 0.5 # Paper's best
+  alpha_s: 0.5
 
 checkpointing:
   save_steps: 2000

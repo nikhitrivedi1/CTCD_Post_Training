@@ -29,7 +29,8 @@ training:
 
 distillation:
   temperature: 2
-  alpha: 0.5
+  alpha_h: 0.5
+  alpha_s: 0.5
   teacher_label_map: [1, 2, 0]  # TextAttack to HuggingFace label mapping
   loss_strategies:
   - type: response_kl

@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 
 from src.models import load_model
 from src.tasks import get_primary_metric
+from src.utils.config import resolve_distillation_coefficients
 
 logger = logging.getLogger(__name__)
 
@@ -350,8 +351,11 @@ def run_evaluation(
     if evaluate_teacher:
         teacher_cfg = config["model"].get("teacher", {})
         teacher_name = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
-        alpha = config.get("distillation", {}).get("alpha", 0.5)
-        if teacher_name and alpha > 0.0:
+        freeze_t = teacher_cfg.get("freeze", True) if isinstance(teacher_cfg, dict) else True
+        dc = resolve_distillation_coefficients(
+            config.get("distillation", {}), freeze_teacher=freeze_t
+        )
+        if teacher_name and dc["student_soft_weight"] > 0.0:
             if checkpoint_dir is not None:
                 teacher_path = Path(checkpoint_dir) / "teacher"
                 teacher_src = str(teacher_path) if teacher_path.exists() else teacher_name

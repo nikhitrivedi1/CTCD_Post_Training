@@ -48,7 +48,8 @@ def _make_batch(batch_size=2, seq_len=16, vocab=1000, num_labels=3):
     }
 
 
-def _make_trainer(teacher, model, freeze_teacher=True, alpha=0.5,
+def _make_trainer(teacher, model, freeze_teacher=True, alpha_h=1.0, alpha_s=1.0,
+                  beta_h=None, beta_s=None,
                   loss_type=None, loss_strategy=None, teacher_label_map=None,
                   tmp_path=None, max_steps=1, train_dataset=None):
     """Build a DistillationTrainer with minimal TrainingArguments."""
@@ -68,9 +69,14 @@ def _make_trainer(teacher, model, freeze_teacher=True, alpha=0.5,
         args=args,
         train_dataset=train_dataset,
         freeze_teacher=freeze_teacher,
-        alpha=alpha,
+        alpha_h=alpha_h,
+        alpha_s=alpha_s,
         temperature=2.0,
     )
+    if beta_h is not None:
+        kwargs["beta_h"] = beta_h
+    if beta_s is not None:
+        kwargs["beta_s"] = beta_s
     if loss_type:
         kwargs["loss_type"] = loss_type
     if loss_strategy:
@@ -140,8 +146,8 @@ class TestDistillationTrainerBasics:
         opt_ids = {id(p) for g in optimizer.param_groups for p in g["params"]}
         assert teacher_ids & opt_ids, "Teacher params must be in optimizer"
 
-    def test_detach_teacher_intermediates_preserves_logits(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
-        """_detach_teacher_intermediates detaches hidden_states/attentions but not logits."""
+    def test_detach_output_intermediates_preserves_logits(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+        """_detach_output_intermediates detaches hidden_states/attentions but not logits."""
         trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
                                 freeze_teacher=False, tmp_path=tmp_path)
         batch = _make_batch()
@@ -150,7 +156,7 @@ class TestDistillationTrainerBasics:
             **batch, output_hidden_states=True, output_attentions=True
         )
 
-        detached = trainer._detach_teacher_intermediates(outputs)
+        detached = trainer._detach_output_intermediates(outputs)
 
         # Hidden states and attentions must be detached
         for h in detached.hidden_states:
@@ -160,6 +166,22 @@ class TestDistillationTrainerBasics:
 
         # Logits must still be in the graph (not detached)
         assert detached.logits.requires_grad, "Logits must remain attached to graph"
+
+    def test_split_student_coefficients_are_resolved(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+        """alpha_h/alpha_s should be used as the student hard/soft weights."""
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, tmp_path=tmp_path, alpha_h=0.3, alpha_s=0.7
+        )
+        assert trainer.alpha_h == 0.3
+        assert trainer.alpha_s == 0.7
+
+    def test_cotrain_teacher_defaults_to_ce_only(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+        """When beta_h/beta_s are omitted in co-training, teacher defaults to CE-only (beta_h=1, beta_s=0)."""
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, freeze_teacher=False, tmp_path=tmp_path
+        )
+        assert trainer.beta_h == 1.0
+        assert trainer.beta_s == 0.0
 
 
 # ===========================================================================
@@ -175,7 +197,7 @@ class TestGradientFlow:
     """
 
     def test_teacher_signal_changes_model_gradients(self, tmp_path):
-        """KD loss (alpha=0.5) must produce different model gradients than CE-only (alpha=0).
+        """KD loss (alpha_s=15.0) must produce different model gradients than CE-only (alpha_s=0).
 
         If this fails, distillation is silently broken: training runs but
         the teacher contributes nothing.
@@ -193,9 +215,9 @@ class TestGradientFlow:
             )
             return BertForSequenceClassification(cfg), BertForSequenceClassification(cfg)
 
-        # KD path
+        # KD path: high alpha_s to ensure teacher soft labels dominate and produce a clear gradient diff
         teacher_kd, model_kd = fresh_pair()
-        trainer_kd = _make_trainer(teacher_kd, model_kd, alpha=0.5, tmp_path=tmp_path)
+        trainer_kd = _make_trainer(teacher_kd, model_kd, alpha_h=0.5, alpha_s=15.0, tmp_path=tmp_path)
         model_kd.train()
         loss_kd = trainer_kd.compute_loss(model_kd, batch)
         loss_kd.backward()
@@ -206,7 +228,7 @@ class TestGradientFlow:
         ce_dir = tmp_path / "ce"
         ce_dir.mkdir()
         teacher_ce, model_ce = fresh_pair()
-        trainer_ce = _make_trainer(teacher_ce, model_ce, alpha=0.0, tmp_path=ce_dir)
+        trainer_ce = _make_trainer(teacher_ce, model_ce, alpha_h=1.0, alpha_s=0.0, tmp_path=ce_dir)
         model_ce.train()
         loss_ce = trainer_ce.compute_loss(model_ce, batch)
         loss_ce.backward()
@@ -223,9 +245,11 @@ class TestGradientFlow:
     def test_co_training_teacher_gets_ce_only(self, tmp_path):
         """Teacher gradients must come from CE loss only, not KL.
 
-        Strategy: run co-training with alpha=0.2 and alpha=0.8. Since alpha
-        only scales the KL term (which is detached from teacher), teacher
-        gradients must be identical. If they differ, KL gradients are leaking.
+        Strategy: run pure co-training (beta_h=1, beta_s=0 — no codistillation to teacher)
+        with two different student alpha_s values (1.0 and 15.0). Since:
+          1. The teacher loss uses beta_s=0, so student logits never contribute to teacher loss.
+          2. Even if beta_s > 0, student logits are detached before being passed to the teacher branch.
+        Teacher gradients must be identical across both runs. If they differ, KL gradients are leaking.
         """
         from transformers import BertConfig, BertForSequenceClassification
 
@@ -240,23 +264,25 @@ class TestGradientFlow:
             )
             return BertForSequenceClassification(cfg), BertForSequenceClassification(cfg)
 
-        # alpha=0.2
+        # alpha_s=1.0, pure co-training (no codistillation to teacher)
         teacher_a, model_a = fresh_pair()
         model_a.train()
         trainer_a = _make_trainer(teacher_a, model_a, freeze_teacher=False,
-                                  alpha=0.2, tmp_path=tmp_path)
+                                  alpha_h=1.0, alpha_s=1.0,
+                                  beta_h=1.0, beta_s=0.0, tmp_path=tmp_path)
         loss_a = trainer_a.compute_loss(model_a, batch)
         loss_a.backward()
         grads_a = {n: p.grad.clone() for n, p in teacher_a.named_parameters()
                    if p.grad is not None}
 
-        # alpha=0.8
+        # alpha_s=15.0, same pure co-training setup — large value to ensure any leakage would show up
         dir_b = tmp_path / "b"
         dir_b.mkdir()
         teacher_b, model_b = fresh_pair()
         model_b.train()
         trainer_b = _make_trainer(teacher_b, model_b, freeze_teacher=False,
-                                  alpha=0.8, tmp_path=dir_b)
+                                  alpha_h=1.0, alpha_s=15.0,
+                                  beta_h=1.0, beta_s=0.0, tmp_path=dir_b)
         loss_b = trainer_b.compute_loss(model_b, batch)
         loss_b.backward()
         grads_b = {n: p.grad.clone() for n, p in teacher_b.named_parameters()
@@ -265,7 +291,7 @@ class TestGradientFlow:
         assert len(grads_a) > 0, "Co-trained teacher must receive gradients"
         for name in grads_a:
             assert torch.allclose(grads_a[name], grads_b[name], atol=1e-6), \
-                f"Teacher grad for {name} changed with alpha -- " \
+                f"Teacher grad for {name} changed with alpha_s -- " \
                 f"KL/distillation gradients are leaking into teacher"
 
     def test_feature_loss_not_self_comparison(self, tmp_path):
@@ -292,10 +318,10 @@ class TestGradientFlow:
 
         def run_with_weights(kl_w, feat_w, output_dir):
             teacher, model = fresh_pair()
-            kl = KLDistillationLoss(temperature=2.0, alpha=0.5)
-            feat = FeatureLossStrategy(alpha=0.5, layer_mapping=layer_mapping)
+            kl = KLDistillationLoss(temperature=2.0, ce_loss_coeff=0.5, kd_loss_coeff=0.5)
+            feat = FeatureLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=layer_mapping)
             strategy = CombinedDistillationLoss(
-                strategies=[kl, feat], weights=[kl_w, feat_w], alpha=0.5
+                strategies=[kl, feat], weights=[kl_w, feat_w], alpha_h=0.5, alpha_s=0.5
             )
             trainer = _make_trainer(teacher, model, freeze_teacher=False,
                                     loss_strategy=strategy, tmp_path=output_dir)
@@ -317,6 +343,103 @@ class TestGradientFlow:
                 f"Teacher grad for {name} changed with feature weight -- " \
                 f"feature loss gradients are leaking into teacher"
 
+    def test_codistillation_student_kl_does_not_backprop_into_teacher(self, tmp_path):
+        """Student KL must not backprop into teacher (teacher_logits.detach() check).
+
+        With beta_h=0 and beta_s=0 the teacher receives zero loss. The student's
+        KL term uses detached teacher logits, so teacher parameters must have zero
+        gradient after backward. Any non-zero teacher gradient means the detach is
+        broken and the student's soft loss is pulling on the teacher.
+        """
+        from transformers import BertConfig, BertForSequenceClassification
+
+        torch.manual_seed(42)
+        cfg = BertConfig(
+            hidden_size=64, num_hidden_layers=2, num_attention_heads=2,
+            intermediate_size=128, num_labels=3, vocab_size=1000,
+            attn_implementation="eager",
+        )
+        teacher = BertForSequenceClassification(cfg)
+        model = BertForSequenceClassification(cfg)
+
+        trainer = _make_trainer(
+            teacher, model, freeze_teacher=False,
+            alpha_h=1.0, alpha_s=15.0,
+            beta_h=0.0, beta_s=0.0,
+            tmp_path=tmp_path,
+        )
+        model.train()
+        loss = trainer.compute_loss(model, _make_batch())
+        loss.backward()
+
+        for name, param in teacher.named_parameters():
+            assert param.grad is None or torch.all(param.grad == 0), (
+                f"Teacher parameter '{name}' has non-zero gradient despite beta_h=0, beta_s=0 -- "
+                f"student KL is backpropagating into teacher (detach missing or broken)"
+            )
+
+    def test_codistillation_teacher_receives_soft_loss_student_unaffected(self, tmp_path):
+        """Teacher receives student soft logits; student gradient is unaffected by beta_s.
+
+        Two codistillation runs identical except for beta_s (1.0 vs 15.0):
+          - Teacher gradients must DIFFER: confirms student logits are reaching the teacher loss.
+          - Student gradients must be IDENTICAL: confirms model_logits.detach() is working —
+            the teacher's KL coefficient does not bleed back into student gradients.
+        """
+        from transformers import BertConfig, BertForSequenceClassification
+
+        batch = _make_batch()
+
+        def fresh_pair():
+            torch.manual_seed(42)
+            cfg = BertConfig(
+                hidden_size=64, num_hidden_layers=2, num_attention_heads=2,
+                intermediate_size=128, num_labels=3, vocab_size=1000,
+                attn_implementation="eager",
+            )
+            return BertForSequenceClassification(cfg), BertForSequenceClassification(cfg)
+
+        # beta_s=1.0
+        teacher_a, model_a = fresh_pair()
+        model_a.train()
+        trainer_a = _make_trainer(teacher_a, model_a, freeze_teacher=False,
+                                  alpha_h=1.0, alpha_s=1.0,
+                                  beta_h=1.0, beta_s=1.0, tmp_path=tmp_path)
+        loss_a = trainer_a.compute_loss(model_a, batch)
+        loss_a.backward()
+        teacher_grads_a = {n: p.grad.clone() for n, p in teacher_a.named_parameters() if p.grad is not None}
+        student_grads_a = {n: p.grad.clone() for n, p in model_a.named_parameters() if p.grad is not None}
+
+        # beta_s=15.0
+        dir_b = tmp_path / "b"
+        dir_b.mkdir()
+        teacher_b, model_b = fresh_pair()
+        model_b.train()
+        trainer_b = _make_trainer(teacher_b, model_b, freeze_teacher=False,
+                                  alpha_h=1.0, alpha_s=1.0,
+                                  beta_h=1.0, beta_s=15.0, tmp_path=dir_b)
+        loss_b = trainer_b.compute_loss(model_b, batch)
+        loss_b.backward()
+        teacher_grads_b = {n: p.grad.clone() for n, p in teacher_b.named_parameters() if p.grad is not None}
+        student_grads_b = {n: p.grad.clone() for n, p in model_b.named_parameters() if p.grad is not None}
+
+        # Teacher grads must differ: soft signal is reaching the teacher
+        teacher_diffs = [
+            not torch.allclose(teacher_grads_a[n], teacher_grads_b[n], atol=1e-6)
+            for n in teacher_grads_a if n in teacher_grads_b
+        ]
+        assert any(teacher_diffs), (
+            "Teacher gradients are identical despite different beta_s -- "
+            "student soft logits are not reaching the teacher loss"
+        )
+
+        # Student grads must be identical: beta_s does not affect student
+        for name in student_grads_a:
+            assert torch.allclose(student_grads_a[name], student_grads_b[name], atol=1e-6), (
+                f"Student grad for '{name}' changed with beta_s -- "
+                f"teacher KL is backpropagating into student (detach missing or broken)"
+            )
+
 
 # ===========================================================================
 # 3. Eval Behavior
@@ -331,7 +454,7 @@ class TestEvalBehavior:
         During eval, accumulated hidden states across the full dataset cause OOM.
         The flags must be False during the step and restored afterward.
         """
-        strategy = FeatureLossStrategy(alpha=0.5, layer_mapping=[])
+        strategy = FeatureLossStrategy(ce_loss_coeff=1.0, kd_loss_coeff=1.0, layer_mapping=[])
         trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
                                 loss_strategy=strategy, tmp_path=tmp_path)
 
@@ -360,7 +483,9 @@ class TestEvalBehavior:
 
     def test_attention_strategy_sets_output_attentions(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
         """Loss strategy with requires_attentions=True sets output_attentions flag."""
-        strategy = AttentionLossStrategy(alpha=0.5, layer_mapping=[(0, 0), (1, 1)])
+        strategy = AttentionLossStrategy(
+            ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0), (1, 1)],
+        )
         trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
                                 loss_strategy=strategy, tmp_path=tmp_path)
         assert trainer.output_attentions is True
@@ -551,8 +676,8 @@ class TestCoTrainingTeacherCE:
         batch = _make_batch()
         loss = trainer.compute_loss(tiny_bert_model, batch)
         assert torch.isfinite(loss)
-        # teacher_ce_loss should appear in accumulated metrics
-        assert "teacher_ce_loss" in trainer._metric_accumulator
+        # Teacher branch logs strategy components with a teacher_ prefix (e.g. ce_raw).
+        assert "teacher_ce_raw" in trainer._metric_accumulator
 
     def test_co_training_loss_larger_than_frozen(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
         """Co-training loss should differ from frozen (includes teacher CE)."""
@@ -586,6 +711,49 @@ class TestCoTrainingTeacherCE:
         # They should differ because co-training adds teacher CE
         assert not torch.allclose(loss_frozen, loss_co, atol=1e-6), \
             "Co-training loss must differ from frozen (teacher CE added)"
+
+    def test_ctcd_loss_larger_than_cotraining_only(self, tmp_path):
+        """CTCD total loss must exceed pure co-training loss.
+
+        Pure co-training: teacher gets CE only (beta_h=1, beta_s=0).
+        CTCD: teacher also receives KL from student (beta_h=1, beta_s=1).
+        The additional teacher KL term must increase the total scalar loss.
+        """
+        from transformers import BertConfig, BertForSequenceClassification
+
+        batch = _make_batch()
+
+        def fresh_pair():
+            torch.manual_seed(42)
+            cfg = BertConfig(
+                hidden_size=64, num_hidden_layers=2, num_attention_heads=2,
+                intermediate_size=128, num_labels=3, vocab_size=1000,
+                attn_implementation="eager",
+            )
+            return BertForSequenceClassification(cfg), BertForSequenceClassification(cfg)
+
+        # Pure co-training: teacher CE only
+        teacher_ct, model_ct = fresh_pair()
+        trainer_ct = _make_trainer(teacher_ct, model_ct, freeze_teacher=False,
+                                   alpha_h=1.0, alpha_s=1.0,
+                                   beta_h=1.0, beta_s=0.0, tmp_path=tmp_path)
+        model_ct.train()
+        loss_cotrain = trainer_ct.compute_loss(model_ct, batch)
+
+        # CTCD: teacher CE + KL from student
+        dir_ctcd = tmp_path / "ctcd"
+        dir_ctcd.mkdir()
+        teacher_ctcd, model_ctcd = fresh_pair()
+        trainer_ctcd = _make_trainer(teacher_ctcd, model_ctcd, freeze_teacher=False,
+                                     alpha_h=1.0, alpha_s=1.0,
+                                     beta_h=1.0, beta_s=1.0, tmp_path=dir_ctcd)
+        model_ctcd.train()
+        loss_ctcd = trainer_ctcd.compute_loss(model_ctcd, batch)
+
+        assert loss_ctcd.item() > loss_cotrain.item(), (
+            f"CTCD loss ({loss_ctcd.item():.4f}) must exceed co-training loss "
+            f"({loss_cotrain.item():.4f}) — teacher KL term is missing or zeroed out"
+        )
 
 
 # ===========================================================================
@@ -621,11 +789,12 @@ class TestSetupFromConfig:
     """Tests for setup_from_config factory method (lines 361-428)."""
 
     def test_simple_config(self, tiny_bert_model, tiny_bert_teacher):
-        """Basic config with just temperature and alpha."""
+        """Basic config with temperature and split student coefficients."""
         config = {
             "distillation": {
                 "temperature": 3.0,
-                "alpha": 0.7,
+                "alpha_h": 0.3,
+                "alpha_s": 0.7,
                 "loss_type": "response_kl",
             }
         }
@@ -633,8 +802,11 @@ class TestSetupFromConfig:
             config, tiny_bert_teacher, tiny_bert_model
         )
         assert kwargs["temperature"] == 3.0
-        assert kwargs["alpha"] == 0.7
-        assert kwargs["loss_type"] == "response_kl"
+        assert kwargs["alpha_h"] == 0.3
+        assert kwargs["alpha_s"] == 0.7
+        assert "loss_strategy" in kwargs
+        assert kwargs["loss_strategy"].name == "response_kl"
+        assert "loss_type" not in kwargs
         assert layer_mapping is None
         assert projector is None
 
@@ -643,7 +815,8 @@ class TestSetupFromConfig:
         config = {
             "distillation": {
                 "temperature": 2.0,
-                "alpha": 0.5,
+                "alpha_h": 0.5,
+                "alpha_s": 0.5,
                 "stages": [
                     {"until_progress": 0.5, "strategy": "response_kl"},
                     {"until_progress": 1.0, "strategy": "response_mse"},
@@ -711,6 +884,7 @@ class TestSetupFromConfig:
 
         config = {
             "distillation": {
+                "loss_type": "feature_mse",
                 "projection": {"type": "linear"},
             }
         }
@@ -751,10 +925,47 @@ class TestSetupFromConfig:
             config, tiny_bert_teacher, tiny_bert_model
         )
         assert kwargs["temperature"] == 2.0
-        assert kwargs["alpha"] == 0.5
-        assert kwargs["loss_type"] == "kl_divergence"
+        assert kwargs["alpha_h"] == 1.0
+        assert kwargs["alpha_s"] == 1.0
+        assert kwargs["loss_strategy"].name == "response_kl"
+        assert "loss_type" not in kwargs
         assert layer_mapping is None
         assert projector is None
+
+    def test_split_coefficients_in_config(self, tiny_bert_model, tiny_bert_teacher):
+        """setup_from_config should surface alpha_h/alpha_s/beta_h/beta_s coefficients."""
+        config = {
+            "model": {"teacher": {"freeze": False}},
+            "distillation": {
+                "alpha_h": 0.4,
+                "alpha_s": 0.6,
+                "beta_h": 0.9,
+                "beta_s": 0.1,
+                "loss_type": "response_kl",
+            },
+        }
+        kwargs, _, _ = DistillationTrainer.setup_from_config(config, tiny_bert_teacher, tiny_bert_model)
+        assert kwargs["alpha_h"] == 0.4
+        assert kwargs["alpha_s"] == 0.6
+        assert kwargs["beta_h"] == 0.9
+        assert kwargs["beta_s"] == 0.1
+        assert "teacher_loss_strategy" in kwargs
+        assert kwargs["teacher_loss_strategy"].name == "response_kl"
+
+    def test_teacher_default_beta_when_co_training(self, tiny_bert_model, tiny_bert_teacher):
+        """Co-training without beta keys defaults to teacher CE-only."""
+        config = {
+            "model": {"teacher": {"freeze": False}},
+            "distillation": {
+                "alpha_h": 0.5,
+                "alpha_s": 0.5,
+                "loss_type": "response_kl",
+            },
+        }
+        kwargs, _, _ = DistillationTrainer.setup_from_config(config, tiny_bert_teacher, tiny_bert_model)
+        assert kwargs["beta_h"] == 1.0
+        assert kwargs["beta_s"] == 0.0
+        assert "teacher_loss_strategy" in kwargs
 
 
 # ===========================================================================

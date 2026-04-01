@@ -26,7 +26,8 @@ training:
 
 distillation:
   temperature: 2
-  alpha: 1.0              # KL only, no CE loss
+  alpha_h: 0.0 # KL only, no CE loss
+  alpha_s: 1.0
 checkpointing:
   save_steps: 2000
   save_total_limit: 3

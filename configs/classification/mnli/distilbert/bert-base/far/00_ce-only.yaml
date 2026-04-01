@@ -28,7 +28,8 @@ training:
 
 distillation:
   temperature: 2
-  alpha: 0.0                # CE-only (no distillation)
+  alpha_h: 1.0 # CE-only (no distillation)
+  alpha_s: 0.0
 checkpointing:
   save_steps: 250
   save_total_limit: 3

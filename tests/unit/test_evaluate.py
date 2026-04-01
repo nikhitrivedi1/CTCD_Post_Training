@@ -580,11 +580,11 @@ class TestRunEvaluation:
         assert teacher_m is None
 
     def test_with_teacher(self, tiny_bert_model, tiny_bert_teacher):
-        """run_evaluation loads teacher when config has teacher and alpha > 0."""
+        """run_evaluation loads teacher when config has teacher and KD weight > 0."""
         config = {
             "model": {"name": "bert-base", "init": "pretrained", "teacher": {"name": "bert-large"}},
             "training": {"batch_size": 4},
-            "distillation": {"alpha": 0.5},
+            "distillation": {"alpha_h": 0.5, "alpha_s": 0.5},
         }
         call_count = [0]
         models = [tiny_bert_model, tiny_bert_teacher]

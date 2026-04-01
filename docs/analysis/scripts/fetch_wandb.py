@@ -82,7 +82,10 @@ def fetch_runs(
             "task": run.config.get("data", {}).get("task"),
             "teacher": _get_teacher_name(run.config),
             "model": _get_model_name(run.config),
-            "alpha": run.config.get("distillation", {}).get("alpha"),
+            "alpha_s": (
+                run.config.get("distillation", {}).get("alpha_s")
+                or run.config.get("distillation", {}).get("alpha")
+            ),
             "temperature": run.config.get("distillation", {}).get("temperature"),
             "freeze_teacher": _get_freeze_teacher(run.config),
             "loss_type": run.config.get("distillation", {}).get("loss_type"),
@@ -185,7 +188,7 @@ def print_summary(runs: list[dict]) -> None:
             print(f"\n{task.upper()} (best {metric}):")
             print(f"  Run: {best['name']}")
             print(f"  {metric}: {best[metric]:.4f}")
-            print(f"  alpha: {best.get('alpha')}, freeze: {best.get('freeze_teacher')}")
+            print(f"  alpha_s: {best.get('alpha_s')}, freeze: {best.get('freeze_teacher')}")
 
 
 def main():

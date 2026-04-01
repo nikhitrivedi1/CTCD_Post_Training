@@ -28,7 +28,8 @@ training:
 
 distillation:
   temperature: 2
-  alpha: 0.5
+  alpha_h: 0.5
+  alpha_s: 0.5
   teacher_label_map: [1, 2, 0]
 
   # Staged distillation: A then R (2 epochs each)
