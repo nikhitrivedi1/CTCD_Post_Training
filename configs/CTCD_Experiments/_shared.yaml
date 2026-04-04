@@ -16,7 +16,6 @@ training:
   # 5% of total optimizer steps; sweep scripts may override with explicit warmup_steps.
   warmup_ratio: 0.05
   weight_decay: 0.01
-  max_grad_norm: 2.0
   fp16: true
 
 model:
