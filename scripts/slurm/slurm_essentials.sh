@@ -117,7 +117,7 @@ slurm_setup_env() {
 slurm_print_header() {
     echo "========================================="
     echo "SLURM Job: $SLURM_JOB_ID"
-    [ -n "$PREV_JOB_ID" ] && echo "Previous Job: $PREV_JOB_ID"
+    [ -n "${PREV_JOB_ID:-}" ] && echo "Previous Job: $PREV_JOB_ID"
     echo "Node: $SLURM_NODELIST"
     if [ "$HAS_GPU" = "1" ]; then
         echo "GPU Device: $CUDA_VISIBLE_DEVICES"
