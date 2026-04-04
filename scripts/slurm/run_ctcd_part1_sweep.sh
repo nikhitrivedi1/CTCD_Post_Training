@@ -32,8 +32,10 @@
 
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# SLURM copies the script to a spool dir before execution, so BASH_SOURCE[0] resolves
+# to the spool path rather than the repo. SLURM_SUBMIT_DIR is always the directory from
+# which sbatch was invoked — use it as the authoritative repo root.
+REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "$REPO_ROOT" || exit 1
 
 mkdir -p logs
