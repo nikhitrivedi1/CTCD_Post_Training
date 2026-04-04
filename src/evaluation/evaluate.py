@@ -358,7 +358,12 @@ def run_evaluation(
         if teacher_name and dc["student_soft_weight"] > 0.0:
             if checkpoint_dir is not None:
                 teacher_path = Path(checkpoint_dir) / "teacher"
-                teacher_src = str(teacher_path) if teacher_path.exists() else teacher_name
+                teacher_has_weights = teacher_path.is_dir() and (
+                    (teacher_path / "model.safetensors").exists()
+                    or (teacher_path / "pytorch_model.bin").exists()
+                    or (teacher_path / "adapter_config.json").exists()
+                )
+                teacher_src = str(teacher_path) if teacher_has_weights else teacher_name
             else:
                 teacher_src = teacher_name
             teacher_for_eval = load_model(teacher_src, task, device,
