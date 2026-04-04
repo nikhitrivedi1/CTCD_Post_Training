@@ -723,6 +723,44 @@ def _remove_hf_checkpoint_dirs_after_success(output_dir: Path) -> None:
         )
 
 
+def _remove_model_weights(output_dir: Path) -> None:
+    """Delete model weight files and subdirs from output_dir after post-training eval.
+
+    Keeps run metadata (config.yaml, run_metadata.json, training_state.json, output.log).
+    Removes weight files (*.safetensors, *.bin, *.pt), HF config/tokenizer files,
+    adapter files, and the teacher/ and base/ subdirectories.
+
+    Called in no_weights mode after post-training evaluation has completed so that
+    results are already logged to W&B before weights are removed.
+
+    Args:
+        output_dir: Run output directory (Path).
+    """
+    _KEEP = {
+        "config.yaml", "run_metadata.json", "training_state.json",
+        "output.log", "wandb",
+    }
+    _WEIGHT_SUFFIXES = {".safetensors", ".bin", ".pt"}
+    _HF_FILES = {
+        "config.json", "generation_config.json",
+        "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json",
+        "vocab.json", "merges.txt", "preprocessor_config.json",
+        "adapter_config.json",
+    }
+    removed = []
+    for path in sorted(output_dir.iterdir()):
+        if path.name in _KEEP:
+            continue
+        if path.is_dir() and path.name in ("teacher", "base"):
+            shutil.rmtree(path)
+            removed.append(path.name)
+        elif path.is_file() and (path.suffix in _WEIGHT_SUFFIXES or path.name in _HF_FILES):
+            path.unlink()
+            removed.append(path.name)
+    if removed:
+        logger.info("no_weights mode: removed model files from %s: %s", output_dir, ", ".join(removed))
+
+
 def _train(
     config, device, tokenizer, num_labels, task,
     train_dataset, eval_dataset, compute_metrics, data_collator,
@@ -949,20 +987,17 @@ def _train(
 
     # Save final model (skip if training was interrupted - checkpoint already saved)
     if state.is_complete():
-        if no_weights_mode(config):
-            logger.info("no_weights mode: skipping final model save (results in W&B only)")
-        else:
-            _save_final_model(trainer, config, output_dir, processor=processor, tokenizer=tokenizer)
+        _save_final_model(trainer, config, output_dir, processor=processor, tokenizer=tokenizer)
 
-            # Save co-trained teacher (weights changed during training)
-            if teacher is not None and not config["model"].get("teacher", {}).get("freeze", True):
-                teacher_cfg = config["model"].get("teacher", {})
-                teacher_name = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
-                teacher_dir = output_dir / "teacher"
-                logger.info(f"Saving co-trained teacher to {teacher_dir}...")
-                _save_model(teacher, teacher_dir,
-                            model_name=teacher_name,
-                            processor=processor, tokenizer=tokenizer)
+        # Save co-trained teacher (weights changed during training)
+        if teacher is not None and not config["model"].get("teacher", {}).get("freeze", True):
+            teacher_cfg = config["model"].get("teacher", {})
+            teacher_name = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
+            teacher_dir = output_dir / "teacher"
+            logger.info(f"Saving co-trained teacher to {teacher_dir}...")
+            _save_model(teacher, teacher_dir,
+                        model_name=teacher_name,
+                        processor=processor, tokenizer=tokenizer)
         _remove_hf_checkpoint_dirs_after_success(output_dir)
     else:
         logger.info("Training interrupted - skipping final model save (checkpoint already saved)")
@@ -1133,10 +1168,7 @@ def _train_rl(
 
     # Save final model (skip if training was interrupted)
     if state.is_complete():
-        if no_weights_mode(config):
-            logger.info("no_weights mode: skipping final model save (results in W&B only)")
-        else:
-            _save_final_model(trainer, config, output_dir, processor=processor, tokenizer=tokenizer)
+        _save_final_model(trainer, config, output_dir, processor=processor, tokenizer=tokenizer)
         _remove_hf_checkpoint_dirs_after_success(output_dir)
     else:
         logger.info("Training interrupted - skipping final model save (checkpoint already saved)")
@@ -1650,6 +1682,8 @@ def main():
                 prev_metrics=(model_pre, teacher_pre) if log_pre_post else None,
                 remove_unused_columns=not is_ocr_task(task),
             )
+            if no_weights_mode(config):
+                _remove_model_weights(output_dir)
         else:
             logger.info("Training interrupted - skipping post-training evaluation")
 

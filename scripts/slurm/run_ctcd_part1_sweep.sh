@@ -47,7 +47,7 @@ slurm_setup_env
 slurm_print_header
 
 CONFIG_ROOT="configs/CTCD_Experiments"
-TASKS=(mnli qqp qnli cola mrpc rte)
+TASKS=(qqp cola mrpc rte qnli mnli)
 # shellcheck disable=SC2034
 LRS=(1e-5 2e-5 3e-5 5e-5)
 BATCHES=(16 32)
