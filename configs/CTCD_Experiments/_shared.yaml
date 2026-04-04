@@ -1,0 +1,48 @@
+# CTCD / GLUE distillation study — shared defaults under configs/CTCD_Experiments/.
+# Each task folder has base.yaml (data.task + cadence overrides) and ablations 00–05.
+# forge.py sets WANDB_PROJECT from logging.wandb_project when present (--debug forces Forge-Test).
+
+inherit: ../base.yaml
+
+logging:
+  report_to: wandb
+  wandb_project: CTCD_Experiments
+  logging_steps: 100
+
+training:
+  num_epochs: 10
+  batch_size: 16
+  learning_rate: 2.0e-5
+  # 5% of total optimizer steps; sweep scripts may override with explicit warmup_steps.
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  max_grad_norm: 2.0
+  fp16: true
+
+model:
+  name: distilbert-base-uncased
+  init: pretrained
+  teacher:
+    name: bert-base-uncased
+    freeze: true
+
+data:
+  max_length: 128
+
+distillation:
+  loss_type: response_kl
+  temperature: 2
+  alpha_h: 1.0
+  alpha_s: 1.0
+
+# Checkpoint cadence: keep save_steps == eval_steps so each eval can align with a saved
+# checkpoint (required when load_best_model_at_end is enabled). save_total_limit 1–2 caps
+# how many checkpoint-* trees exist during the run (see plan: disk vs load_best tradeoff).
+checkpointing:
+  save_steps: 2000
+  save_total_limit: 1
+
+evaluation:
+  eval_steps: 2000
+  eval_strategy: steps
+  early_stopping_patience: 5

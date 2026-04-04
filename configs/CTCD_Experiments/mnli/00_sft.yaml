@@ -1,0 +1,8 @@
+# Ablation 00: student SFT only (CE). alpha_s=0 — no teacher KD signal.
+# Teacher fields remain for config consistency with other ablations.
+
+inherit: base.yaml
+
+distillation:
+  alpha_h: 1.0
+  alpha_s: 0.0

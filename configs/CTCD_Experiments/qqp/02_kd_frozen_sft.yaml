@@ -1,0 +1,8 @@
+# Ablation 02: KD from frozen task-fine-tuned teacher.
+
+inherit: base.yaml
+
+model:
+  teacher:
+    name: textattack/bert-base-uncased-QQP
+    freeze: true

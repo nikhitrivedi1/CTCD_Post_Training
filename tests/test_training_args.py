@@ -4,7 +4,7 @@ import pytest
 import yaml
 
 from src.utils.config import load_config
-from forge import should_load_best_model
+from forge import should_load_best_model, warmup_kwargs_for_training_args
 
 
 @pytest.fixture
@@ -64,6 +64,28 @@ def kd_config_tree(tmp_path):
     }))
 
     return teacher_dir / "01_response_kl.yaml"
+
+
+class TestWarmupKwargsForTrainingArgs:
+    def test_warmup_ratio_takes_precedence(self):
+        kw = warmup_kwargs_for_training_args(
+            {"warmup_ratio": 0.05, "warmup_steps": 999},
+        )
+        assert kw == {"warmup_ratio": 0.05}
+
+    def test_warmup_steps_when_no_ratio(self):
+        kw = warmup_kwargs_for_training_args({"warmup_steps": 100})
+        assert kw == {"warmup_steps": 100}
+
+    def test_default_steps_when_neither(self):
+        assert warmup_kwargs_for_training_args({}) == {"warmup_steps": 0}
+        assert warmup_kwargs_for_training_args({}, default_warmup_steps=200) == {
+            "warmup_steps": 200,
+        }
+
+    def test_null_ratio_falls_back_to_steps(self):
+        kw = warmup_kwargs_for_training_args({"warmup_ratio": None, "warmup_steps": 50})
+        assert kw == {"warmup_steps": 50}
 
 
 class TestShouldLoadBestModel:

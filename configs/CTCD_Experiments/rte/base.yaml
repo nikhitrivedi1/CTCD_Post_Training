@@ -1,0 +1,15 @@
+# RTE — inherits CTCD shared defaults; see ../_shared.yaml.
+
+inherit: ../_shared.yaml
+
+data:
+  task: rte
+
+logging:
+  logging_steps: 25
+
+checkpointing:
+  save_steps: 100
+
+evaluation:
+  eval_steps: 100

@@ -1,0 +1,15 @@
+# QQP — inherits CTCD shared defaults; see ../_shared.yaml.
+
+inherit: ../_shared.yaml
+
+data:
+  task: qqp
+
+logging:
+  logging_steps: 100
+
+checkpointing:
+  save_steps: 2000
+
+evaluation:
+  eval_steps: 2000

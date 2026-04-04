@@ -1,0 +1,16 @@
+# MRPC — inherits CTCD shared defaults; see ../_shared.yaml.
+
+inherit: ../_shared.yaml
+
+data:
+  task: mrpc
+  eval_split: validation
+
+logging:
+  logging_steps: 25
+
+checkpointing:
+  save_steps: 200
+
+evaluation:
+  eval_steps: 200

@@ -13,8 +13,9 @@ from unittest.mock import patch
 import torch
 import transformers
 from datasets import Dataset
-from transformers import TrainingArguments
+from transformers import TrainerCallback, TrainingArguments
 
+from src.training.callbacks import StudentTeacherGradNormCallback
 from src.training.losses import (
     AttentionLossStrategy,
     CombinedDistillationLoss,
@@ -145,6 +146,47 @@ class TestDistillationTrainerBasics:
         teacher_ids = {id(p) for p in tiny_bert_teacher.parameters()}
         opt_ids = {id(p) for g in optimizer.param_groups for p in g["params"]}
         assert teacher_ids & opt_ids, "Teacher params must be in optimizer"
+
+    def test_co_training_logs_student_and_teacher_grad_norms(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+        """Co-training: training logs include separate student vs teacher grad L2 norms."""
+        captured = []
+
+        class CaptureCallback(TrainerCallback):
+            def on_log(self, args, state, control, logs=None, **kwargs):
+                if logs:
+                    captured.append(
+                        {k: v for k, v in logs.items() if isinstance(v, (int, float))}
+                    )
+
+        ds = _make_dataset()
+        args = TrainingArguments(
+            output_dir=str(tmp_path),
+            use_cpu=True,
+            per_device_train_batch_size=2,
+            max_steps=2,
+            logging_steps=1,
+            report_to="none",
+        )
+        trainer = DistillationTrainer(
+            teacher_model=tiny_bert_teacher,
+            model=tiny_bert_model,
+            args=args,
+            train_dataset=ds,
+            freeze_teacher=False,
+            alpha_h=1.0,
+            alpha_s=1.0,
+            temperature=2.0,
+        )
+        trainer.add_callback(StudentTeacherGradNormCallback(trainer))
+        trainer.add_callback(CaptureCallback())
+        trainer.train()
+
+        training_logs = [c for c in captured if "loss" in c and "student_grad_norm" in c]
+        assert training_logs, f"expected student/teacher grad norms in logs, got {captured}"
+        for row in training_logs:
+            assert "teacher_grad_norm" in row
+            assert row["student_grad_norm"] >= 0.0
+            assert row["teacher_grad_norm"] >= 0.0
 
     def test_detach_output_intermediates_preserves_logits(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
         """_detach_output_intermediates detaches hidden_states/attentions but not logits."""

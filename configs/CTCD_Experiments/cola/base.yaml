@@ -1,0 +1,15 @@
+# COLA — inherits CTCD shared defaults; see ../_shared.yaml.
+
+inherit: ../_shared.yaml
+
+data:
+  task: cola
+
+logging:
+  logging_steps: 50
+
+checkpointing:
+  save_steps: 500
+
+evaluation:
+  eval_steps: 500

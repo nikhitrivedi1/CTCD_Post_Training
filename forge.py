@@ -76,7 +76,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # (override=False means Colab/HPC env vars take precedence)
 from src.utils.environment import detect_environment, get_device, get_num_workers
 
-from transformers import TrainingArguments, ProgressCallback, set_seed, DataCollatorForSeq2Seq
+from transformers import (
+    TrainingArguments,
+    ProgressCallback,
+    EarlyStoppingCallback,
+    set_seed,
+    DataCollatorForSeq2Seq,
+)
 
 
 def set_reproducibility_seed(seed: int = 42):
@@ -98,6 +104,7 @@ from src.tasks import get_num_labels, get_primary_metric, get_task_type, is_ocr_
 from src.models import load_model, needs_attention_outputs
 from src.training.callbacks import (
     SLURMSignalCallback, CheckpointMarkerCallback, StepMetricsCallback,
+    StudentTeacherGradNormCallback,
     TeacherEvalCallback, TranslationMetricsCallback, PeakMetricsCallback,
 )
 from src.training.trainer import FinetuningTrainer, DistillationTrainer
@@ -107,7 +114,7 @@ from src.training.losses import (
     build_layer_mapping_and_projector,
     build_teacher_response_only_strategy,
 )
-from src.utils.checkpoint import TrainingState
+from src.utils.checkpoint import LATEST_CHECKPOINT_FILE, TrainingState
 from src.utils.config import load_config, resolve_distillation_coefficients
 
 # Keys forwarded from config["data"] to handler.load(**kwargs)
@@ -444,6 +451,33 @@ def should_load_best_model(config: dict) -> bool:
     return strategy in ("steps", "epoch")
 
 
+def warmup_kwargs_for_training_args(
+    training: dict,
+    default_warmup_steps: int = 0,
+) -> dict:
+    """Build warmup fields for HuggingFace TrainingArguments.
+
+    If ``training.warmup_ratio`` is set (non-null), it is used as a fraction of
+    total optimizer steps (stable when batch size or step count changes). Otherwise
+    ``training.warmup_steps`` is used when non-null; if both ratio and steps are
+    absent or null, ``default_warmup_steps`` is used (0 for standard fine-tuning;
+    GRPO passes 200 to preserve prior defaults).
+
+    When both ratio and steps appear in a merged config, ``warmup_ratio`` wins.
+
+    Returns:
+        Dict with either ``warmup_ratio`` or ``warmup_steps`` for unpacking into
+        ``TrainingArguments`` (or ``GRPOConfig``).
+    """
+    ratio = training.get("warmup_ratio")
+    if ratio is not None:
+        return {"warmup_ratio": float(ratio)}
+    steps = training.get("warmup_steps")
+    if steps is not None:
+        return {"warmup_steps": int(steps)}
+    return {"warmup_steps": int(default_warmup_steps)}
+
+
 def _save_base_ref(output_dir: Path, model_name: str, revision: str = None):
     """Save base model reference to base/ directory.
 
@@ -641,6 +675,37 @@ def _save_final_model(trainer, config, output_dir, processor=None, tokenizer=Non
                 processor=processor, tokenizer=tokenizer)
 
 
+def _remove_hf_checkpoint_dirs_after_success(output_dir: Path) -> None:
+    """Remove Hugging Face ``checkpoint-*`` trees after a normal training finish.
+
+    Called only when ``TrainingState.is_complete()`` so interrupted runs still keep
+    checkpoints for ``--resume``. Preserves root model export, ``teacher/``,
+    ``config.yaml``, ``run_metadata.json``, ``training_state.json``, and logs.
+    Drops ``latest_checkpoint`` if any checkpoint dir was removed (stale pointer).
+    """
+    removed_any = False
+    for path in sorted(output_dir.glob("checkpoint-*")):
+        if not path.is_dir():
+            continue
+        try:
+            int(path.name.split("-", 1)[1])
+        except (ValueError, IndexError):
+            continue
+        shutil.rmtree(path)
+        removed_any = True
+    if removed_any:
+        latest = output_dir / LATEST_CHECKPOINT_FILE
+        if latest.exists():
+            try:
+                latest.unlink()
+            except OSError as exc:
+                logger.warning("Could not remove %s: %s", latest, exc)
+        logger.info(
+            "Removed HF checkpoint-* directories under %s (final weights kept at run root)",
+            output_dir,
+        )
+
+
 def _train(
     config, device, tokenizer, num_labels, task,
     train_dataset, eval_dataset, compute_metrics, data_collator,
@@ -718,7 +783,7 @@ def _train(
         per_device_eval_batch_size=int(config["training"].get("eval_batch_size", config["training"]["batch_size"])),
         gradient_accumulation_steps=int(config["training"].get("gradient_accumulation_steps", 1)),
         learning_rate=float(config["training"]["learning_rate"]),
-        warmup_steps=int(config["training"]["warmup_steps"]),
+        **warmup_kwargs_for_training_args(config["training"]),
         weight_decay=float(config["training"]["weight_decay"]),
         max_grad_norm=float(config["training"]["max_grad_norm"]),
         logging_steps=int(config["logging"]["logging_steps"]),
@@ -805,6 +870,8 @@ def _train(
 
     # Add teacher eval during training (co-training only, before PeakMetrics so peaks are tracked)
     if isinstance(trainer, DistillationTrainer) and not trainer.freeze_teacher:
+        logger.info("Adding student/teacher grad norm logging (co-training)...")
+        trainer.add_callback(StudentTeacherGradNormCallback(trainer))
         logger.info("Adding teacher eval callback (co-training)...")
         trainer.add_callback(TeacherEvalCallback(
             trainer, teacher_label_map=trainer.teacher_label_map,
@@ -813,6 +880,18 @@ def _train(
     # Add peak metrics tracking
     logger.info("Adding peak metrics callback...")
     trainer.add_callback(PeakMetricsCallback())
+
+    eval_cfg = config.get("evaluation", {})
+    esp = eval_cfg.get("early_stopping_patience")
+    if esp is not None and int(esp) > 0:
+        if should_load_best_model(config):
+            logger.info(f"Early stopping enabled (patience={int(esp)})")
+            trainer.add_callback(EarlyStoppingCallback(early_stopping_patience=int(esp)))
+        else:
+            logger.warning(
+                "evaluation.early_stopping_patience is set but eval_strategy does not run "
+                "evaluation; skipping EarlyStoppingCallback"
+            )
 
     # Add translation metrics callback for seq2seq tasks
     if num_labels is None and config.get("evaluation", {}).get("compute_translation_metrics", False):
@@ -864,6 +943,7 @@ def _train(
             _save_model(teacher, teacher_dir,
                         model_name=teacher_name,
                         processor=processor, tokenizer=tokenizer)
+        _remove_hf_checkpoint_dirs_after_success(output_dir)
     else:
         logger.info("Training interrupted - skipping final model save (checkpoint already saved)")
 
@@ -906,7 +986,7 @@ def _build_grpo_config(config, output_dir, run_name, args, device, report_to,
         per_device_train_batch_size=int(training.get("batch_size", 4)),
         gradient_accumulation_steps=int(training.get("gradient_accumulation_steps", 1)),
         learning_rate=float(rl.get("learning_rate", training.get("learning_rate", 1e-6))),
-        warmup_steps=int(training.get("warmup_steps", 200)),
+        **warmup_kwargs_for_training_args(training, default_warmup_steps=200),
         weight_decay=float(training.get("weight_decay", 0.01)),
         max_grad_norm=float(training.get("max_grad_norm", 2.0)),
         # Logging & eval
@@ -1034,6 +1114,7 @@ def _train_rl(
     # Save final model (skip if training was interrupted)
     if state.is_complete():
         _save_final_model(trainer, config, output_dir, processor=processor, tokenizer=tokenizer)
+        _remove_hf_checkpoint_dirs_after_success(output_dir)
     else:
         logger.info("Training interrupted - skipping final model save (checkpoint already saved)")
 
@@ -1320,7 +1401,11 @@ def main():
     if args.debug:
         os.environ["WANDB_PROJECT"] = "Forge-Test"
     else:
-        os.environ.setdefault("WANDB_PROJECT", "Forge-Default")
+        wandb_project_yaml = config.get("logging", {}).get("wandb_project")
+        if wandb_project_yaml:
+            os.environ["WANDB_PROJECT"] = str(wandb_project_yaml)
+        else:
+            os.environ.setdefault("WANDB_PROJECT", "Forge-Default")
     os.environ["WANDB_RUN_ID"] = wandb_run_id
     if is_resume:
         os.environ["WANDB_RESUME"] = "allow"

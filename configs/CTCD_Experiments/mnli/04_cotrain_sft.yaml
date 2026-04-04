@@ -1,0 +1,13 @@
+# Ablation 04: co-train student + task-fine-tuned teacher.
+
+inherit: base.yaml
+
+model:
+  teacher:
+    name: textattack/bert-base-uncased-MNLI
+    freeze: false
+
+distillation:
+  teacher_label_map: [1, 2, 0]
+  beta_h: 1.0
+  beta_s: 0.0

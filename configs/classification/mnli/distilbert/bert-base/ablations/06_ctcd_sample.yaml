@@ -1,4 +1,5 @@
 # Sample: CTCD (co-training + co-distillation) on MNLI — DistilBERT student, BERT-base teacher
+# Study tree: configs/CTCD_Experiments/mnli/05_ctcd.yaml (same ablation numbering as the CTCD experiment plan).
 #
 # How to run (from repo root):
 #   python forge.py --config configs/classification/mnli/distilbert/bert-base/ablations/06_ctcd_sample.yaml

@@ -7,6 +7,7 @@ from typing import List, Optional
 
 from transformers import TrainerCallback
 
+from src.training.trainer import DistillationTrainer
 from src.utils.checkpoint import mark_checkpoint_complete
 
 logger = logging.getLogger(__name__)
@@ -106,6 +107,27 @@ class CheckpointMarkerCallback(TrainerCallback):
         mark_checkpoint_complete(checkpoint_dir)
 
 
+class StudentTeacherGradNormCallback(TrainerCallback):
+    """
+    Co-training only: compute L2 gradient norms for student vs teacher after backward
+    and merge them into the next training log at ``logging_steps`` (via DistillationTrainer.log).
+
+    Runs at ``on_pre_optimizer_step`` so gradients still exist (HF has already clipped
+    the student via ``model.parameters()``; teacher norms are pre-step, unclipped).
+    """
+
+    def __init__(self, trainer):
+        self._trainer = trainer
+
+    def on_pre_optimizer_step(self, args, state, control, **kwargs):
+        t = self._trainer
+        if not isinstance(t, DistillationTrainer) or t.freeze_teacher:
+            return control
+        # All ranks: keeps distributed ``log()`` collectives aligned with the same log keys.
+        t._record_student_teacher_grad_norms_for_logging()
+        return control
+
+
 class StepMetricsCallback(TrainerCallback):
     """
     Log training metrics to Python logger on each logging step.
@@ -120,7 +142,13 @@ class StepMetricsCallback(TrainerCallback):
     """
 
     # Metrics to always show first (in order)
-    _CORE_KEYS = ["loss", "learning_rate", "grad_norm"]
+    _CORE_KEYS = [
+        "loss",
+        "learning_rate",
+        "grad_norm",
+        "student_grad_norm",
+        "teacher_grad_norm",
+    ]
     # Prefixes to group into a second "rewards" line
     _REWARD_PREFIX = "rewards/"
 

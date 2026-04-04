@@ -111,6 +111,9 @@ class DistillationTrainer(FinetuningTrainer):
         self._metric_accumulator = {}
         self._metric_count = 0
 
+        # Filled in on_pre_optimizer_step (co-training) for the next HF training log bundle.
+        self._last_student_teacher_grad_norms: Optional[Tuple[float, float]] = None
+
         # ===========================================================================
         #  Student Model Initialization
         # ===========================================================================
@@ -193,6 +196,49 @@ class DistillationTrainer(FinetuningTrainer):
             logger.info(f"  Output hidden states: True (required by {self.loss_strategy.name})")
         if self.output_attentions:
             logger.info(f"  Output attentions: True (required by {self.loss_strategy.name})")
+
+    def _record_student_teacher_grad_norms_for_logging(self) -> None:
+        """
+        After backward (and HF's clip on ``model.parameters()``), store L2 grad norms
+        for student vs teacher. Called from a callback at ``on_pre_optimizer_step`` so
+        gradients are still present; values are merged into the next training ``log()``.
+        """
+        if self.freeze_teacher:
+            return
+        student_mod = self.accelerator.unwrap_model(self.model)
+        student_params = [p for p in student_mod.parameters() if p.requires_grad]
+        teacher_params = [p for p in self.teacher.parameters() if p.requires_grad]
+
+        if not student_params:
+            student_norm = 0.0
+        else:
+            sn = self.accelerator.clip_grad_norm_(student_params, float("inf"))
+            student_norm = float(sn.item()) if torch.is_tensor(sn) else float(sn)
+
+        if not teacher_params:
+            teacher_norm = 0.0
+        else:
+            tn = torch.nn.utils.clip_grad_norm_(teacher_params, float("inf"))
+            teacher_norm = float(tn.item()) if torch.is_tensor(tn) else float(tn)
+
+        self._last_student_teacher_grad_norms = (student_norm, teacher_norm)
+
+    def log(self, logs, start_time=None):
+        """
+        Attach student/teacher grad norms to the standard HF training log dict (the one
+        that includes ``loss``), without mixing them into other ``log()`` calls.
+        """
+        if (
+            isinstance(logs, dict)
+            and not self.freeze_teacher
+            and "loss" in logs
+            and self._last_student_teacher_grad_norms is not None
+        ):
+            student_gn, teacher_gn = self._last_student_teacher_grad_norms
+            logs["student_grad_norm"] = student_gn
+            logs["teacher_grad_norm"] = teacher_gn
+            self._last_student_teacher_grad_norms = None
+        return super().log(logs, start_time=start_time)
 
     def create_optimizer(self):
         """

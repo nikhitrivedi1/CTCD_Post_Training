@@ -1,0 +1,8 @@
+# Ablation 01: KD from frozen LM-pretrained (non-SFT) teacher.
+
+inherit: base.yaml
+
+model:
+  teacher:
+    name: bert-base-uncased
+    freeze: true
