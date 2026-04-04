@@ -6,9 +6,17 @@ from typing import Dict, Any, Optional, Callable
 import numpy as np
 
 import evaluate
+from calibration_toolbox import ACE
 from src.tasks import is_classification_task, is_translation_task, is_ocr_task
 
 logger = logging.getLogger(__name__)
+
+
+def _ace_num_bins(num_samples: int) -> int:
+    """Adaptive number of ACE ranges R = min(100, floor(sqrt(N))) (Nixon et al.; see plan)."""
+    if num_samples <= 0:
+        return 1
+    return max(1, min(100, int(np.floor(np.sqrt(num_samples)))))
 
 
 def compute_classification_metrics(eval_pred) -> Dict[str, float]:
@@ -18,11 +26,15 @@ def compute_classification_metrics(eval_pred) -> Dict[str, float]:
     Computes all standard metrics so they're available for any task.
     The task registry specifies which is the primary metric for each task.
 
+    Adaptive Calibration Error (ACE) uses calibration-toolbox (Nixon et al., 2020,
+    "Measuring Calibration in Deep Learning," CVPR Workshops; arXiv:1904.01685) with
+    R = min(100, floor(sqrt(N))) adaptive bins per class.
+
     Args:
         eval_pred: Tuple of (predictions, labels)
 
     Returns:
-        Dictionary with accuracy, F1, and MCC scores
+        Dictionary with accuracy, F1, MCC, and ACE scores
     """
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
@@ -30,7 +42,7 @@ def compute_classification_metrics(eval_pred) -> Dict[str, float]:
     # Handle empty predictions
     if len(predictions) == 0:
         logger.warning("Empty predictions array, returning zero metrics")
-        return {"accuracy": 0.0, "f1": 0.0, "mcc": 0.0}
+        return {"accuracy": 0.0, "f1": 0.0, "mcc": 0.0, "ace": 0.0}
 
     # Load metrics
     accuracy_metric = evaluate.load("accuracy")
@@ -42,10 +54,26 @@ def compute_classification_metrics(eval_pred) -> Dict[str, float]:
     f1 = f1_metric.compute(predictions=predictions, references=labels, average="weighted")
     mcc = mcc_metric.compute(predictions=predictions, references=labels)
 
+    n_samples = int(logits.shape[0])
+    n_bins = _ace_num_bins(n_samples)
+    try:
+        ace_val = float(
+            ACE(
+                np.asarray(logits, dtype=np.float64),
+                np.asarray(labels).reshape(-1),
+                n_bins=n_bins,
+                logits=True,
+            )
+        )
+    except Exception as e:
+        logger.warning("ACE computation failed: %s", e)
+        ace_val = 0.0
+
     return {
         "accuracy": accuracy["accuracy"],
         "f1": f1["f1"],
         "mcc": mcc["matthews_correlation"],
+        "ace": ace_val,
     }
 
 

@@ -42,6 +42,8 @@ dependencies = [
     "pyyaml>=6.0",
     "scikit-learn>=1.3.0",
     "numpy>=1.24.0",
+    # Nixon et al. ACE via https://github.com/Jonathan-Pearce/calibration-toolbox (not on PyPI as of 2026)
+    "calibration-toolbox @ git+https://github.com/Jonathan-Pearce/calibration-toolbox.git@4048634ffb32d1e24b7bb859bd1be5cf59d7cc3f",
     "tqdm>=4.66.0",
     "python-dotenv>=1.0.0",
 
@@ -83,6 +85,9 @@ forge = "forge:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.uv]
 # Override stale upper bounds from olmocr (pins transformers==4.57.3, huggingface-hub<1)

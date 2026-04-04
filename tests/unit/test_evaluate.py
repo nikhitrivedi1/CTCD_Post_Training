@@ -269,7 +269,8 @@ class TestComputeClassificationMetrics:
         logits = np.array([[2.0, 0.1, 0.1], [0.1, 2.0, 0.1], [0.1, 0.1, 2.0], [2.0, 0.1, 0.1]])
         labels = np.array([0, 1, 2, 0])
         result = compute_classification_metrics((logits, labels))
-        assert set(result.keys()) == {"accuracy", "f1", "mcc"}
+        assert set(result.keys()) == {"accuracy", "f1", "mcc", "ace"}
+        assert isinstance(result["ace"], float) and np.isfinite(result["ace"])
 
     def test_perfect_predictions(self):
         logits = np.eye(3)
@@ -288,7 +289,7 @@ class TestComputeClassificationMetrics:
         logits = np.zeros((0, 3))
         labels = np.array([])
         result = compute_classification_metrics((logits, labels))
-        assert result == {"accuracy": 0.0, "f1": 0.0, "mcc": 0.0}
+        assert result == {"accuracy": 0.0, "f1": 0.0, "mcc": 0.0, "ace": 0.0}
 
 
 # ---------------------------------------------------------------------------

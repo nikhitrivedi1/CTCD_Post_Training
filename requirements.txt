@@ -41,6 +41,8 @@ botocore==1.42.60
     #   s3transfer
 cached-path==1.8.9
     # via olmocr
+calibration-toolbox @ git+https://github.com/Jonathan-Pearce/calibration-toolbox.git@4048634ffb32d1e24b7bb859bd1be5cf59d7cc3f
+    # via forge (pyproject.toml)
 certifi==2026.2.25
     # via
     #   httpcore
@@ -59,10 +61,14 @@ colorama==0.4.6
     # via sacrebleu
 compressed-tensors==0.14.0
     # via forge (pyproject.toml)
+contourpy==1.3.3
+    # via matplotlib
 cryptography==46.0.5
     # via
     #   google-auth
     #   olmocr
+cycler==0.12.1
+    # via matplotlib
 datasets==4.6.1
     # via
     #   forge (pyproject.toml)
@@ -82,6 +88,8 @@ filelock==3.25.0
     #   huggingface-hub
     #   olmocr
     #   torch
+fonttools==4.62.1
+    # via matplotlib
 frozenlist==1.8.0
     # via
     #   aiohttp
@@ -161,6 +169,8 @@ jmespath==1.1.0
     #   botocore
 joblib==1.5.3
     # via scikit-learn
+kiwisolver==1.5.0
+    # via matplotlib
 lingua-language-detector==2.1.1
     # via olmocr
 loguru==0.7.3
@@ -175,6 +185,8 @@ markdownify==1.2.2
     # via olmocr
 markupsafe==3.0.3
     # via jinja2
+matplotlib==3.10.8
+    # via calibration-toolbox
 mdurl==0.1.2
     # via markdown-it-py
 mpmath==1.3.0
@@ -193,8 +205,11 @@ numpy==2.4.2
     # via
     #   forge (pyproject.toml)
     #   accelerate
+    #   calibration-toolbox
+    #   contourpy
     #   datasets
     #   evaluate
+    #   matplotlib
     #   pandas
     #   peft
     #   sacrebleu
@@ -214,6 +229,7 @@ packaging==26.0
     #   datasets
     #   evaluate
     #   huggingface-hub
+    #   matplotlib
     #   peft
     #   qwen-vl-utils
     #   transformers
@@ -228,6 +244,7 @@ peft==0.18.1
 pillow==12.1.1
     # via
     #   forge (pyproject.toml)
+    #   matplotlib
     #   olmocr
     #   qwen-vl-utils
     #   torchvision
@@ -274,6 +291,8 @@ pyee==13.0.1
     # via playwright
 pygments==2.19.2
     # via rich
+pyparsing==3.3.2
+    # via matplotlib
 pypdf==6.7.5
     # via olmocr
 pypdfium2==5.5.0
@@ -283,6 +302,7 @@ pypdfium2==5.5.0
 python-dateutil==2.9.0.post0
     # via
     #   botocore
+    #   matplotlib
     #   pandas
 python-dotenv==1.2.2
     # via forge (pyproject.toml)
@@ -334,7 +354,9 @@ safetensors==0.7.0
 scikit-learn==1.8.0
     # via forge (pyproject.toml)
 scipy==1.17.1
-    # via scikit-learn
+    # via
+    #   calibration-toolbox
+    #   scikit-learn
 sentry-sdk==2.54.0
     # via wandb
 sequence-align==0.3.0
@@ -402,6 +424,8 @@ typer-slim==0.24.0
     # via transformers
 typing-extensions==4.15.0
     # via
+    #   aiosignal
+    #   anyio
     #   beautifulsoup4
     #   grpcio
     #   huggingface-hub
