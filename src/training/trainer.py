@@ -199,9 +199,15 @@ class DistillationTrainer(FinetuningTrainer):
 
     def _record_student_teacher_grad_norms_for_logging(self) -> None:
         """
-        After backward (and HF's clip on ``model.parameters()``), store L2 grad norms
-        for student vs teacher. Called from a callback at ``on_pre_optimizer_step`` so
-        gradients are still present; values are merged into the next training ``log()``.
+        Before the optimizer step, store L2 grad norms for student vs teacher.
+        Called from a callback at ``on_pre_optimizer_step`` (before HF Trainer's
+        own clip_grad_norm_ call); values are merged into the next training ``log()``.
+
+        Does not call accelerator.unscale_gradients() — HF Trainer calls it
+        immediately after on_pre_optimizer_step for gradient clipping, and calling
+        unscale_() twice on the same optimizer raises a RuntimeError. Instead, raw
+        norms are read from scaled gradients and divided by the AMP scale factor to
+        recover true gradient magnitudes.
         """
         if self.freeze_teacher:
             return
@@ -209,17 +215,19 @@ class DistillationTrainer(FinetuningTrainer):
         student_params = [p for p in student_mod.parameters() if p.requires_grad]
         teacher_params = [p for p in self.teacher.parameters() if p.requires_grad]
 
+        scale = self.accelerator.scaler.get_scale() if self.accelerator.scaler is not None else 1.0
+
         if not student_params:
             student_norm = 0.0
         else:
-            sn = self.accelerator.clip_grad_norm_(student_params, float("inf"))
-            student_norm = float(sn.item()) if torch.is_tensor(sn) else float(sn)
+            sn = torch.nn.utils.clip_grad_norm_(student_params, float("inf"))
+            student_norm = float(sn.item() if torch.is_tensor(sn) else sn) / scale
 
         if not teacher_params:
             teacher_norm = 0.0
         else:
             tn = torch.nn.utils.clip_grad_norm_(teacher_params, float("inf"))
-            teacher_norm = float(tn.item()) if torch.is_tensor(tn) else float(tn)
+            teacher_norm = float(tn.item() if torch.is_tensor(tn) else tn) / scale
 
         self._last_student_teacher_grad_norms = (student_norm, teacher_norm)
 
