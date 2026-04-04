@@ -451,6 +451,23 @@ def should_load_best_model(config: dict) -> bool:
     return strategy in ("steps", "epoch")
 
 
+def no_weights_mode(config: dict) -> bool:
+    """Return True to skip saving final model weights after training.
+
+    Intermediate checkpoints are still written during training (SLURM
+    resumption works). On successful completion, checkpoints are removed
+    by _remove_hf_checkpoint_dirs_after_success() and final weights are
+    not saved. Results land in W&B only.
+
+    Args:
+        config: Full training config dict.
+
+    Returns:
+        True when checkpointing.no_weights is set to true.
+    """
+    return bool(config.get("checkpointing", {}).get("no_weights", False))
+
+
 def warmup_kwargs_for_training_args(
     training: dict,
     default_warmup_steps: int = 0,
@@ -932,17 +949,20 @@ def _train(
 
     # Save final model (skip if training was interrupted - checkpoint already saved)
     if state.is_complete():
-        _save_final_model(trainer, config, output_dir, processor=processor, tokenizer=tokenizer)
+        if no_weights_mode(config):
+            logger.info("no_weights mode: skipping final model save (results in W&B only)")
+        else:
+            _save_final_model(trainer, config, output_dir, processor=processor, tokenizer=tokenizer)
 
-        # Save co-trained teacher (weights changed during training)
-        if teacher is not None and not config["model"].get("teacher", {}).get("freeze", True):
-            teacher_cfg = config["model"].get("teacher", {})
-            teacher_name = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
-            teacher_dir = output_dir / "teacher"
-            logger.info(f"Saving co-trained teacher to {teacher_dir}...")
-            _save_model(teacher, teacher_dir,
-                        model_name=teacher_name,
-                        processor=processor, tokenizer=tokenizer)
+            # Save co-trained teacher (weights changed during training)
+            if teacher is not None and not config["model"].get("teacher", {}).get("freeze", True):
+                teacher_cfg = config["model"].get("teacher", {})
+                teacher_name = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
+                teacher_dir = output_dir / "teacher"
+                logger.info(f"Saving co-trained teacher to {teacher_dir}...")
+                _save_model(teacher, teacher_dir,
+                            model_name=teacher_name,
+                            processor=processor, tokenizer=tokenizer)
         _remove_hf_checkpoint_dirs_after_success(output_dir)
     else:
         logger.info("Training interrupted - skipping final model save (checkpoint already saved)")
@@ -1113,7 +1133,10 @@ def _train_rl(
 
     # Save final model (skip if training was interrupted)
     if state.is_complete():
-        _save_final_model(trainer, config, output_dir, processor=processor, tokenizer=tokenizer)
+        if no_weights_mode(config):
+            logger.info("no_weights mode: skipping final model save (results in W&B only)")
+        else:
+            _save_final_model(trainer, config, output_dir, processor=processor, tokenizer=tokenizer)
         _remove_hf_checkpoint_dirs_after_success(output_dir)
     else:
         logger.info("Training interrupted - skipping final model save (checkpoint already saved)")

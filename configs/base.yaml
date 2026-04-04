@@ -14,6 +14,7 @@ training:
 checkpointing:
   save_steps: 500
   save_total_limit: 3
+  no_weights: false
 
 logging:
   report_to: wandb

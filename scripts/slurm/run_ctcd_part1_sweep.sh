@@ -161,6 +161,8 @@ training:
   learning_rate: ${LR}
   batch_size: ${BS}
   max_grad_norm: ${CLIP}
+checkpointing:
+  no_weights: true
 EOF
 
     python scripts/slurm/merge_yaml_overrides.py "$BASE_CFG" "$TMP_OVR" "$TMP_MERGED"
