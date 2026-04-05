@@ -174,7 +174,12 @@ EOF
     echo "Merged: $TMP_MERGED"
     echo "========================================="
 
-    _FORGE_SWEEP_WORKER=1 bash scripts/slurm/run_training.sh "$RUN_NAME" "$TMP_MERGED" &
+    # Resume if output dir exists (incomplete run), otherwise start fresh
+    if [[ -d "$OUTPUT_DIR" ]]; then
+        _FORGE_SWEEP_WORKER=1 _FORGE_RESUME_PATH="$RUN_NAME" bash scripts/slurm/run_training.sh "$RUN_NAME" "$TMP_MERGED" &
+    else
+        _FORGE_SWEEP_WORKER=1 bash scripts/slurm/run_training.sh "$RUN_NAME" "$TMP_MERGED" &
+    fi
     slurm_wait_child $!
     TRAIN_EXIT=$EXIT_CODE
 

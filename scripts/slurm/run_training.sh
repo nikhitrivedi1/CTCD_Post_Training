@@ -151,6 +151,8 @@ EXIT_CODE=${EXIT_CODE:-0}
 # manages resubmission itself and owns the SLURM job ID namespace.
 if [ -n "${_FORGE_SWEEP_WORKER:-}" ]; then
     [ $EXIT_CODE -ne 0 ] && echo "Job failed with exit code: $EXIT_CODE"
+    slurm_print_footer
+    exit $EXIT_CODE
 elif [ $EXIT_CODE -eq 0 ] && slurm_read_incomplete; then
     if [ "$_JOB_TYPE" = "training" ]; then
         COMPLETE=$(slurm_is_complete "$_OUTPUT_DIR")
