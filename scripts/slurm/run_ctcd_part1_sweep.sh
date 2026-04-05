@@ -174,7 +174,7 @@ EOF
     echo "Merged: $TMP_MERGED"
     echo "========================================="
 
-    bash scripts/slurm/run_training.sh "$RUN_NAME" "$TMP_MERGED" &
+    _FORGE_SWEEP_WORKER=1 bash scripts/slurm/run_training.sh "$RUN_NAME" "$TMP_MERGED" &
     slurm_wait_child $!
     TRAIN_EXIT=$EXIT_CODE
 

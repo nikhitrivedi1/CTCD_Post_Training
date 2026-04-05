@@ -919,9 +919,11 @@ def _train(
     trainer.add_callback(StepMetricsCallback())
 
     # Add SLURM signal handler
+    slurm_cb = None
     if env == "slurm":
         logger.info("Adding SLURM signal handler...")
-        trainer.add_callback(SLURMSignalCallback(trainer))
+        slurm_cb = SLURMSignalCallback(trainer)
+        trainer.add_callback(slurm_cb)
 
     # Add teacher eval during training (co-training only, before PeakMetrics so peaks are tracked)
     if isinstance(trainer, DistillationTrainer) and not trainer.freeze_teacher:
@@ -985,8 +987,10 @@ def _train(
         step=trainer.state.global_step
     )
 
-    # Save final model (skip if training was interrupted - checkpoint already saved)
-    if state.is_complete():
+    signal_interrupted = slurm_cb is not None and slurm_cb.caught_signal
+
+    # Save final model (skip if training was interrupted by SLURM signal - checkpoint already saved)
+    if not signal_interrupted:
         _save_final_model(trainer, config, output_dir, processor=processor, tokenizer=tokenizer)
 
         # Save co-trained teacher (weights changed during training)
@@ -1001,6 +1005,8 @@ def _train(
         _remove_hf_checkpoint_dirs_after_success(output_dir)
     else:
         logger.info("Training interrupted - skipping final model save (checkpoint already saved)")
+
+    return signal_interrupted
 
 
 def _build_grpo_config(config, output_dir, run_name, args, device, report_to,
@@ -1144,9 +1150,11 @@ def _train_rl(
     trainer.add_callback(StepMetricsCallback())
 
     # Add SLURM signal handler
+    slurm_cb = None
     if env == "slurm":
         logger.info("Adding SLURM signal handler...")
-        trainer.add_callback(SLURMSignalCallback(trainer))
+        slurm_cb = SLURMSignalCallback(trainer)
+        trainer.add_callback(slurm_cb)
 
     # Add checkpoint marker (LAST - runs after all other on_save hooks)
     trainer.add_callback(CheckpointMarkerCallback())
@@ -1166,12 +1174,16 @@ def _train_rl(
         step=trainer.state.global_step,
     )
 
-    # Save final model (skip if training was interrupted)
-    if state.is_complete():
+    signal_interrupted = slurm_cb is not None and slurm_cb.caught_signal
+
+    # Save final model (skip if training was interrupted by SLURM signal)
+    if not signal_interrupted:
         _save_final_model(trainer, config, output_dir, processor=processor, tokenizer=tokenizer)
         _remove_hf_checkpoint_dirs_after_success(output_dir)
     else:
         logger.info("Training interrupted - skipping final model save (checkpoint already saved)")
+
+    return signal_interrupted
 
 
 def main():
@@ -1547,7 +1559,7 @@ def main():
             logger.info(f"Chat template kwargs: {ct_kwargs}")
 
         set_reproducibility_seed(args.seed)
-        _train_rl(
+        signal_interrupted = _train_rl(
             config, device, tokenizer, task,
             train_dataset, eval_dataset,
             output_dir, display_name, args, state, resume_checkpoint,
@@ -1663,15 +1675,15 @@ def main():
 
         # Training
         set_reproducibility_seed(args.seed)
-        _train(
+        signal_interrupted = _train(
             config, device, tokenizer, num_labels, task,
             train_dataset, eval_dataset, compute_metrics, data_collator,
             output_dir, display_name, args, state, resume_checkpoint,
             env, report_to, metadata, processor=processor,
         )
 
-        # Post-training evaluation (skip if training was interrupted to save time for W&B sync)
-        if state.is_complete():
+        # Post-training evaluation (skip if training was interrupted by SLURM signal)
+        if not signal_interrupted:
             set_reproducibility_seed(args.seed)
             model_post, teacher_post = run_evaluation(
                 config, device, tokenizer, num_labels,
@@ -1688,11 +1700,17 @@ def main():
             logger.info("Training interrupted - skipping post-training evaluation")
 
     # Mark full pipeline complete and remove from incomplete registry
-    if state.is_complete():
+    if not signal_interrupted:
         state.mark_pipeline_complete()
         remove_incomplete_job()
         logger.info("=" * 60)
-        logger.info("Training complete!")
+        if state.is_complete():
+            logger.info("Training complete!")
+        else:
+            if state.state.get("target_steps"):
+                logger.info(f"Training complete (early stopping at step {state.state['completed_steps']}/{state.state['target_steps']})")
+            else:
+                logger.info(f"Training complete (early stopping at epoch {state.state['completed_epochs']:.2f}/{state.state['target_epochs']})")
         logger.info("=" * 60)
     else:
         logger.info("=" * 60)

@@ -146,8 +146,12 @@ fi
 
 EXIT_CODE=${EXIT_CODE:-0}
 
-# Auto-resubmit if training is incomplete
-if [ $EXIT_CODE -eq 0 ] && slurm_read_incomplete; then
+# Auto-resubmit if training is incomplete.
+# Skipped when called from a sweep worker (_FORGE_SWEEP_WORKER=1) — the sweep
+# manages resubmission itself and owns the SLURM job ID namespace.
+if [ -n "${_FORGE_SWEEP_WORKER:-}" ]; then
+    [ $EXIT_CODE -ne 0 ] && echo "Job failed with exit code: $EXIT_CODE"
+elif [ $EXIT_CODE -eq 0 ] && slurm_read_incomplete; then
     if [ "$_JOB_TYPE" = "training" ]; then
         COMPLETE=$(slurm_is_complete "$_OUTPUT_DIR")
         if [ "$COMPLETE" = "false" ]; then
