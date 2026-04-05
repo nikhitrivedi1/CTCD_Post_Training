@@ -1,6 +1,6 @@
 #!/bin/bash
-# Part 1 CTCD grid under configs/CTCD_Experiments/: 6 tasks × 6 ablations × 4 LRs ×
-# 2 batch sizes × 2 grad-clip modes = 576 runs.
+# Part 1 CTCD grid under configs/CTCD_Experiments/: N tasks × 6 ablations × 4 LRs ×
+# 2 batch sizes × 2 grad-clip modes. N = len(TASKS); default N=6 → 576 runs.
 #
 # Worker-loop pattern: 4 SLURM array tasks (ranks 0–3) each loop through their
 # assigned slice of the grid sequentially (rank R handles TIDs R, R+4, R+8, ...).
@@ -48,6 +48,7 @@ slurm_print_header
 
 CONFIG_ROOT="configs/CTCD_Experiments"
 TASKS=(qqp cola mrpc rte qnli mnli)
+NUM_TASKS=${#TASKS[@]}
 # shellcheck disable=SC2034
 LRS=(1e-5 2e-5 3e-5 5e-5)
 BATCHES=(16 32)
@@ -71,7 +72,9 @@ ablation_yaml() {
 WORKERS=4
 RANK=${SLURM_ARRAY_TASK_ID:-0}
 PER_GRID=16
-TOTAL=$((6 * 6 * PER_GRID))
+NUM_ABLATIONS=6
+# NUM_TASKS × NUM_ABLATIONS × PER_GRID (e.g. 6×6×16 = 576)
+TOTAL=$((NUM_TASKS * NUM_ABLATIONS * PER_GRID))
 
 COMPLETION_DIR="${CTCD_COMPLETION_DIR:-completed_runs/ctcd_part1}"
 mkdir -p "$COMPLETION_DIR"
@@ -90,8 +93,8 @@ echo "========================================="
 decode_tid() {
     local tid=$1
 
-    local task_idx=$(( tid / (6 * PER_GRID) ))
-    local rem=$(( tid % (6 * PER_GRID) ))
+    local task_idx=$(( tid / (NUM_ABLATIONS * PER_GRID) ))
+    local rem=$(( tid % (NUM_ABLATIONS * PER_GRID) ))
     local abl_idx=$(( rem / PER_GRID ))
     local grid_idx=$(( rem % PER_GRID ))
 
