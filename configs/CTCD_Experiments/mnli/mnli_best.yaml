@@ -1,0 +1,10 @@
+# Best Part 1 sweep run by student accuracy (from W&B).
+# task=mnli ablation_index=5 inherit=05_ctcd.yaml
+# metric=accuracy score=0.8310748853795211
+# wandb_run=p1_mnli_a05_lr3em5_b32_c1p0-20260410-1519Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Part1_Search/runs/p1_mnli_a05_lr3em5_b32_c1p0-20260410-1519Z
+
+inherit: 05_ctcd.yaml
+training:
+  learning_rate: 3e-5
+  batch_size: 32
+  max_grad_norm: 1
