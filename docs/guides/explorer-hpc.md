@@ -74,7 +74,7 @@ module load anaconda3/2024.06
 conda env create -f environment.yml
 
 # Activate the environment
-conda activate forge
+conda activate forge-ctcd
 ```
 
 ### Directory Structure
@@ -120,7 +120,7 @@ module purge
 conda env create -f environment.yml
 
 # Activate environment
-conda activate forge
+conda activate forge-ctcd
 
 # Update environment from modified yml file
 conda env update -f environment.yml --prune
@@ -185,7 +185,7 @@ module load cuda/12.1
 module load anaconda3/2024.06
 
 # Activate conda environment
-conda activate forge
+conda activate forge-ctcd
 
 # Parse command line arguments
 CONFIG=${1:-configs/default.yaml}
@@ -232,7 +232,7 @@ srun \
 ```bash
 nvidia-smi                      # Check GPU
 module load cuda/12.1 anaconda3/2024.06
-conda activate forge
+conda activate forge-ctcd
 python forge.py --max_steps 100  # Test your code
 exit                            # End session
 ```
@@ -517,7 +517,7 @@ sbatch scripts/slurm/run_training.sh
 
 ## Forge Aliases
 
-After activating the Forge environment (`source scripts/env/activate.sh` or `conda activate forge`), shorthand aliases are available for all common SLURM operations. Defined in `scripts/env/aliases.sh`.
+After activating the Forge environment (`source scripts/env/activate.sh` or `conda activate forge-ctcd`), shorthand aliases are available for all common SLURM operations. Defined in `scripts/env/aliases.sh`.
 
 ### Monitoring
 
@@ -611,5 +611,5 @@ stail 12345                 # follow logs once running
 
 ### Module Setup
 ```bash
-module load cuda/12.1 anaconda3/2024.06 && conda activate forge
+module load cuda/12.1 anaconda3/2024.06 && conda activate forge-ctcd
 ```

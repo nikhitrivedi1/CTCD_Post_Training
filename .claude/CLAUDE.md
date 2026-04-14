@@ -39,9 +39,9 @@
 ## Python Environment
 - Always activate conda environment before running Python commands:
   ```bash
-  source ~/.zshrc && conda activate forge
+  source ~/.zshrc && conda activate forge-ctcd
   ```
-- Environment: forge (Python 3.11)
+- Environment: forge-ctcd (Python 3.11)
 - Dependencies in environment.yml
 - **Never install packages directly** via `pip install` or `conda install`. Always:
   1. Add the dependency to `environment.yml`

@@ -33,11 +33,11 @@ scripts/
 
 ```bash
 conda env create -f environment.yml
-conda activate forge
+conda activate forge-ctcd
 source scripts/env/init.sh
 ```
 
-`init.sh` installs conda hooks so that `conda activate forge`
+`init.sh` installs conda hooks so that `conda activate forge-ctcd`
 automatically sets `PATH`, `LD_LIBRARY_PATH`, and `HF_HOME`. This only needs
 to be run once per environment (rerun if you recreate the env from scratch).
 

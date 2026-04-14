@@ -50,7 +50,7 @@
 #   ssh login.explorer.northeastern.edu
 #   module load anaconda3/2024.06
 #   conda env create -f environment.yml
-#   conda activate forge
+#   conda activate forge-ctcd
 #   source scripts/env/init.sh
 
 source scripts/slurm/slurm_essentials.sh

@@ -6,7 +6,7 @@ Post-hoc analysis tools for comparing models and understanding training results.
 
 ```bash
 # Activate environment
-source ~/.zshrc && conda activate forge
+source ~/.zshrc && conda activate forge-ctcd
 
 # Linear probing (single model)
 python workbench/analyze.py --model bert-base-uncased --task mnli --test probe
