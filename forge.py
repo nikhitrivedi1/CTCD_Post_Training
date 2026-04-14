@@ -812,8 +812,14 @@ def _train(
         config.get("distillation", {}), freeze_teacher=freeze_t
     )
     if teacher_name and distill_coeffs["student_soft_weight"] > 0.0:
+        teacher_load_path = teacher_name
+        if resume_checkpoint and not freeze_t:
+            candidate = Path(resume_checkpoint) / "teacher"
+            if candidate.exists():
+                teacher_load_path = str(candidate)
+                logger.info(f"Resuming co-trained teacher from: {teacher_load_path}")
         logger.info("Loading teacher...")
-        teacher = load_model(teacher_name, task, device,
+        teacher = load_model(teacher_load_path, task, device,
                              tokenizer=tokenizer, num_labels=num_labels,
                              eager=eager)
         # Save teacher base reference for lineage tracking (mirrors base/model_ref.json)
