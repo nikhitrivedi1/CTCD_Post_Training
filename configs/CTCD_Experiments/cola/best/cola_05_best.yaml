@@ -3,7 +3,7 @@
 # metric=mcc score=0.5637833320596455
 # wandb_run=p1_cola_a05_lr1em5_b16_c0p0-20260410-1455Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Part1_Search/runs/p1_cola_a05_lr1em5_b16_c0p0-20260410-1455Z
 
-inherit: ../05_ctcd.yaml
+inherit: 05_ctcd.yaml
 training:
   learning_rate: 1e-5
   batch_size: 16

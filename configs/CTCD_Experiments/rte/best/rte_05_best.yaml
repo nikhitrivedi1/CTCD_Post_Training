@@ -3,7 +3,7 @@
 # metric=accuracy score=0.6353790613718412
 # wandb_run=p1_rte_a05_lr2em5_b32_c1p0-20260411-0334Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Part1_Search/runs/p1_rte_a05_lr2em5_b32_c1p0-20260411-0334Z
 
-inherit: ../05_ctcd.yaml
+inherit: 05_ctcd.yaml
 training:
   learning_rate: 2e-5
   batch_size: 32

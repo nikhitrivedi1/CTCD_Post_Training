@@ -3,7 +3,7 @@
 # metric=f1 score=0.5408838433609326
 # wandb_run=p1_qqp_a02_lr1em5_b16_c1p0-20260405-0710Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Part1_Search/runs/p1_qqp_a02_lr1em5_b16_c1p0-20260405-0710Z
 
-inherit: ../02_kd_frozen_sft.yaml
+inherit: 02_kd_frozen_sft.yaml
 training:
   learning_rate: 1e-5
   batch_size: 16

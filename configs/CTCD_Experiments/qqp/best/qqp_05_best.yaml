@@ -1,10 +1,10 @@
 # Best Part 1 sweep run for this ablation by student f1 (from W&B).
 # task=qqp ablation_index=5 inherit=05_ctcd.yaml
-# metric=f1 score=0.91209826334559
-# wandb_run=p1_qqp_a05_lr5em5_b32_c1p0-20260410-0710Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Part1_Search/runs/p1_qqp_a05_lr5em5_b32_c1p0-20260410-0710Z
+# metric=f1 score=0.9097250972750102
+# wandb_run=p1_qqp_a05_lr3em5_b32_c0p0-20260417-1217Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Part1_Search/runs/p1_qqp_a05_lr3em5_b32_c0p0-20260417-1217Z
 
-inherit: ../05_ctcd.yaml
+inherit: 05_ctcd.yaml
 training:
-  learning_rate: 5e-5
+  learning_rate: 3e-5
   batch_size: 32
-  max_grad_norm: 1
+  max_grad_norm: 0
