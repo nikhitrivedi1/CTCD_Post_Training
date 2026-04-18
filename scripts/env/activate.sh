@@ -16,9 +16,9 @@
 #   HF_HOME          — Redirects HuggingFace cache to /scratch (avoids home quota)
 
 # Activate conda environment if not already active
-if [ -z "$CONDA_PREFIX" ] || [ "$(basename "$CONDA_PREFIX")" != "forge" ]; then
+if [ -z "$CONDA_PREFIX" ] || [ "$(basename "$CONDA_PREFIX")" != "forge-ctcd" ]; then
     eval "$(conda shell.bash hook)"
-    conda activate forge
+    conda activate forge-ctcd
 fi
 
 # Conda executables before system (git, python, etc.)

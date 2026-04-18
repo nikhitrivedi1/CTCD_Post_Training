@@ -277,7 +277,7 @@ If your QOS limits you to 1 GPU per job, contact the HPC team or your advisor to
 #SBATCH --time=08:00:00
 #SBATCH --signal=B:SIGUSR1@120
 
-source ~/.zshrc && conda activate forge
+source ~/.zshrc && conda activate forge-ctcd
 
 # Detect number of GPUs allocated by SLURM
 NGPUS=$(nvidia-smi -L | wc -l)
@@ -384,7 +384,7 @@ With a `ds_config.json`:
 #SBATCH --time=24:00:00
 #SBATCH --signal=B:SIGUSR1@120
 
-source ~/.zshrc && conda activate forge
+source ~/.zshrc && conda activate forge-ctcd
 
 # SLURM provides these
 export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n1)

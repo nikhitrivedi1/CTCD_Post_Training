@@ -19,7 +19,7 @@ git pull
 ## Step 2 — Activate conda
 
 ```bash
-conda activate forge
+conda activate forge-ctcd
 ```
 
 If `conda` is not defined in a fresh shell (e.g. some `srun` sessions), run your site’s usual conda initialization (e.g. `eval "$(conda shell.bash hook)"`) once before `conda activate`.
@@ -76,7 +76,7 @@ srun --partition=gpu --gres=gpu:1 --cpus-per-task=16 --mem=64G --time=01:00:00 -
 
 ```bash
 cd /path/to/Forge
-conda activate forge
+conda activate forge-ctcd
 source scripts/env/activate.sh
 
 python forge.py \

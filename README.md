@@ -50,12 +50,12 @@ See also: [Forge vs Unsloth](docs/forge-vs-unsloth.md)
 
 ```bash
 conda env create -f environment.yml
-conda activate forge
+conda activate forge-ctcd
 source scripts/env/init.sh
 ```
 
 `init.sh` installs conda hooks that automatically set `PATH`, `LD_LIBRARY_PATH`,
-and `HF_HOME` on every `conda activate forge`. Run it whenever the
+and `HF_HOME` on every `conda activate forge-ctcd`. Run it whenever the
 environment is created or recreated. See [scripts/README.md](scripts/README.md)
 for details.
 
@@ -67,7 +67,7 @@ Copy `.env.example` to `.env` and fill in your values:
 cp .env.example .env
 ```
 
-The `.env` file is sourced automatically on `conda activate forge` and provides
+The `.env` file is sourced automatically on `conda activate forge-ctcd` and provides
 `HF_TOKEN`, `WANDB_API_KEY`, and other secrets. It is gitignored, so each
 machine needs its own copy.
 

@@ -1,10 +1,10 @@
 #!/bin/bash
-# One-time setup: install conda hooks so `conda activate forge`
+# One-time setup: install conda hooks so `conda activate forge-ctcd`
 # automatically configures PATH, LD_PRELOAD, and HF_HOME.
 #
 # Run this once after creating the conda environment:
 #   conda env create -f environment.yml
-#   conda activate forge
+#   conda activate forge-ctcd
 #   source scripts/env/init.sh
 #
 # What it does:
@@ -13,13 +13,13 @@
 #   These hooks are local to your conda env and not shared via git.
 
 if [ -z "$CONDA_PREFIX" ]; then
-    echo "ERROR: No conda environment active. Run 'conda activate forge' first." >&2
+    echo "ERROR: No conda environment active. Run 'conda activate forge-ctcd' first." >&2
     return 1
 fi
 
 ENV_NAME=$(basename "$CONDA_PREFIX")
-if [ "$ENV_NAME" != "forge" ]; then
-    echo "ERROR: Expected 'forge' env, got '$ENV_NAME'." >&2
+if [ "$ENV_NAME" != "forge-ctcd" ]; then
+    echo "ERROR: Expected 'forge-ctcd' env, got '$ENV_NAME'." >&2
     return 1
 fi
 
@@ -69,5 +69,5 @@ echo "  $DEACTIVATE_DIR/forge.sh"
 
 # Re-activate to apply hooks immediately
 conda deactivate
-conda activate forge
+conda activate forge-ctcd
 echo "Environment ready."
