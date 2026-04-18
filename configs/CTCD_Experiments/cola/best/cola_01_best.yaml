@@ -3,7 +3,7 @@
 # metric=mcc score=0.5654865997646326
 # wandb_run=p1_cola_a01_lr2em5_b16_c0p0-20260410-1238Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Part1_Search/runs/p1_cola_a01_lr2em5_b16_c0p0-20260410-1238Z
 
-inherit: 01_kd_frozen_base.yaml
+inherit: ../01_kd_frozen_base.yaml
 training:
   learning_rate: 2e-5
   batch_size: 16
