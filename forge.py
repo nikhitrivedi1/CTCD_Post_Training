@@ -439,16 +439,35 @@ def load_config_snapshot(output_dir: Path) -> dict | None:
 
 
 def should_load_best_model(config: dict) -> bool:
-    """Whether to enable load_best_model_at_end based on eval strategy.
+    """Whether to enable load_best_model_at_end, based on checkpointing.final_model_save.
 
     Args:
         config: Full training config dict.
 
     Returns:
-        True only when evaluation is actively running (steps or epoch).
+        True when checkpointing.final_model_save is "best" (the default).
+        False when it is "last" - the run keeps whatever state training ended in.
+
+    Raises:
+        ValueError: If final_model_save is "best" but eval isn't actively running
+            (steps/epoch), since there are no eval metrics to pick a best checkpoint
+            from. Also raised if final_model_save is set to anything other than
+            "best" or "last".
     """
-    strategy = config.get("evaluation", {}).get("eval_strategy", "steps")
-    return strategy in ("steps", "epoch")
+    final_model_save = config.get("checkpointing", {}).get("final_model_save", "best")
+    if final_model_save not in ("best", "last"):
+        raise ValueError(f"checkpointing.final_model_save must be 'best' or 'last', got {final_model_save!r}")
+    if final_model_save == "last":
+        return False
+
+    eval_strategy = config.get("evaluation", {}).get("eval_strategy", "steps")
+    if eval_strategy not in ("steps", "epoch"):
+        raise ValueError(
+            f"checkpointing.final_model_save is 'best' but evaluation.eval_strategy is {eval_strategy!r} - "
+            "no eval metrics available to select a best checkpoint. Set checkpointing.final_model_save: "
+            "last, or enable evaluation.eval_strategy: steps/epoch."
+        )
+    return True
 
 
 def no_weights_mode(config: dict) -> bool:

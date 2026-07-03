@@ -34,7 +34,7 @@ def kd_config_tree(tmp_path):
         "model": {"name": "Qwen/Qwen3.5-0.8B"},
         "training": {"batch_size": 1, "learning_rate": "2e-6"},
         "evaluation": {"eval_strategy": "no"},
-        "checkpointing": {"save_steps": 999999},
+        "checkpointing": {"save_steps": 999999, "final_model_save": "last"},
     }))
 
     # KD base
@@ -89,7 +89,8 @@ class TestWarmupKwargsForTrainingArgs:
 
 
 class TestShouldLoadBestModel:
-    """load_best_model_at_end must only be True when eval actually runs."""
+    """load_best_model_at_end reflects checkpointing.final_model_save (default 'best'),
+    gated on eval actually running when 'best' is requested."""
 
     def test_steps_strategy(self):
         config = {"evaluation": {"eval_strategy": "steps"}}
@@ -99,13 +100,16 @@ class TestShouldLoadBestModel:
         config = {"evaluation": {"eval_strategy": "epoch"}}
         assert should_load_best_model(config) is True
 
-    def test_no_strategy(self):
+    def test_no_strategy_raises(self):
+        """Default final_model_save='best' with eval disabled has no metric to select from."""
         config = {"evaluation": {"eval_strategy": "no"}}
-        assert should_load_best_model(config) is False
+        with pytest.raises(ValueError):
+            should_load_best_model(config)
 
-    def test_none_strategy(self):
+    def test_none_strategy_raises(self):
         config = {"evaluation": {"eval_strategy": None}}
-        assert should_load_best_model(config) is False
+        with pytest.raises(ValueError):
+            should_load_best_model(config)
 
     def test_missing_eval_strategy(self):
         """No eval_strategy key - defaults to steps (existing behavior)."""
@@ -118,9 +122,29 @@ class TestShouldLoadBestModel:
         assert should_load_best_model(config) is True
 
     def test_eval_no_from_config_file(self, kd_config_tree):
-        """Config with eval_strategy: no should disable load_best_model."""
+        """Config with eval_strategy: no and final_model_save: last should disable load_best_model."""
         config = load_config(str(kd_config_tree))
         assert should_load_best_model(config) is False
+
+    def test_final_model_save_last_with_eval_running(self):
+        """final_model_save: last always saves the last checkpoint, even with eval on."""
+        config = {"evaluation": {"eval_strategy": "steps"}, "checkpointing": {"final_model_save": "last"}}
+        assert should_load_best_model(config) is False
+
+    def test_final_model_save_best_explicit(self):
+        config = {"evaluation": {"eval_strategy": "steps"}, "checkpointing": {"final_model_save": "best"}}
+        assert should_load_best_model(config) is True
+
+    def test_final_model_save_best_with_eval_disabled_raises(self):
+        """Can't select a 'best' checkpoint with no eval metrics to compare."""
+        config = {"evaluation": {"eval_strategy": "no"}, "checkpointing": {"final_model_save": "best"}}
+        with pytest.raises(ValueError, match="final_model_save"):
+            should_load_best_model(config)
+
+    def test_final_model_save_invalid_value_raises(self):
+        config = {"checkpointing": {"final_model_save": "bogus"}}
+        with pytest.raises(ValueError, match="final_model_save"):
+            should_load_best_model(config)
 
 
 class TestKDConfigResolution:

@@ -522,6 +522,22 @@ Step 8000: accuracy=0.80, loss=0.42  ← best loss
 The selected metric is logged to W&B config as `metric_for_best_model`.
 ```
 
+### `final_model_save`
+
+Which checkpoint gets written to the run's root output directory when training finishes.
+
+```
+final_model_save: "best"  (default)
+├── Requires eval_strategy: steps or epoch (metrics needed to pick "best")
+├── Uses load_best_model_at_end - HF Trainer reloads the best checkpoint before saving
+└── Raises a config error if eval_strategy is "no"
+
+final_model_save: "last"
+├── Always saves whatever state training ended in
+├── Works with any eval_strategy - eval can still run for monitoring/logging
+└── Does not affect intermediate checkpoint saving (save_steps/save_total_limit unchanged)
+```
+
 ---
 
 ## Logging Parameters
