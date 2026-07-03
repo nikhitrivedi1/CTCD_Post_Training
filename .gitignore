@@ -63,6 +63,7 @@ wandb/
 .incomplete_jobs
 .incomplete_jobs.tmp*
 .incomplete_jobs.lock
+completed_runs/
 
 # Model files (too large for git)
 *.bin

@@ -1,10 +1,10 @@
 # Best Part 1 sweep run for this ablation by student accuracy (from W&B).
 # task=mnli ablation_index=3 inherit=03_cotrain_base.yaml
-# metric=accuracy score=0.8281202241467143
-# wandb_run=p1_mnli_a03_lr2em5_b16_c1p0-20260408-1201Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Part1_Search/runs/p1_mnli_a03_lr2em5_b16_c1p0-20260408-1201Z
+# metric=accuracy score=0.8269994905756495
+# wandb_run=p1_mnli_a03_lr3em5_b32_c1p0-20260602-0653Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Part1_Search/runs/p1_mnli_a03_lr3em5_b32_c1p0-20260602-0653Z
 
 inherit: ../03_cotrain_base.yaml
 training:
-  learning_rate: 2e-5
-  batch_size: 16
+  learning_rate: 3e-5
+  batch_size: 32
   max_grad_norm: 1

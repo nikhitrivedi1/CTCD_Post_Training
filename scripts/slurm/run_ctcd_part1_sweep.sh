@@ -22,7 +22,7 @@
 
 #SBATCH --job-name=ctcd_p1
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:h200:1
 #SBATCH --time=08:00:00
 #SBATCH --mem=64G
 #SBATCH --cpus-per-task=16
@@ -46,8 +46,10 @@ source scripts/slurm/slurm_essentials.sh
 slurm_setup_env
 slurm_print_header
 
+export WANDB_INIT_TIMEOUT=300
+
 CONFIG_ROOT="configs/CTCD_Experiments"
-TASKS=(mrpc qnli)
+TASKS=(rte)
 NUM_TASKS=${#TASKS[@]}
 # shellcheck disable=SC2034
 LRS=(1e-5 2e-5 3e-5 5e-5)

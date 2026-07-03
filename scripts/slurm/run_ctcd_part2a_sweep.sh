@@ -28,7 +28,7 @@
 
 #SBATCH --job-name=ctcd_p2a
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:h200:1
 #SBATCH --time=08:00:00
 #SBATCH --mem=64G
 #SBATCH --cpus-per-task=16
@@ -50,7 +50,7 @@ slurm_setup_env
 slurm_print_header
 
 CONFIG_ROOT="configs/CTCD_Experiments"
-TASKS=(mnli qqp qnli cola mrpc rte)
+TASKS=(qnli qqp mnli cola mrpc rte)
 NUM_TASKS=${#TASKS[@]}
 
 # (hard, soft) → (βh, βs)

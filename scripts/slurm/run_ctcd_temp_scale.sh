@@ -44,7 +44,7 @@ slurm_setup_env
 slurm_print_header
 
 CONFIG_ROOT="configs/CTCD_Experiments"
-TASKS=(cola mrpc rte qqp)
+TASKS=(qnli mnli)
 
 if [[ -n "${CTCD_SEEDS:-}" ]]; then
     read -r -a SEEDS <<<"$CTCD_SEEDS"
