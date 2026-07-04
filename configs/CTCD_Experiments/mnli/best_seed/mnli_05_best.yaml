@@ -1,0 +1,11 @@
+# Best random-seed run for this ablation by student accuracy (from W&B).
+# task=mnli ablation_index=5 inherit=05_ctcd.yaml seed=733
+# metric=accuracy score=0.8316861946001018
+# wandb_run=rs_mnli_a05_s733-20260624-1951Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Random_Seeds/runs/rs_mnli_a05_s733-20260624-1951Z
+
+inherit: ../05_ctcd.yaml
+training:
+  learning_rate: 2e-5
+  batch_size: 32
+  max_grad_norm: 1
+seed: 733

@@ -1,0 +1,11 @@
+# Best random-seed run for this ablation by student f1 (from W&B).
+# task=qqp ablation_index=3 inherit=03_cotrain_base.yaml seed=2468
+# metric=f1 score=0.9078945497273434
+# wandb_run=rs_qqp_a03_s2468-20260614-2336Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Random_Seeds/runs/rs_qqp_a03_s2468-20260614-2336Z
+
+inherit: ../03_cotrain_base.yaml
+training:
+  learning_rate: 3e-5
+  batch_size: 32
+  max_grad_norm: 0
+seed: 2468

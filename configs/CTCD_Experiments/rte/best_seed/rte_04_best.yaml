@@ -1,0 +1,11 @@
+# Best random-seed run for this ablation by student accuracy (from W&B).
+# task=rte ablation_index=4 inherit=04_cotrain_sft.yaml seed=991
+# metric=accuracy score=0.6425992779783394
+# wandb_run=rs_rte_a04_s991-20260624-0652Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Random_Seeds/runs/rs_rte_a04_s991-20260624-0652Z
+
+inherit: ../04_cotrain_sft.yaml
+training:
+  learning_rate: 2e-5
+  batch_size: 32
+  max_grad_norm: 1
+seed: 991

@@ -1,0 +1,11 @@
+# Best random-seed run for this ablation by student f1 (from W&B).
+# task=qqp ablation_index=2 inherit=02_kd_frozen_sft.yaml seed=4242
+# metric=f1 score=0.552574215397749
+# wandb_run=rs_qqp_a02_s4242-20260614-2126Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Random_Seeds/runs/rs_qqp_a02_s4242-20260614-2126Z
+
+inherit: ../02_kd_frozen_sft.yaml
+training:
+  learning_rate: 1e-5
+  batch_size: 16
+  max_grad_norm: 1
+seed: 4242

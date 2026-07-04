@@ -1,0 +1,11 @@
+# Best random-seed run for this ablation by student mcc (from W&B).
+# task=cola ablation_index=3 inherit=03_cotrain_base.yaml seed=41
+# metric=mcc score=0.5588305747648582
+# wandb_run=rs_cola_a03_s41-20260624-0627Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Random_Seeds/runs/rs_cola_a03_s41-20260624-0627Z
+
+inherit: ../03_cotrain_base.yaml
+training:
+  learning_rate: 2e-5
+  batch_size: 16
+  max_grad_norm: 1
+seed: 41

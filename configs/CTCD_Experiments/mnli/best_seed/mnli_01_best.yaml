@@ -1,0 +1,11 @@
+# Best random-seed run for this ablation by student accuracy (from W&B).
+# task=mnli ablation_index=1 inherit=01_kd_frozen_base.yaml seed=41
+# metric=accuracy score=0.8215995924605196
+# wandb_run=rs_mnli_a01_s41-20260624-0931Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Random_Seeds/runs/rs_mnli_a01_s41-20260624-0931Z
+
+inherit: ../01_kd_frozen_base.yaml
+training:
+  learning_rate: 1e-5
+  batch_size: 32
+  max_grad_norm: 1
+seed: 41
