@@ -72,6 +72,13 @@ TASK_REGISTRY = {
         "subset": "wnli",
         "primary_metric": "accuracy",
     },
+    "clinc150": {
+        "num_labels": 150,
+        "type": "classification",
+        "dataset": "clinc150",
+        "subset": "default",
+        "primary_metric": "accuracy",
+    },
     "europarl": {
         "num_labels": None,
         "type": "translation",
@@ -93,7 +100,7 @@ TASK_REGISTRY = {
 
 | Type | Architecture | num_labels | Models |
 |------|-------------|------------|--------|
-| `classification` | Encoder-only | 2 or 3 | BERT, DistilBERT |
+| `classification` | Encoder-only | 2-150 | BERT, DistilBERT |
 | `translation` | Decoder-only | None | Llama, Mistral |
 | `ocr` | Vision-Language | None | Qwen2.5-VL, Qwen3-VL |
 
@@ -114,6 +121,7 @@ The primary metric determines which metric is used for:
 | QNLI | accuracy | Standard GLUE metric for binary QA entailment |
 | RTE | accuracy | Standard metric for low-resource binary entailment |
 | WNLI | accuracy | Standard GLUE metric for binary coreference/entailment |
+| CLINC150 | accuracy | Standard for balanced multi-class intent classification (150 classes, ~100 train examples each) |
 | Europarl | bleu | Standard machine translation metric |
 | OCR | edit_similarity | Character-level similarity (1 - CER) |
 
@@ -142,7 +150,7 @@ The registry is imported and queried throughout the codebase:
 
 | Module | What it checks | Why |
 |--------|---------------|-----|
-| `src/data/datasets.py` | `is_ocr_task()`, `is_translation_task()` | Route to correct loader |
+| `src/data/handlers/__init__.py` | `get_handler()` via `DATASET_REGISTRY` | Route to the correct dataset handler |
 | `src/models/loader.py` | `is_translation_task()`, `is_ocr_task()` | Route to correct model loader |
 | `src/evaluation/metrics.py` | `is_classification_task()`, etc. | Route to correct metrics |
 | `src/evaluation/evaluate.py` | `get_primary_metric()` | Transfer efficiency computation |
@@ -152,11 +160,11 @@ The registry is imported and queried throughout the codebase:
 
 ## Adding a New Task
 
-1. Add entry to `TASKS` dict with all required fields
-2. Add dataset loader in `src/data/datasets.py`
-3. Add compute_metrics function in `src/evaluation/metrics.py` (if new type)
-4. Update `load_dataset_for_task()` router in `src/data/datasets.py`
-5. Create config files in `configs/{task}/`
+1. Add entry to `TASK_REGISTRY` dict with all required fields (`src/tasks/registry.py`)
+2. Add a dataset handler implementing `DatasetHandler` (`prepare()`, `validate()`, `load()`) in `src/data/handlers/`
+3. Register the handler under the task's dataset name in `DATASET_REGISTRY` (`src/data/handlers/__init__.py`)
+4. Add a `compute_metrics` function in `src/evaluation/metrics.py` (if new type)
+5. Create config files in `configs/{task_type}/{task}/`
 
 ---
 

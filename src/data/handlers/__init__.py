@@ -8,6 +8,7 @@ Usage:
 """
 
 from .base import DatasetHandler
+from .clinc150 import CLINC150Handler
 from .europarl import EuroparlHandler
 from .formatting import FormattingHandler
 from .glue import GLUEHandler
@@ -32,6 +33,8 @@ DATASET_REGISTRY: dict[str, DatasetHandler] = {
     "qnli": GLUEHandler(task="qnli"),
     "rte": GLUEHandler(task="rte"),
     "wnli": GLUEHandler(task="wnli"),
+    # Classification (CLINC150)
+    "clinc150": CLINC150Handler(),
 }
 
 
@@ -57,6 +60,7 @@ __all__ = [
     "DatasetHandler",
     "DATASET_REGISTRY",
     "get_handler",
+    "CLINC150Handler",
     "EuroparlHandler",
     "FormattingHandler",
     "GLUEHandler",

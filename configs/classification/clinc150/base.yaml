@@ -1,0 +1,6 @@
+# CLINC150 dataset defaults
+inherit: ../base.yaml
+
+data:
+  task: clinc150
+  max_length: 32

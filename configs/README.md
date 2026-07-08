@@ -1,6 +1,6 @@
 # Configuration Directory Structure
 
-**113 config files** (70 runnable + 38 base.yaml + 5 meta).
+**116 config files** (71 runnable + 40 base.yaml + 5 meta).
 
 ```
 configs/
@@ -25,7 +25,12 @@ configs/
 │   ├── mrpc/                              # MRPC paraphrase detection (SFT + 4 ablations)
 │   ├── qnli/                              # QNLI QA entailment (SFT + 4 ablations)
 │   ├── rte/                               # RTE textual entailment (SFT + 4 ablations)
-│   └── wnli/                              # WNLI Winograd NLI (SFT + 4 ablations)
+│   ├── wnli/                              # WNLI Winograd NLI (SFT + 4 ablations)
+│   └── clinc150/                          # CLINC150 intent classification (SFT baseline)
+│       ├── base.yaml                      # CLINC150 task passthrough
+│       └── distilbert/
+│           ├── base.yaml                  # DistilBERT model defaults
+│           └── 00_sft.yaml                # SFT baseline (no teacher)
 ├── translation/
 │   ├── base.yaml                          # Translation defaults (T=15, α=0.2, BLEU eval)
 │   └── europarl/
@@ -61,7 +66,7 @@ configs/
 
 | Category | Count |
 |----------|-------|
-| Classification SFT | 8 (1 per task) |
+| Classification SFT | 9 (1 per task) |
 | Classification Ablations | 33 (4 per task + 1 obsolete) |
 | Classification FAR | 8 (MNLI) |
 | Classification Staged | 4 (MNLI) |
@@ -73,9 +78,9 @@ configs/
 | OCR SFT + KD | 6 |
 | OCR GRPO | 4 (1 per dataset) |
 | Examples | 4 |
-| **Total Runnable** | **90** |
+| **Total Runnable** | **91** |
 
-Plus 38 base.yaml files + TEMPLATE.yaml = 113 total YAML files.
+Plus 40 base.yaml files + TEMPLATE.yaml = 116 total YAML files.
 
 ## Inheritance Convention
 

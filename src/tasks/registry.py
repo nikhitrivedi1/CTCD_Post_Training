@@ -61,6 +61,14 @@ TASK_REGISTRY = {
         "subset": "wnli",
         "primary_metric": "accuracy",
     },
+    # Classification tasks (CLINC150)
+    "clinc150": {
+        "num_labels": 150,
+        "type": "classification",
+        "dataset": "clinc150",
+        "subset": "default",
+        "primary_metric": "accuracy",
+    },
     # Translation tasks
     "europarl": {
         "num_labels": None,
