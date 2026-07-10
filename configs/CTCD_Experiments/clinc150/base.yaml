@@ -1,0 +1,26 @@
+# CLINC150 — inherits CTCD shared defaults; see ../_shared.yaml.
+#
+# Only ablations 00/01/03/05 exist for this task (no 02/04 "task-fine-tuned teacher"
+# variants). The only public bert-base-uncased checkpoint fine-tuned on CLINC150
+# (transformersbook/bert-base-uncased-finetuned-clinc) was trained on the original
+# clinc_oos label ordering (151 classes incl. "oos" at index 42, insertion-order
+# names). DeepPavlov/clinc150 (the dataset this repo's handler uses) orders its 150
+# labels alphabetically instead — verified via AutoConfig id2label vs the dataset's
+# "intents" subset: 0/150 label names match at the same index. Using that checkpoint
+# as a teacher without a hand-built 150-entry permutation (like mnli's
+# teacher_label_map) would silently distill from scrambled labels, so it's omitted
+# rather than wired in incorrectly.
+
+inherit: ../_shared.yaml
+
+data:
+  task: clinc150
+
+logging:
+  logging_steps: 50
+
+checkpointing:
+  save_steps: 500
+
+evaluation:
+  eval_steps: 500

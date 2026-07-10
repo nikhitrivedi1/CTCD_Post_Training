@@ -1,0 +1,12 @@
+# Ablation 03: co-train student + LM-pretrained teacher.
+
+inherit: base.yaml
+
+model:
+  teacher:
+    name: bert-base-uncased
+    freeze: false
+
+distillation:
+  beta_h: 1.0
+  beta_s: 0.0

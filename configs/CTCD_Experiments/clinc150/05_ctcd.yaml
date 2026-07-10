@@ -1,0 +1,13 @@
+# Ablation 05: full CTCD (co-distillation + co-training), non-SFT teacher.
+# Equivalent intent to legacy configs/classification/.../06_ctcd_sample.yaml.
+
+inherit: base.yaml
+
+model:
+  teacher:
+    name: bert-base-uncased
+    freeze: false
+
+distillation:
+  beta_h: 1.0
+  beta_s: 1.0
