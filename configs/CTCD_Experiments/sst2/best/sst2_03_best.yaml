@@ -1,0 +1,10 @@
+# Best Part 1 sweep run for this ablation by student accuracy (from W&B).
+# task=sst2 ablation_index=3 inherit=03_cotrain_base.yaml
+# metric=accuracy score=0.9151376146788992
+# wandb_run=p1_sst2_a03_lr1em5_b16_c1p0-20260710-0927Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Experiments/runs/p1_sst2_a03_lr1em5_b16_c1p0-20260710-0927Z
+
+inherit: ../03_cotrain_base.yaml
+training:
+  learning_rate: 1e-5
+  batch_size: 16
+  max_grad_norm: 1

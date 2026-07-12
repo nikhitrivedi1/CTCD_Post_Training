@@ -1,0 +1,10 @@
+# Best Part 1 sweep run for this ablation by student accuracy (from W&B).
+# task=sst2 ablation_index=2 inherit=02_kd_frozen_sft.yaml
+# metric=accuracy score=0.9174311926605504
+# wandb_run=p1_sst2_a02_lr1em5_b16_c0p0-20260710-0721Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Experiments/runs/p1_sst2_a02_lr1em5_b16_c0p0-20260710-0721Z
+
+inherit: ../02_kd_frozen_sft.yaml
+training:
+  learning_rate: 1e-5
+  batch_size: 16
+  max_grad_norm: 0
