@@ -1,7 +1,7 @@
 # Best Part 1 sweep run for this ablation by student accuracy (from W&B).
 # task=clinc150 ablation_index=3 inherit=03_cotrain_base.yaml
 # metric=accuracy score=0.9686666666666668
-# wandb_run=p1_clinc150_a03_lr5em5_b16_c0p0-20260710-1710Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Experiments/runs/p1_clinc150_a03_lr5em5_b16_c0p0-20260710-1710Z
+# wandb_run=p1_clinc150_a03_lr5em5_b16_c0p0-20260710-1710Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Part1_Search/runs/p1_clinc150_a03_lr5em5_b16_c0p0-20260710-1710Z
 
 inherit: ../03_cotrain_base.yaml
 training:
