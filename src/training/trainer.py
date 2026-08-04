@@ -406,13 +406,13 @@ class DistillationTrainer(FinetuningTrainer):
         labels = inputs.get("labels", None)
 
         # Debugging: Print labels
-        if self.state.global_step % 2 == 0:
-            tp = teacher_logits.softmax(-1)
-            print(f"[teach] step={self.state.global_step} "
-                f"acc={(teacher_logits.argmax(-1) == labels).float().mean().item():.4f} "
-                f"maxprob={tp.max(-1).values.mean().item():.4f} "
-                f"logit_absmax={teacher_logits.abs().max().item():.2f} "
-                f"pred_hist={teacher_logits.argmax(-1).bincount(minlength=tp.shape[-1]).tolist()}")
+        # if self.state.global_step % 2 == 0:
+        #     tp = teacher_logits.softmax(-1)
+        #     print(f"[teach] step={self.state.global_step} "
+        #         f"acc={(teacher_logits.argmax(-1) == labels).float().mean().item():.4f} "
+        #         f"maxprob={tp.max(-1).values.mean().item():.4f} "
+        #         f"logit_absmax={teacher_logits.abs().max().item():.2f} "
+        #         f"pred_hist={teacher_logits.argmax(-1).bincount(minlength=tp.shape[-1]).tolist()}")
 
         # Always-on teacher accuracy / prediction-distribution monitoring, so a corrupted
         # in-loop teacher (e.g. missing an input the student doesn't need but the teacher
