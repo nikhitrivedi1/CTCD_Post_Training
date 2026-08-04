@@ -1,7 +1,0 @@
-# Formatting SFT: Qwen3.5-4B
-#
-# Run:
-#   ADAPTER=outputs/ocr_sft-lora_qwen35-4b \
-#     sbatch scripts/slurm/run_training.sh fmt_sft-lora_qwen35-4b configs/ocr/formatting/qwen35-4b/00_sft.yaml
-
-inherit: base.yaml

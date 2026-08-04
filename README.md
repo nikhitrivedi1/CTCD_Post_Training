@@ -1,291 +1,135 @@
-# Forge
+# Beyond Frozen Teachers: Co-Training and Co-Distillation for Task-Specific Fine-Tuning
 
-A universal, config-driven framework for fine-tuning, knowledge distillation, and reinforcement learning across any HuggingFace model pair.
+**Train students and teachers together, with and without co-distillation.**
 
-## Overview
+Nikhil Trivedi · Karl Ni · Karthik Ravi · Mohammed Ali Sehral
+[PASTE AFFILIATION HERE]
 
-Forge unifies three training paradigms under a single config-driven interface:
+[Project Page]([PASTE PROJECT PAGE LINK HERE])
+[SPIE Paper]([PASTE PAPER LINK HERE])
+[MIT License](LICENSE)
 
-- **Fine-tuning (SFT)**: Standard supervised training with cross-entropy loss
-- **Knowledge Distillation (KD)**: Transfer knowledge from a teacher to a smaller student via KL divergence, feature matching, and attention transfer
-- **Reinforcement Learning (RL)**: Post-training with GRPO, DPO, and other policy optimization methods
+Standard knowledge distillation freezes a teacher and treats it as a fixed source of soft labels for a student. This repository generalizes that setup: the teacher can train alongside the student (**co-training**), and can itself receive a distillation signal back from the student (**co-distillation**). Given student loss weights `alpha_h, alpha_s` and teacher loss weights `beta_h, beta_s`:
 
-Every experiment is a YAML config change, not a code change. The framework handles model loading, training loops, checkpointing, SLURM job chaining, and W&B logging. You bring the config.
-
-### Key Features
-
-- **Universal**: Any HuggingFace model pair - encoders (BERT), decoders (Llama), VLMs (Qwen-VL)
-- **Multi-task**: Classification, translation, OCR, or custom tasks
-- **Three training modes**: SFT, KD (frozen/co-trained teacher), RL (GRPO/DPO)
-- **Config-driven**: YAML configs with inheritance, no code changes between experiments
-- **Production-ready**: SLURM integration, automatic job chaining, W&B tracking
-- **Cross-platform**: Local (Apple Silicon MPS/CPU), Google Colab, HPC clusters
-
-### Two Complementary Tools
-
-| | **Forge** | **Workbench** |
-|---|---|---|
-| **Purpose** | Train models | Analyze trained models |
-| **Entry point** | `forge.py` | `workbench/analyze.py` |
-| **Runtime** | Hours to days | Minutes |
-| **Resources** | GPU cluster, full datasets | Local CPU, sampled data |
-
-**Forge** is the training engine - it runs large-scale experiments on GPU clusters with checkpointing, SLURM job chaining, and W&B logging. You point it at a config and let it run.
-
-**Workbench** is the analysis bench - after training, use it for rapid post-hoc analysis: linear probing, attention entropy, prediction disagreement, CKA similarity. Runs in minutes on CPU with sampled data.
-
-```bash
-# Train a model (hours)
-python forge.py --config configs/classification/mnli/distilbert/bert-base/ablations/01_kd_frozen-base.yaml
-
-# Analyze the result (minutes)
-python workbench/analyze.py --test probe --teacher textattack/bert-base-uncased-MNLI --student outputs/mnli_00 --task mnli
+```text
+L_student = alpha_h * CE(y, y_S) + alpha_s * KD(y_T || y_S)
+L_teacher = beta_h  * CE(y, y_T) + beta_s  * KD(y_S || y_T)
 ```
 
-See also: [Forge vs Unsloth](docs/forge-vs-unsloth.md)
+Traditional distillation sets `beta_h = beta_s = 0` (frozen teacher). Co-training sets `beta_h = 1, beta_s = 0` (the teacher only trains on its own labels). **CTCD** sets `beta_h = beta_s = 1` — the teacher trains on both, so it learns from the student while teaching it. This repository contains the `DistillationTrainer` (`src/training/trainer.py`) that implements all three regimes, the config suite used to sweep them across 8 classification tasks, and the SLURM scripts used to produce the paper's results.
+
+## Highlights
+
+- Every point on the spectrum from plain fine-tuning to full CTCD is a YAML change, not a code change.
+- The teacher is a first-class trainable model, not a fixed label source — `create_optimizer()` adds its parameters to the optimizer whenever it's unfrozen.
+- Reproduces the paper's full experiment pipeline: hyperparameter grid search → loss-coefficient search → temperature scaling → multi-seed replication.
+- Covers 7 GLUE tasks (CoLA, MNLI, MRPC, QNLI, QQP, RTE, SST-2) plus CLINC150 intent classification, DistilBERT student / BERT-base teacher.
+- `tests/unit/test_trainer.py` verifies the mechanism directly, e.g. that CTCD loss exceeds pure co-training loss, and that co-distillation gradients don't leak across the student/teacher boundary.
+
+
 
 ## Quick Start
-
-### Installation
 
 ```bash
 conda env create -f environment.yml
 conda activate forge-ctcd
 source scripts/env/init.sh
+
+cp .env.example .env   # fill in WANDB_API_KEY, HF_TOKEN, etc.
+python test_setup.py   # verify the environment
 ```
 
-`init.sh` installs conda hooks that automatically set `PATH`, `LD_LIBRARY_PATH`,
-and `HF_HOME` on every `conda activate forge-ctcd`. Run it whenever the
-environment is created or recreated. See [scripts/README.md](scripts/README.md)
-for details.
+`init.sh` installs conda activate/deactivate hooks (`PATH`, `LD_LIBRARY_PATH`, `HF_HOME`) and Python dependencies from `requirements.txt` (a lockfile generated via `uv` from `pyproject.toml` — don't hand-edit it). Run `init.sh` once per environment creation.
 
-### Environment Variables
-
-Copy `.env.example` to `.env` and fill in your values:
+Then launch a single experiment:
 
 ```bash
-cp .env.example .env
+python forge.py --config configs/CTCD_Experiments/sst2/05_ctcd.yaml
 ```
 
-The `.env` file is sourced automatically on `conda activate forge-ctcd` and provides
-`HF_TOKEN`, `WANDB_API_KEY`, and other secrets. It is gitignored, so each
-machine needs its own copy.
 
-### Verify Installation
+
+## Running CTCD Experiments
+
+
+
+### Ablation ladder
+
+Every task in `configs/CTCD_Experiments/{task}/` defines the same six-point spectrum from SFT baseline to full CTCD:
+
+
+| Config                   | Description                                                       |
+| ------------------------ | ----------------------------------------------------------------- |
+| `00_sft.yaml`            | Student fine-tuned alone, no teacher                              |
+| `01_kd_frozen_base.yaml` | Frozen, pretrained-only teacher (traditional KD)                  |
+| `02_kd_frozen_sft.yaml`  | Frozen, task-fine-tuned teacher                                   |
+| `03_cotrain_base.yaml`   | Co-training with a pretrained-only teacher (`beta_h=1, beta_s=0`) |
+| `04_cotrain_sft.yaml`    | Co-training with a task-fine-tuned teacher                        |
+| `05_ctcd.yaml`           | Full CTCD: co-training + co-distillation (`beta_h=1, beta_s=1`)   |
+
+
+Supported tasks: `cola`, `mnli`, `mrpc`, `qnli`, `qqp`, `rte`, `sst2` (GLUE) and `clinc150`. **Coverage is not fully symmetric** — `clinc150` only has ablations `00`, `01`, `03`, `05` (no fine-tuned-teacher variants), and `sst2` has no `best_seed/` replication configs.
+
+Useful `forge.py` flags: `--run_name` (custom output dir), `--max_steps` (smoke test), `--debug` (routes W&B to a `Forge-Test` project instead of `CTCD_Experiments`), `--force` (overwrite an existing named run), `--resume <output_dir>`.
+
+### Paper experiment pipeline
+
+The full study is a sequence of SLURM sweeps in `scripts/slurm/`, each a 4-way job array with checkpoint/resubmit on SLURM's `SIGUSR1` signal:
+
+1. **Part 1 — hyperparameter grid** (`run_ctcd_part1_sweep.sh`): all 6 tasks × 6 ablations × learning rate × batch size × gradient-clip mode.
+2. **Part 2 — loss-coefficient search** (`run_ctcd_part2_search.sh`): sweeps `alpha`/`beta` presets over each task's Part-1 winner, constrained per ablation (frozen-teacher ablations only sweep `alpha`; CTCD sweeps both). `run_ctcd_part2_best_weights.sh` retrains the winning cells.
+3. **Temperature scaling** (`run_ctcd_temp_scale.sh`): sweeps softmax temperature (2/3/4/5) on frozen-teacher best configs.
+4. **Seed replication**: `run_ctcd_best_seed_sweep.sh` replays each `best_seed/*.yaml` using the seed baked into that file; `run_ctcd_best_seeds_sweep.sh` instead takes each `best/*.yaml` (Part-1 winner) and sweeps a configurable list of seeds across it. These are deliberately different sweeps — don't confuse the two.
 
 ```bash
-python test_setup.py
+mkdir -p logs
+sbatch scripts/slurm/run_ctcd_part1_sweep.sh
 ```
 
-### Basic Usage
+See `[configs/CTCD_Experiments/CTCD_PART1_TEAM_RUNBOOK.md](configs/CTCD_Experiments/CTCD_PART1_TEAM_RUNBOOK.md)` for a full walkthrough (branch setup, environment refresh, smoke test, splitting a sweep across collaborators).
+
+## Reproducing Paper Results
+
+- `configs/CTCD_Experiments/{task}/best/` — the winning hyperparameter cell per task/ablation from the Part 1 grid search.
+- `configs/CTCD_Experiments/{task}/best_seed/` — those winning configs replayed across multiple random seeds, for the variance numbers reported in the paper.
+- `configs/CTCD_Experiments/_shared.yaml` — defaults common to every task (model pair, training cadence, $\alpha_h=1.0, \alpha_s=1.0$).
+
+
+
+## Repository Layout
+
+```text
+forge.py               entry point: YAML config -> training run
+configs/                base task configs + CTCD ablations, best/best_seed configs, runbooks
+src/training/           DistillationTrainer (core CTCD mechanism), loss strategies
+scripts/slurm/          SLURM sweep scripts for the paper's experiment pipeline
+tests/                  pytest suite, including CTCD-specific correctness tests
+```
+
+
+
+## Testing
 
 ```bash
-# New run (auto-named with timestamp)
-python forge.py --config configs/classification/mnli/distilbert/bert-base/ablations/01_kd_frozen-base.yaml
-
-# New run with custom name
-python forge.py --run_name mnli_00 --config configs/classification/mnli/distilbert/00_sft.yaml
-
-# Resume existing run
-python forge.py --resume outputs/classification/mnli/distilbert/00_sft/20260304-1200Z
-
-# Overwrite existing named run
-python forge.py --run_name mnli_00 --config configs/... --force
-
-# Local testing (10 steps)
-python forge.py --config configs/... --max_steps 10
-
-# SLURM (with auto-requeue)
-sbatch scripts/slurm/run_training.sh configs/your_config.yaml
+pytest tests/unit/test_trainer.py
 ```
 
-See [docs/guides/run-options.md](docs/guides/run-options.md) for complete CLI reference.
+This is the correctness reference for the CTCD mechanism itself — dedicated test classes cover the co-training teacher CE path (`TestCoTrainingTeacherCE`), that CTCD loss exceeds pure co-training loss (`test_ctcd_loss_larger_than_cotraining_only`), and that gradients from co-distillation don't leak across the student/teacher boundary incorrectly (`test_codistillation_student_kl_does_not_backprop_into_teacher`).
 
-## Training Modes
+## Citation
 
-### Fine-Tuning (SFT)
-
-Standard supervised training. The baseline for all experiments.
-
-```yaml
-model:
-  name: distilbert-base-uncased
-# No teacher, no RL - just CE loss
+```bibtex
+@inproceedings{trivedi2026ctcd,
+  title     = {Beyond Frozen Teachers: Co-Training and Co-Distillation for Task-Specific Fine-Tuning},
+  author    = {Trivedi, Nikhil and Ni, Karl and Ravi, Karthik and Sehral, Mohammed Ali},
+  booktitle = {[PASTE VENUE HERE]},
+  year      = {2026},
+  note      = {[PASTE DOI/LINK HERE]}
+}
 ```
 
-### Knowledge Distillation (KD)
 
-Transfer knowledge from a larger teacher to a smaller student. Supports frozen or co-trained teachers, with three distillation signal types that can be combined:
-
-- **Response (R)**: KL divergence on output logits
-- **Feature (F)**: Hidden state alignment via MSE or cosine similarity
-- **Attention (A)**: Attention weight transfer via KL divergence
-
-```yaml
-model:
-  name: distilbert-base-uncased
-  teacher:
-    name: bert-base-uncased
-    freeze: true          # frozen or co-trained
-
-distillation:
-  temperature: 2.0
-  alpha: 0.5              # balance between KL and CE loss
-  feature_weight: 0.1     # optional feature matching
-  attention_weight: 0.1   # optional attention transfer
-```
-
-### Reinforcement Learning (RL)
-
-Post-training with policy optimization. Supports multiple algorithms and reward sources.
-
-```yaml
-model:
-  name: qwen3vl-2b
-rl:
-  algorithm: grpo          # grpo | dpo | kto
-  reward: verifiable       # verifiable | teacher | judge
-  reference: self          # KL anchor: self | teacher | path
-  num_generations: 8
-```
-
-## Supported Tasks
-
-| Task | Models | Fine-tuning | Eval Metric |
-|------|--------|-------------|-------------|
-| **Classification** (MNLI, QQP, SST-2, CoLA, MRPC, QNLI, RTE, WNLI) | Encoder (BERT, DistilBERT) | Full params (66M-110M) | Accuracy / F1 / MCC |
-| **Translation** (Europarl EN-FR) | Decoder (Llama 3.2) | LoRA (1B-3B) | BLEU |
-| **OCR** (olmocr-mix) | VLM (Qwen3-VL) | LoRA (2B-7B) | Edit similarity |
-
-### LoRA Support
-
-For large models (1B+ parameters), LoRA keeps memory usage manageable:
-
-```yaml
-training:
-  use_lora: true
-  lora:
-    r: 16
-    alpha: 16
-    dropout: 0.05
-    target_modules: ["q_proj", "v_proj"]
-```
-
-## Architecture
-
-```
-forge/
-├── configs/              # YAML configurations with inheritance
-│   ├── base.yaml         # Shared defaults
-│   ├── classification/   # GLUE configs (MNLI, QQP, SST-2, CoLA, MRPC, QNLI, RTE, WNLI)
-│   ├── translation/      # Europarl EN-FR configs
-│   └── ocr/              # olmocr-mix configs
-├── src/
-│   ├── data/             # Dataset loaders
-│   ├── models/           # Model loading (generic)
-│   ├── training/         # Trainer classes
-│   │   ├── trainer.py    # FinetuningTrainer, DistillationTrainer
-│   │   ├── rl_trainer.py # RLTrainer (planned, not yet implemented)
-│   │   └── losses.py     # KL, feature, attention losses
-│   ├── evaluation/       # Metrics
-│   └── utils/            # Config, checkpointing, environment
-├── workbench/            # Post-hoc analysis
-│   ├── analyze.py        # CLI: --test probe|cka|attention-entropy|disagreement|all
-│   ├── probing.py        # Linear probing per layer
-│   ├── cka.py            # CKA similarity between layers
-│   ├── attention.py      # Attention entropy analysis
-│   └── disagreement.py   # Teacher-student prediction differences
-├── scripts/              # Execution & utility scripts
-│   ├── slurm/            # SLURM job scripts + shared utilities
-│   ├── eval/             # Evaluation scripts
-│   ├── data/             # Data preparation
-│   └── models/           # HF Hub push/pull
-├── test_setup.py         # Environment verification
-└── forge.py            # Entry point
-```
-
-## Key Components
-
-### Trainer Hierarchy
-
-```
-HuggingFace Trainer
-  ├── FinetuningTrainer            # SFT: LoRA, VLM collation, eval, checkpointing
-  │     └── DistillationTrainer    # + teacher, KL/feature/attention loss
-  └── trl.GRPOTrainer
-        └── RLTrainer              # planned: reward dispatch, teacher-as-reward-model
-```
-
-Config determines which trainer is used. No code changes needed.
-
-### Config System
-
-- YAML-based with inheritance (`inherit: base.yaml`)
-- Environment-specific overrides
-- All hyperparameters in one place
-
-### SLURM Integration
-
-- Automatic job chaining for runs exceeding time limits
-- Signal handling (SIGUSR1) for clean checkpointing
-- W&B run continuation across restarts
-
-## Environment-Specific Notes
-
-### Local (M2/MPS/CPU)
-
-- Suitable for BERT-size models
-- Apple Silicon automatically uses MPS GPU acceleration
-- Use `batch_size=8` for memory constraints
-- Test with `--max_steps 10` first
-
-### Google Colab (A100)
-
-- Full BERT experiments: ~3 hours
-- Llama with LoRA: ~6-8 hours
-
-### HPC/SLURM (H200/A100)
-
-- Production runs for large models
-- Auto-requeue handles time limits
-- Configure in `scripts/slurm/run_training.sh`
-
-```bash
-# Auto-named run (hierarchical output dir)
-sbatch scripts/slurm/run_training.sh configs/classification/mnli/distilbert/bert-base/ablations/01_kd_frozen-base.yaml
-
-# Named run (flat output dir)
-sbatch scripts/slurm/run_training.sh mnli_00 configs/classification/mnli/distilbert/00_sft.yaml
-
-# Force overwrite
-FORCE=1 sbatch scripts/slurm/run_training.sh mnli_00 configs/...
-
-# Testing on cluster (10 steps)
-MAX_STEPS=10 sbatch scripts/slurm/run_training.sh configs/...
-```
-
-Resume is automatic: if a job hits the SLURM time limit, it writes to
-`.incomplete_jobs` and the script auto-resubmits with `--resume`.
-
-## Development
-
-### Code Quality
-
-```bash
-# Install hooks (one-time setup)
-pre-commit install
-
-# Run manually
-pre-commit run --all-files
-```
 
 ## License
 
-MIT License - see LICENSE file
-
-## References
-
-- Hinton et al. (2015): "Distilling the Knowledge in a Neural Network"
-- Sanh et al. (2019): "DistilBERT, a distilled version of BERT"
-- Shao et al. (2024): "DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models" (GRPO)
-- Rafailov et al. (2023): "Direct Preference Optimization: Your Language Model is Secretly a Reward Model"
+MIT License — see [LICENSE](LICENSE).

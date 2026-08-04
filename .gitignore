@@ -98,3 +98,16 @@ docs/analysis/data/ablation_history.json
 # Workbench results (keep .md summaries, exclude raw output)
 workbench/results/**/*.json
 workbench/results/**/*.log
+
+
+# Files Unrelated to CTCD
+workbench/
+chains/
+
+# Configs Out of Scope
+configs/examples/
+configs/ocr/
+configs/translation/
+
+# Docs Out of Scope
+docs/

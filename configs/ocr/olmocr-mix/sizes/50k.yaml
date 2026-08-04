@@ -1,3 +1,0 @@
-# 50K training samples
-data:
-  max_train_samples: 50000

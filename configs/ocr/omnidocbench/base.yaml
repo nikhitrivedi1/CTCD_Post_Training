@@ -1,8 +1,0 @@
-# OmniDocBench dataset base configuration
-
-inherit: ../base.yaml
-
-data:
-  dataset: omnidocbench
-  data_dir: data/ocr/omnidocbench
-

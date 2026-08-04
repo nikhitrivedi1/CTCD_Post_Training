@@ -1,6 +1,0 @@
-# olmocr-mix: Qwen2.5-VL-3B
-
-inherit: ../base.yaml
-
-model:
-  name: Qwen/Qwen2.5-VL-3B-Instruct

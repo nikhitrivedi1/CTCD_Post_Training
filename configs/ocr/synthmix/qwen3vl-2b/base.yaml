@@ -1,6 +1,0 @@
-# Synthmix: Qwen3-VL-2B
-
-inherit: ../base.yaml
-
-model:
-  name: Qwen/Qwen3-VL-2B-Instruct

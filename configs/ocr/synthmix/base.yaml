@@ -1,8 +1,0 @@
-# Synthmix dataset base configuration
-
-inherit: ../base.yaml
-
-data:
-  dataset: synthmix
-  data_dir: data/ocr/synthmix
-

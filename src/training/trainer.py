@@ -1,5 +1,6 @@
 """Forge trainers: FinetuningTrainer (base) and DistillationTrainer (KD)."""
 
+import inspect
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,6 +21,16 @@ from .losses import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _inputs_for_model(inputs: Dict[str, Any], model: torch.nn.Module) -> Dict[str, Any]:
+    """Restrict a batch dict to the keys ``model.forward`` actually accepts.
+
+    Student and teacher models can have different forward signatures (e.g. DistilBERT
+    doesn't accept ``token_type_ids``, BERT does); each must only receive what it can consume.
+    """
+    accepted = set(inspect.signature(model.forward).parameters.keys())
+    return {k: v for k, v in inputs.items() if k in accepted}
 
 
 class FinetuningTrainer(Trainer):
@@ -110,6 +121,10 @@ class DistillationTrainer(FinetuningTrainer):
         # Without this, self.log() fires every step, creating noisy W&B charts.
         self._metric_accumulator = {}
         self._metric_count = 0
+
+        # Per-class teacher prediction counts, accumulated across the same logging_steps
+        # window as _metric_accumulator (reset alongside it) to derive teacher_pred_top1_frac.
+        self._teacher_pred_counts: Optional[torch.Tensor] = None
 
         # Filled in on_pre_optimizer_step (co-training) for the next HF training log bundle.
         self._last_student_teacher_grad_norms: Optional[Tuple[float, float]] = None
@@ -248,6 +263,19 @@ class DistillationTrainer(FinetuningTrainer):
             self._last_student_teacher_grad_norms = None
         return super().log(logs, start_time=start_time)
 
+    def _set_signature_columns_if_needed(self) -> None:
+        """Widen HF's retained-columns set to also cover the teacher's forward signature.
+
+        HF's stock implementation only inspects the student model, so batch columns the
+        student doesn't need (e.g. token_type_ids for a DistilBERT student) get dropped
+        from the dataset before the teacher (e.g. BERT) ever sees them - even though the
+        teacher's own forward signature accepts and needs them.
+        """
+        super()._set_signature_columns_if_needed()
+        if self.teacher is not None:
+            teacher_columns = set(inspect.signature(self.teacher.forward).parameters.keys())
+            self._signature_columns = list(set(self._signature_columns) | teacher_columns)
+
     def create_optimizer(self):
         """
         Create optimizer, including teacher parameters if co-training.
@@ -317,8 +345,10 @@ class DistillationTrainer(FinetuningTrainer):
         if self.output_attentions:
             model_kwargs["output_attentions"] = True
 
-        # Get model predictions
-        outputs = model(**inputs, **model_kwargs)
+        # Get model predictions. Each model receives only the batch columns its own
+        # forward signature accepts (student and teacher may need different subsets,
+        # e.g. token_type_ids for a BERT teacher paired with a DistilBERT student).
+        outputs = model(**_inputs_for_model(inputs, model), **model_kwargs)
 
         # During evaluation, just return CE loss (skip distillation loss computation)
         # Distillation loss requires hidden_states/attentions which are disabled during
@@ -328,14 +358,15 @@ class DistillationTrainer(FinetuningTrainer):
         model_logits = outputs.logits
 
         # Get teacher predictions
+        teacher_inputs = _inputs_for_model(inputs, self.teacher)
         if self.freeze_teacher:
             # Traditional distillation: no gradients through teacher
             with torch.no_grad():
-                teacher_outputs = self.teacher(**inputs, **model_kwargs)
+                teacher_outputs = self.teacher(**teacher_inputs, **model_kwargs)
                 teacher_logits = teacher_outputs.logits
         else:
             # Co-training: gradients flow through teacher
-            teacher_outputs = self.teacher(**inputs, **model_kwargs)
+            teacher_outputs = self.teacher(**teacher_inputs, **model_kwargs)
             teacher_logits = teacher_outputs.logits
 
         # Remap teacher logits if label ordering differs from dataset
@@ -373,6 +404,32 @@ class DistillationTrainer(FinetuningTrainer):
 
         # Get labels if available
         labels = inputs.get("labels", None)
+
+        # Debugging: Print labels
+        if self.state.global_step % 2 == 0:
+            tp = teacher_logits.softmax(-1)
+            print(f"[teach] step={self.state.global_step} "
+                f"acc={(teacher_logits.argmax(-1) == labels).float().mean().item():.4f} "
+                f"maxprob={tp.max(-1).values.mean().item():.4f} "
+                f"logit_absmax={teacher_logits.abs().max().item():.2f} "
+                f"pred_hist={teacher_logits.argmax(-1).bincount(minlength=tp.shape[-1]).tolist()}")
+
+        # Always-on teacher accuracy / prediction-distribution monitoring, so a corrupted
+        # in-loop teacher (e.g. missing an input the student doesn't need but the teacher
+        # does) is visible in training logs rather than only discoverable via ad hoc
+        # instrumentation. Restricted to classification (1 label per example) - seq2seq
+        # labels are per-token sequences where argmax-vs-label equality isn't a meaningful
+        # accuracy signal.
+        teacher_accuracy = None
+        if labels is not None and labels.dim() == 1:
+            with torch.no_grad():
+                teacher_preds = teacher_logits.argmax(-1)
+                teacher_accuracy = (teacher_preds == labels).float().mean()
+                pred_counts = teacher_preds.bincount(minlength=teacher_logits.size(-1)).float()
+                if (self._teacher_pred_counts is None
+                        or self._teacher_pred_counts.numel() != pred_counts.numel()):
+                    self._teacher_pred_counts = torch.zeros_like(pred_counts)
+                self._teacher_pred_counts += pred_counts
 
         # Build kwargs for loss strategy
         loss_kwargs = {}
@@ -433,6 +490,8 @@ class DistillationTrainer(FinetuningTrainer):
             "teacher_entropy": teacher_entropy.item(),
             "student_entropy": student_entropy.item(),
         }
+        if teacher_accuracy is not None:
+            step_dict["teacher_accuracy"] = teacher_accuracy.item()
         for name, value in student_loss_output.components.items():
             step_dict[name] = value.item() if torch.is_tensor(value) else value
         if teacher_loss_output is not None:
@@ -448,6 +507,13 @@ class DistillationTrainer(FinetuningTrainer):
         if (hasattr(self, 'args') and self.args.logging_steps > 0
                 and self._metric_count >= self.args.logging_steps):
             avg_dict = {k: v / self._metric_count for k, v in self._metric_accumulator.items()}
+            # Top1 fraction must come from aggregated counts, not an average of per-step
+            # fractions - the latter is a biased estimate when class balance shifts step to step.
+            if self._teacher_pred_counts is not None and self._teacher_pred_counts.sum() > 0:
+                avg_dict["teacher_pred_top1_frac"] = (
+                    self._teacher_pred_counts.max() / self._teacher_pred_counts.sum()
+                ).item()
+                self._teacher_pred_counts = torch.zeros_like(self._teacher_pred_counts)
             self.log(avg_dict)
             self._metric_accumulator = {}
             self._metric_count = 0

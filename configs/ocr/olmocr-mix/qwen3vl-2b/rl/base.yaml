@@ -1,7 +1,0 @@
-# olmocr-mix RL base: Qwen3-VL-2B
-
-inherit: ../base.yaml
-
-training:
-  num_epochs: 1
-  learning_rate: 1e-6

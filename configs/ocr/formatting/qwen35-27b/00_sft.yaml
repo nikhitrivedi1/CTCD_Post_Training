@@ -1,7 +1,0 @@
-# Formatting SFT: Qwen3.5-27B
-#
-# Run:
-#   ADAPTER=outputs/teacher_ocr_sft \
-#     sbatch scripts/slurm/run_training.sh teacher_fmt_sft configs/ocr/formatting/qwen35-27b/00_sft.yaml
-
-inherit: base.yaml

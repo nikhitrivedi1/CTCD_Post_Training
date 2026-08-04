@@ -1,3 +1,0 @@
-# KD base: Nanonets-OCR2 teacher -> Qwen2.5-VL-3B model
-
-inherit: ../base.yaml
