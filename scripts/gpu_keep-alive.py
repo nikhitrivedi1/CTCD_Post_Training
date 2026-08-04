@@ -49,7 +49,8 @@ def keepalive(interval: int = 60):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="GPU keepalive for SLURM jobs")
-    parser.add_argument("--interval", type=int, default=60,
-                        help="Seconds between GPU pings (default: 60)")
+    parser.add_argument(
+        "--interval", type=int, default=60, help="Seconds between GPU pings (default: 60)"
+    )
     args = parser.parse_args()
     keepalive(args.interval)

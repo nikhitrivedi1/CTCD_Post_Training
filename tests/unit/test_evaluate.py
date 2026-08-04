@@ -32,18 +32,20 @@ from src.evaluation.metrics import (
     get_compute_metrics,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _synthetic_dataset(n=8, seq_len=16, num_labels=3, vocab=1000):
     torch.manual_seed(42)
-    return Dataset.from_dict({
-        "input_ids": torch.randint(0, vocab, (n, seq_len)).tolist(),
-        "attention_mask": torch.ones(n, seq_len, dtype=torch.long).tolist(),
-        "labels": torch.randint(0, num_labels, (n,)).tolist(),
-    })
+    return Dataset.from_dict(
+        {
+            "input_ids": torch.randint(0, vocab, (n, seq_len)).tolist(),
+            "attention_mask": torch.ones(n, seq_len, dtype=torch.long).tolist(),
+            "labels": torch.randint(0, num_labels, (n,)).tolist(),
+        }
+    )
 
 
 def _simple_metrics(eval_pred):
@@ -56,6 +58,7 @@ def _simple_metrics(eval_pred):
 # ---------------------------------------------------------------------------
 # evaluate_model
 # ---------------------------------------------------------------------------
+
 
 class TestEvaluateModel:
     """Tests using tiny_bert_model fixture + synthetic dataset."""
@@ -128,8 +131,8 @@ class TestEvaluateModel:
 # log_transfer_metrics
 # ---------------------------------------------------------------------------
 
-class TestLogTransferMetrics:
 
+class TestLogTransferMetrics:
     @patch("src.evaluation.evaluate.logger")
     def test_teacher_advantage_value(self, mock_logger):
         """teacher_advantage = teacher[metric] - model[metric]."""
@@ -199,8 +202,8 @@ class TestLogTransferMetrics:
 # _edit_distance
 # ---------------------------------------------------------------------------
 
-class TestEditDistance:
 
+class TestEditDistance:
     def test_identical_strings_zero(self):
         assert _edit_distance("abc", "abc") == 0
 
@@ -213,12 +216,15 @@ class TestEditDistance:
     def test_both_empty(self):
         assert _edit_distance("", "") == 0
 
-    @pytest.mark.parametrize("s1,s2,expected", [
-        ("abc", "axc", 1),    # substitution
-        ("ac", "abc", 1),     # insertion
-        ("abc", "ac", 1),     # deletion
-        ("kitten", "sitting", 3),
-    ])
+    @pytest.mark.parametrize(
+        "s1,s2,expected",
+        [
+            ("abc", "axc", 1),  # substitution
+            ("ac", "abc", 1),  # insertion
+            ("abc", "ac", 1),  # deletion
+            ("kitten", "sitting", 3),
+        ],
+    )
     def test_known_distances(self, s1, s2, expected):
         assert _edit_distance(s1, s2) == expected
 
@@ -232,8 +238,8 @@ class TestEditDistance:
 # get_compute_metrics routing
 # ---------------------------------------------------------------------------
 
-class TestGetComputeMetrics:
 
+class TestGetComputeMetrics:
     @pytest.mark.parametrize("task", ["mnli", "qqp", "sst2", "cola"])
     def test_classification_returns_classifier(self, task):
         fn = get_compute_metrics(task)
@@ -263,8 +269,8 @@ class TestGetComputeMetrics:
 # compute_classification_metrics (real evaluate library)
 # ---------------------------------------------------------------------------
 
-class TestComputeClassificationMetrics:
 
+class TestComputeClassificationMetrics:
     def test_returns_accuracy_f1_mcc(self):
         logits = np.array([[2.0, 0.1, 0.1], [0.1, 2.0, 0.1], [0.1, 0.1, 2.0], [2.0, 0.1, 0.1]])
         labels = np.array([0, 1, 2, 0])
@@ -296,8 +302,8 @@ class TestComputeClassificationMetrics:
 # compute_translation_metrics
 # ---------------------------------------------------------------------------
 
-class TestComputeTranslationMetrics:
 
+class TestComputeTranslationMetrics:
     @pytest.fixture
     def mock_tokenizer(self):
         tok = MagicMock()
@@ -324,9 +330,11 @@ class TestComputeTranslationMetrics:
     def test_replaces_neg100_in_labels(self, mock_tokenizer):
         """Labels with -100 padding should be replaced by pad_token_id."""
         decoded_labels = []
+
         def capture_decode(ids, **kw):
             decoded_labels.append(ids)
             return ["test" for _ in ids]
+
         mock_tokenizer.batch_decode = capture_decode
         fn = compute_translation_metrics(mock_tokenizer)
         labels = np.array([[1, 2, -100]])
@@ -341,8 +349,8 @@ class TestComputeTranslationMetrics:
 # compute_ocr_metrics
 # ---------------------------------------------------------------------------
 
-class TestComputeOcrMetrics:
 
+class TestComputeOcrMetrics:
     @pytest.fixture
     def mock_tokenizer(self):
         tok = MagicMock()
@@ -370,11 +378,13 @@ class TestComputeOcrMetrics:
     def test_partial_match(self, mock_tokenizer):
         # First call decodes predictions, second decodes labels
         call_count = [0]
+
         def side_effect(ids, **kw):
             call_count[0] += 1
             if call_count[0] == 1:
                 return ["abc"]
             return ["axc"]
+
         mock_tokenizer.batch_decode = side_effect
         fn = compute_ocr_metrics(mock_tokenizer)
         logits = np.ones((1, 5), dtype=np.int64)
@@ -406,10 +416,11 @@ class TestComputeOcrMetrics:
 # _remap_compute_metrics
 # ---------------------------------------------------------------------------
 
-class TestRemapComputeMetrics:
 
+class TestRemapComputeMetrics:
     def test_reorders_logits(self):
         """Logits columns should be reordered according to label_map."""
+
         def inner(eval_pred):
             logits, labels = eval_pred
             return {"col0": float(logits[0, 0])}
@@ -423,6 +434,7 @@ class TestRemapComputeMetrics:
 
     def test_passes_labels_unchanged(self):
         captured = {}
+
         def inner(eval_pred):
             captured["labels"] = eval_pred[1]
             return {}
@@ -437,8 +449,8 @@ class TestRemapComputeMetrics:
 # evaluate_model - column filtering and device inference
 # ---------------------------------------------------------------------------
 
-class TestEvaluateModelColumnFiltering:
 
+class TestEvaluateModelColumnFiltering:
     def test_extra_columns_removed(self, tiny_bert_model):
         """Dataset columns not in model.forward() signature get removed."""
         ds = _synthetic_dataset()
@@ -472,8 +484,8 @@ class TestEvaluateModelColumnFiltering:
 # log_pre_post_metrics
 # ---------------------------------------------------------------------------
 
-class TestLogPrePostMetrics:
 
+class TestLogPrePostMetrics:
     @patch("src.evaluation.evaluate.logger")
     def test_logs_model_pre(self, mock_logger):
         log_pre_post_metrics({"accuracy": 0.85, "loss": 0.5}, "model", "pre", to_wandb=False)
@@ -499,8 +511,8 @@ class TestLogPrePostMetrics:
 # evaluate_models
 # ---------------------------------------------------------------------------
 
-class TestEvaluateModels:
 
+class TestEvaluateModels:
     def test_model_only(self, tiny_bert_model):
         model_m, teacher_m = evaluate_models(
             model=tiny_bert_model,
@@ -555,8 +567,8 @@ class TestEvaluateModels:
 # run_evaluation
 # ---------------------------------------------------------------------------
 
-class TestRunEvaluation:
 
+class TestRunEvaluation:
     def test_basic_orchestration(self, tiny_bert_model):
         """Mock load_model to return tiny_bert_model, verify orchestration."""
         config = {
@@ -589,6 +601,7 @@ class TestRunEvaluation:
         }
         call_count = [0]
         models = [tiny_bert_model, tiny_bert_teacher]
+
         def fake_load(*args, **kwargs):
             idx = min(call_count[0], len(models) - 1)
             call_count[0] += 1
@@ -616,8 +629,10 @@ class TestRunEvaluation:
             "training": {"batch_size": 4},
         }
         prev = ({"accuracy": 0.7, "loss": 0.8}, None)
-        with patch("src.evaluation.evaluate.load_model", return_value=tiny_bert_model), \
-             patch("src.evaluation.evaluate.log_transfer_metrics") as mock_log:
+        with (
+            patch("src.evaluation.evaluate.load_model", return_value=tiny_bert_model),
+            patch("src.evaluation.evaluate.log_transfer_metrics") as mock_log,
+        ):
             run_evaluation(
                 config=config,
                 device="cpu",
@@ -662,8 +677,10 @@ class TestRunEvaluation:
             "model": {"name": "bert-base", "init": "pretrained"},
             "training": {"batch_size": 4},
         }
-        with patch("src.evaluation.evaluate.load_model", return_value=tiny_bert_model), \
-             patch("src.evaluation.evaluate.evaluate_models") as mock_em:
+        with (
+            patch("src.evaluation.evaluate.load_model", return_value=tiny_bert_model),
+            patch("src.evaluation.evaluate.evaluate_models") as mock_em,
+        ):
             mock_em.return_value = ({"loss": 0.5}, None)
             run_evaluation(
                 config=config,

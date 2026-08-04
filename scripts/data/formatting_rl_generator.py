@@ -232,29 +232,64 @@ RL_CATEGORIES = {
 
 # Headings pool (shared across categories, short)
 HEADINGS = [
-    "Overview", "Summary", "Results", "Analysis", "Key Points",
-    "Discussion", "Notes", "Details", "Findings", "Report",
-    "Section A", "Section B", "Part 1", "Part 2", "Highlights",
+    "Overview",
+    "Summary",
+    "Results",
+    "Analysis",
+    "Key Points",
+    "Discussion",
+    "Notes",
+    "Details",
+    "Findings",
+    "Report",
+    "Section A",
+    "Section B",
+    "Part 1",
+    "Part 2",
+    "Highlights",
 ]
 
 # Formatted phrase pools for parenthetical insertions
 BOLD_PHRASES = [
-    "the key concept", "this result", "total revenue", "the main finding",
-    "neural networks", "the algorithm", "our approach", "the model",
-    "critical threshold", "the primary factor", "observed behavior",
-    "important note", "key insight", "final answer",
+    "the key concept",
+    "this result",
+    "total revenue",
+    "the main finding",
+    "neural networks",
+    "the algorithm",
+    "our approach",
+    "the model",
+    "critical threshold",
+    "the primary factor",
+    "observed behavior",
+    "important note",
+    "key insight",
+    "final answer",
 ]
 
 ITALIC_PHRASES = [
-    "see note below", "as described above", "in this context",
-    "for reference", "emphasis added", "per the specification",
-    "in vitro", "et al.", "de novo", "ad hoc",
+    "see note below",
+    "as described above",
+    "in this context",
+    "for reference",
+    "emphasis added",
+    "per the specification",
+    "in vitro",
+    "et al.",
+    "de novo",
+    "ad hoc",
 ]
 
 STRIKE_PHRASES = [
-    "previously reported", "initial estimate", "old calculation",
-    "former value", "draft version", "original assumption",
-    "deprecated", "removed in v2", "superseded",
+    "previously reported",
+    "initial estimate",
+    "old calculation",
+    "former value",
+    "draft version",
+    "original assumption",
+    "deprecated",
+    "removed in v2",
+    "superseded",
 ]
 
 
@@ -262,10 +297,14 @@ STRIKE_PHRASES = [
 # Formatting injection (higher density than SFT)
 # ---------------------------------------------------------------------------
 
-def inject_dense_formatting(text: str, rng: random.Random,
-                            bold_density: float = 0.5,
-                            italic_density: float = 0.4,
-                            strike_density: float = 0.2) -> str:
+
+def inject_dense_formatting(
+    text: str,
+    rng: random.Random,
+    bold_density: float = 0.5,
+    italic_density: float = 0.4,
+    strike_density: float = 0.2,
+) -> str:
     """Inject formatting with higher density and more type combinations.
 
     Compared to the SFT generator, this uses:
@@ -348,8 +387,8 @@ def inject_dense_formatting(text: str, rng: random.Random,
 # Short list generation
 # ---------------------------------------------------------------------------
 
-def _generate_short_list(rng: random.Random, paragraphs: list[str],
-                         numbered: bool = False) -> str:
+
+def _generate_short_list(rng: random.Random, paragraphs: list[str], numbered: bool = False) -> str:
     """Generate a short formatted list (2-4 items).
 
     Args:
@@ -379,7 +418,7 @@ def _generate_short_list(rng: random.Random, paragraphs: list[str],
         # Short description (truncate paragraph)
         desc = rng.choice(paragraphs)
         words = desc.split()
-        desc = " ".join(words[:rng.randint(6, 12)])
+        desc = " ".join(words[: rng.randint(6, 12)])
         if not desc.endswith("."):
             desc += "."
 
@@ -391,6 +430,7 @@ def _generate_short_list(rng: random.Random, paragraphs: list[str],
 # ---------------------------------------------------------------------------
 # Page generation (short, formatting-dense)
 # ---------------------------------------------------------------------------
+
 
 def generate_rl_page(rng: random.Random, cat_name: str, cat_config: dict) -> str:
     """Generate a single short, formatting-dense page.
@@ -426,7 +466,8 @@ def generate_rl_page(rng: random.Random, cat_name: str, cat_config: dict) -> str
         para = rng.choice(paragraphs)
 
         para = inject_dense_formatting(
-            para, rng,
+            para,
+            rng,
             bold_density=rng.uniform(*bold_range),
             italic_density=rng.uniform(*italic_range),
             strike_density=rng.uniform(*strike_range),
@@ -465,7 +506,8 @@ def generate_rl_page(rng: random.Random, cat_name: str, cat_config: dict) -> str
         else:
             para = rng.choice(paragraphs)
             para = inject_dense_formatting(
-                para, rng,
+                para,
+                rng,
                 bold_density=rng.uniform(*bold_range),
                 italic_density=rng.uniform(*italic_range),
                 strike_density=rng.uniform(*strike_range),
@@ -479,9 +521,18 @@ def generate_rl_page(rng: random.Random, cat_name: str, cat_config: dict) -> str
 # Generation pipeline
 # ---------------------------------------------------------------------------
 
-def generate_category(output_dir: str, cat_name: str, cat_config: dict,
-                      num_pages: int, eval_frac: float, augment: bool,
-                      seed: int, width: int = 800, height: int = 1100) -> dict:
+
+def generate_category(
+    output_dir: str,
+    cat_name: str,
+    cat_config: dict,
+    num_pages: int,
+    eval_frac: float,
+    augment: bool,
+    seed: int,
+    width: int = 800,
+    height: int = 1100,
+) -> dict:
     """Generate RL training data for a single category.
 
     Args:
@@ -533,9 +584,13 @@ def generate_category(output_dir: str, cat_name: str, cat_config: dict,
 
         if augment and render_queue:
             from tqdm import tqdm
-            aug_rng = random.Random(seed + int(hashlib.md5(split.encode()).hexdigest(), 16) % (2**31))
-            for _, img_path, _ in tqdm(render_queue, desc=f"Augmenting {cat_name}/{split}",
-                                       unit="pg"):
+
+            aug_rng = random.Random(
+                seed + int(hashlib.md5(split.encode()).hexdigest(), 16) % (2**31)
+            )
+            for _, img_path, _ in tqdm(
+                render_queue, desc=f"Augmenting {cat_name}/{split}", unit="pg"
+            ):
                 if os.path.exists(img_path):
                     img = Image.open(img_path).convert("RGB")
                     img = augment_image(img, aug_rng)
@@ -544,17 +599,25 @@ def generate_category(output_dir: str, cat_name: str, cat_config: dict,
         cat_stats[split] = count
         stats = count_formatting_stats(markdown_dir)
         cat_stats["formatting"][split] = stats
-        logger.info(f"  {cat_name}/{split}: {count} pages, "
-                    f"bold={stats['bold']}, italic={stats['italic']}, "
-                    f"strike={stats['strikethrough']}")
+        logger.info(
+            f"  {cat_name}/{split}: {count} pages, "
+            f"bold={stats['bold']}, italic={stats['italic']}, "
+            f"strike={stats['strikethrough']}"
+        )
 
     return cat_stats
 
 
-def generate_dataset(output_dir: str, num_pages: int,
-                     categories: list[str] | None = None,
-                     eval_frac: float = 0.05, augment: bool = False,
-                     seed: int = 42, width: int = 800, height: int = 1100):
+def generate_dataset(
+    output_dir: str,
+    num_pages: int,
+    categories: list[str] | None = None,
+    eval_frac: float = 0.05,
+    augment: bool = False,
+    seed: int = 42,
+    width: int = 800,
+    height: int = 1100,
+):
     """Generate a full RL formatting dataset.
 
     Args:
@@ -571,8 +634,10 @@ def generate_dataset(output_dir: str, num_pages: int,
     all_stats = {}
     total_pages = 0
 
-    logger.info(f"Generating RL dataset: {num_pages} pages x {len(cats_to_gen)} categories "
-                f"= {num_pages * len(cats_to_gen)} total")
+    logger.info(
+        f"Generating RL dataset: {num_pages} pages x {len(cats_to_gen)} categories "
+        f"= {num_pages * len(cats_to_gen)} total"
+    )
     logger.info(f"Categories: {', '.join(cats_to_gen)}")
 
     for cat_name in cats_to_gen:
@@ -585,10 +650,15 @@ def generate_dataset(output_dir: str, num_pages: int,
 
         cat_seed = seed + int(hashlib.md5(cat_name.encode()).hexdigest(), 16) % (2**31)
         stats = generate_category(
-            output_dir, cat_name, cat_config,
-            num_pages=num_pages, eval_frac=eval_frac,
-            augment=augment, seed=cat_seed,
-            width=width, height=height,
+            output_dir,
+            cat_name,
+            cat_config,
+            num_pages=num_pages,
+            eval_frac=eval_frac,
+            augment=augment,
+            seed=cat_seed,
+            width=width,
+            height=height,
         )
         all_stats[cat_name] = stats
         total_pages += stats["train"] + stats["eval"]
@@ -615,23 +685,24 @@ def main():
     parser = argparse.ArgumentParser(
         description="Generate short, formatting-dense data for GRPO/RL training"
     )
-    parser.add_argument("--output_dir", type=str, required=True,
-                        help="Root output directory")
-    parser.add_argument("--num_pages", type=int, default=150,
-                        help="Pages per category (default: 150, total = 1500)")
-    parser.add_argument("--categories", type=str, nargs="*", default=None,
-                        help="Categories to generate (default: all). "
-                        f"Options: {', '.join(RL_CATEGORIES.keys())}")
-    parser.add_argument("--eval_frac", type=float, default=0.05,
-                        help="Fraction for eval split (default: 0.05)")
-    parser.add_argument("--augment", action="store_true",
-                        help="Apply scan-like augmentations")
-    parser.add_argument("--seed", type=int, default=42,
-                        help="Random seed")
-    parser.add_argument("--width", type=int, default=800,
-                        help="Rendered page width in pixels")
-    parser.add_argument("--height", type=int, default=1100,
-                        help="Rendered page height in pixels")
+    parser.add_argument("--output_dir", type=str, required=True, help="Root output directory")
+    parser.add_argument(
+        "--num_pages", type=int, default=150, help="Pages per category (default: 150, total = 1500)"
+    )
+    parser.add_argument(
+        "--categories",
+        type=str,
+        nargs="*",
+        default=None,
+        help=f"Categories to generate (default: all). Options: {', '.join(RL_CATEGORIES.keys())}",
+    )
+    parser.add_argument(
+        "--eval_frac", type=float, default=0.05, help="Fraction for eval split (default: 0.05)"
+    )
+    parser.add_argument("--augment", action="store_true", help="Apply scan-like augmentations")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--width", type=int, default=800, help="Rendered page width in pixels")
+    parser.add_argument("--height", type=int, default=1100, help="Rendered page height in pixels")
     args = parser.parse_args()
 
     generate_dataset(

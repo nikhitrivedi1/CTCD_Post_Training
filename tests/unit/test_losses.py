@@ -29,22 +29,36 @@ from src.training.losses import (
     get_loss_strategy,
 )
 
-
 # ---------------------------------------------------------------------------
 # 1. Universal properties (parametrized across ALL strategies)
 # ---------------------------------------------------------------------------
 
+
 class TestUniversalProperties:
     """Every strategy must satisfy these basic contracts."""
 
-    @pytest.fixture(params=[
-        "response_kl", "response_reverse-kl", "response_mse",
-        "response_cosine", "response_ce",
-        "feature_mse", "feature_cosine", "attention_kl",
-    ], ids=lambda x: x)
+    @pytest.fixture(
+        params=[
+            "response_kl",
+            "response_reverse-kl",
+            "response_mse",
+            "response_cosine",
+            "response_ce",
+            "feature_mse",
+            "feature_cosine",
+            "attention_kl",
+        ],
+        ids=lambda x: x,
+    )
     def strategy_output(
-        self, request, model_logits, target_logits, ce_loss,
-        mock_model_outputs, mock_target_outputs, bert_distilbert_mapping,
+        self,
+        request,
+        model_logits,
+        target_logits,
+        ce_loss,
+        mock_model_outputs,
+        mock_target_outputs,
+        bert_distilbert_mapping,
     ):
         """Build a strategy by registry name and compute its output."""
         name = request.param
@@ -60,7 +74,10 @@ class TestUniversalProperties:
             compute_kwargs["teacher_outputs"] = mock_target_outputs
 
         return strategy, strategy.compute(
-            model_logits, target_logits, ce_loss, **compute_kwargs,
+            model_logits,
+            target_logits,
+            ce_loss,
+            **compute_kwargs,
         )
 
     def test_returns_loss_output(self, strategy_output):
@@ -92,6 +109,7 @@ class TestUniversalProperties:
 # ---------------------------------------------------------------------------
 # 2. KL-specific tests
 # ---------------------------------------------------------------------------
+
 
 class TestKLDivergence:
     """Properties of compute_kl_divergence and KLDistillationLoss."""
@@ -134,6 +152,7 @@ class TestKLDivergence:
 # 3. Alpha weighting (parametrized across response strategies)
 # ---------------------------------------------------------------------------
 
+
 class TestAlphaWeighting:
     """alpha_s=0 -> pure CE, alpha_h=0 -> no CE, balanced coeffs -> between."""
 
@@ -151,31 +170,58 @@ class TestAlphaWeighting:
     def test_alpha_zero_equals_ce(self, strategy_spec, model_logits, target_logits, ce_loss):
         name, kw = strategy_spec
         out = get_loss_strategy(name, alpha_h=1.0, alpha_s=0.0, **kw).compute(
-            model_logits, target_logits, ce_loss,
+            model_logits,
+            target_logits,
+            ce_loss,
         )
         torch.testing.assert_close(out.total_loss, ce_loss, rtol=1e-5, atol=1e-7)
 
-    def test_alpha_one_ce_contribution_zero(self, strategy_spec, model_logits, target_logits, ce_loss):
+    def test_alpha_one_ce_contribution_zero(
+        self, strategy_spec, model_logits, target_logits, ce_loss
+    ):
         name, kw = strategy_spec
         out = get_loss_strategy(name, alpha_h=0.0, alpha_s=1.0, **kw).compute(
-            model_logits, target_logits, ce_loss,
+            model_logits,
+            target_logits,
+            ce_loss,
         )
         ce_key = [k for k in out.components if "ce" in k and "weighted" in k][0]
         torch.testing.assert_close(
-            out.components[ce_key], torch.tensor(0.0), atol=1e-7, rtol=1e-5,
+            out.components[ce_key],
+            torch.tensor(0.0),
+            atol=1e-7,
+            rtol=1e-5,
         )
 
     def test_alpha_half_between_extremes(self, strategy_spec, model_logits, target_logits, ce_loss):
         name, kw = strategy_spec
-        l0 = get_loss_strategy(name, alpha_h=1.0, alpha_s=0.0, **kw).compute(
-            model_logits, target_logits, ce_loss,
-        ).total_loss.item()
-        l1 = get_loss_strategy(name, alpha_h=0.0, alpha_s=1.0, **kw).compute(
-            model_logits, target_logits, ce_loss,
-        ).total_loss.item()
-        l_half = get_loss_strategy(name, alpha_h=0.5, alpha_s=0.5, **kw).compute(
-            model_logits, target_logits, ce_loss,
-        ).total_loss.item()
+        l0 = (
+            get_loss_strategy(name, alpha_h=1.0, alpha_s=0.0, **kw)
+            .compute(
+                model_logits,
+                target_logits,
+                ce_loss,
+            )
+            .total_loss.item()
+        )
+        l1 = (
+            get_loss_strategy(name, alpha_h=0.0, alpha_s=1.0, **kw)
+            .compute(
+                model_logits,
+                target_logits,
+                ce_loss,
+            )
+            .total_loss.item()
+        )
+        l_half = (
+            get_loss_strategy(name, alpha_h=0.5, alpha_s=0.5, **kw)
+            .compute(
+                model_logits,
+                target_logits,
+                ce_loss,
+            )
+            .total_loss.item()
+        )
 
         lo, hi = min(l0, l1), max(l0, l1)
         assert lo - 1e-5 <= l_half <= hi + 1e-5, (
@@ -187,6 +233,7 @@ class TestAlphaWeighting:
 # ---------------------------------------------------------------------------
 # 4. Feature / Attention strategy-specific tests
 # ---------------------------------------------------------------------------
+
 
 class TestFeatureStrategies:
     """Feature loss requires hidden_states and handles dtype casting."""
@@ -201,12 +248,21 @@ class TestFeatureStrategies:
             s.compute(model_logits, target_logits, ce_loss)
 
     def test_feature_mse_with_mapping(
-        self, model_logits, target_logits, ce_loss,
-        mock_model_outputs, mock_target_outputs, bert_distilbert_mapping,
+        self,
+        model_logits,
+        target_logits,
+        ce_loss,
+        mock_model_outputs,
+        mock_target_outputs,
+        bert_distilbert_mapping,
     ):
-        s = FeatureLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=bert_distilbert_mapping)
+        s = FeatureLossStrategy(
+            ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=bert_distilbert_mapping
+        )
         out = s.compute(
-            model_logits, target_logits, ce_loss,
+            model_logits,
+            target_logits,
+            ce_loss,
             model_outputs=mock_model_outputs,
             teacher_outputs=mock_target_outputs,
         )
@@ -214,12 +270,21 @@ class TestFeatureStrategies:
         assert out.components["num_layers_matched"].item() == len(bert_distilbert_mapping)
 
     def test_cosine_feature_with_mapping(
-        self, model_logits, target_logits, ce_loss,
-        mock_model_outputs, mock_target_outputs, bert_distilbert_mapping,
+        self,
+        model_logits,
+        target_logits,
+        ce_loss,
+        mock_model_outputs,
+        mock_target_outputs,
+        bert_distilbert_mapping,
     ):
-        s = CosineFeatureLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=bert_distilbert_mapping)
+        s = CosineFeatureLoss(
+            ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=bert_distilbert_mapping
+        )
         out = s.compute(
-            model_logits, target_logits, ce_loss,
+            model_logits,
+            target_logits,
+            ce_loss,
             model_outputs=mock_model_outputs,
             teacher_outputs=mock_target_outputs,
         )
@@ -227,8 +292,13 @@ class TestFeatureStrategies:
         assert "feature_cosine_raw" in out.components
 
     def test_dtype_casting_fp16_teacher(
-        self, batch_size, seq_len, hidden_size,
-        model_logits, target_logits, ce_loss,
+        self,
+        batch_size,
+        seq_len,
+        hidden_size,
+        model_logits,
+        target_logits,
+        ce_loss,
     ):
         """Feature loss handles mixed dtypes (fp16 teacher, fp32 model)."""
         model_hidden = (torch.randn(batch_size, seq_len, hidden_size, dtype=torch.float32),)
@@ -241,8 +311,11 @@ class TestFeatureStrategies:
 
         s = FeatureLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0)])
         out = s.compute(
-            model_logits, target_logits, ce_loss,
-            model_outputs=model_out, teacher_outputs=target_out,
+            model_logits,
+            target_logits,
+            ce_loss,
+            model_outputs=model_out,
+            teacher_outputs=target_out,
         )
         assert torch.isfinite(out.total_loss)
 
@@ -259,12 +332,21 @@ class TestAttentionStrategy:
             s.compute(model_logits, target_logits, ce_loss)
 
     def test_attention_with_mapping(
-        self, model_logits, target_logits, ce_loss,
-        mock_model_outputs, mock_target_outputs, bert_distilbert_mapping,
+        self,
+        model_logits,
+        target_logits,
+        ce_loss,
+        mock_model_outputs,
+        mock_target_outputs,
+        bert_distilbert_mapping,
     ):
-        s = AttentionLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=bert_distilbert_mapping)
+        s = AttentionLossStrategy(
+            ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=bert_distilbert_mapping
+        )
         out = s.compute(
-            model_logits, target_logits, ce_loss,
+            model_logits,
+            target_logits,
+            ce_loss,
             model_outputs=mock_model_outputs,
             teacher_outputs=mock_target_outputs,
         )
@@ -272,7 +354,12 @@ class TestAttentionStrategy:
         assert out.components["num_layers_matched"].item() == len(bert_distilbert_mapping)
 
     def test_different_head_counts(
-        self, batch_size, seq_len, model_logits, target_logits, ce_loss,
+        self,
+        batch_size,
+        seq_len,
+        model_logits,
+        target_logits,
+        ce_loss,
     ):
         """When head counts differ, attention loss averages heads."""
         m_attn = torch.rand(batch_size, 4, seq_len, seq_len)
@@ -287,8 +374,11 @@ class TestAttentionStrategy:
 
         s = AttentionLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0)])
         out = s.compute(
-            model_logits, target_logits, ce_loss,
-            model_outputs=model_out, teacher_outputs=target_out,
+            model_logits,
+            target_logits,
+            ce_loss,
+            model_outputs=model_out,
+            teacher_outputs=target_out,
         )
         assert torch.isfinite(out.total_loss)
 
@@ -296,6 +386,7 @@ class TestAttentionStrategy:
 # ---------------------------------------------------------------------------
 # 5. CombinedDistillationLoss
 # ---------------------------------------------------------------------------
+
 
 class TestCombinedLoss:
     """Combined loss normalizes weights, tracks components, respects zero weight."""
@@ -319,14 +410,19 @@ class TestCombinedLoss:
         s_kl = KLDistillationLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5)
         s_mse = MSEDistillationLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5)
 
-        combined_zero = CombinedDistillationLoss([s_kl, s_mse], [1.0, 0.0], alpha_h=0.5, alpha_s=0.5)
+        combined_zero = CombinedDistillationLoss(
+            [s_kl, s_mse], [1.0, 0.0], alpha_h=0.5, alpha_s=0.5
+        )
         combined_only_kl = CombinedDistillationLoss([s_kl], [1.0], alpha_h=0.5, alpha_s=0.5)
 
         out_zero = combined_zero.compute(model_logits, target_logits, ce_loss)
         out_only = combined_only_kl.compute(model_logits, target_logits, ce_loss)
 
         torch.testing.assert_close(
-            out_zero.total_loss, out_only.total_loss, rtol=1e-5, atol=1e-7,
+            out_zero.total_loss,
+            out_only.total_loss,
+            rtol=1e-5,
+            atol=1e-7,
         )
 
     def test_aggregates_requirement_flags(self):
@@ -347,6 +443,7 @@ class TestCombinedLoss:
 # ---------------------------------------------------------------------------
 # 6. StagedDistillationLoss
 # ---------------------------------------------------------------------------
+
 
 class TestStagedLoss:
     """Staged loss selects strategy by training progress."""
@@ -378,7 +475,10 @@ class TestStagedLoss:
 
     def test_output_has_stage_metadata(self, staged, model_logits, target_logits, ce_loss):
         out = staged.compute(
-            model_logits, target_logits, ce_loss, training_progress=0.3,
+            model_logits,
+            target_logits,
+            ce_loss,
+            training_progress=0.3,
         )
         assert "active_stage" in out.components
         assert "training_progress" in out.components
@@ -386,10 +486,16 @@ class TestStagedLoss:
 
     def test_transition_changes_active_stage(self, staged, model_logits, target_logits, ce_loss):
         out_early = staged.compute(
-            model_logits, target_logits, ce_loss, training_progress=0.1,
+            model_logits,
+            target_logits,
+            ce_loss,
+            training_progress=0.1,
         )
         out_late = staged.compute(
-            model_logits, target_logits, ce_loss, training_progress=0.9,
+            model_logits,
+            target_logits,
+            ce_loss,
+            training_progress=0.9,
         )
         assert out_early.components["active_stage"].item() == 0
         assert out_late.components["active_stage"].item() == 1
@@ -416,19 +522,23 @@ class TestStagedLoss:
 # 7. Factory: get_loss_strategy
 # ---------------------------------------------------------------------------
 
+
 class TestFactory:
     """get_loss_strategy returns correct types and filters kwargs."""
 
-    @pytest.mark.parametrize("name,expected_type", [
-        ("response_kl", KLDistillationLoss),
-        ("response_reverse-kl", KLDistillationLoss),
-        ("response_mse", MSEDistillationLoss),
-        ("response_cosine", CosineDistillationLoss),
-        ("response_ce", SoftTargetDistillationLoss),
-        ("feature_mse", FeatureLossStrategy),
-        ("feature_cosine", CosineFeatureLoss),
-        ("attention_kl", AttentionLossStrategy),
-    ])
+    @pytest.mark.parametrize(
+        "name,expected_type",
+        [
+            ("response_kl", KLDistillationLoss),
+            ("response_reverse-kl", KLDistillationLoss),
+            ("response_mse", MSEDistillationLoss),
+            ("response_cosine", CosineDistillationLoss),
+            ("response_ce", SoftTargetDistillationLoss),
+            ("feature_mse", FeatureLossStrategy),
+            ("feature_cosine", CosineFeatureLoss),
+            ("attention_kl", AttentionLossStrategy),
+        ],
+    )
     def test_returns_correct_type(self, name, expected_type):
         assert isinstance(get_loss_strategy(name, alpha_h=0.5, alpha_s=0.5), expected_type)
 
@@ -473,6 +583,7 @@ class TestFactory:
 # 8. Coverage gap tests
 # ---------------------------------------------------------------------------
 
+
 class TestMSENormalizeFalse:
     """Exercise the normalize=False path in MSEDistillationLoss."""
 
@@ -481,7 +592,10 @@ class TestMSENormalizeFalse:
         out = s.compute(model_logits, target_logits, ce_loss)
         expected_mse = F.mse_loss(model_logits, target_logits)
         torch.testing.assert_close(
-            out.components["mse_raw"], expected_mse, rtol=1e-5, atol=1e-7,
+            out.components["mse_raw"],
+            expected_mse,
+            rtol=1e-5,
+            atol=1e-7,
         )
 
 
@@ -489,19 +603,26 @@ class TestFeatureEmptyMapping:
     """Feature loss with empty layer_mapping returns zero feature loss."""
 
     def test_feature_mse_empty_mapping(
-        self, model_logits, target_logits, ce_loss,
-        mock_model_outputs, mock_target_outputs,
+        self,
+        model_logits,
+        target_logits,
+        ce_loss,
+        mock_model_outputs,
+        mock_target_outputs,
     ):
         s = FeatureLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[])
         out = s.compute(
-            model_logits, target_logits, ce_loss,
+            model_logits,
+            target_logits,
+            ce_loss,
             model_outputs=mock_model_outputs,
             teacher_outputs=mock_target_outputs,
         )
         torch.testing.assert_close(
             out.components["feature_raw"],
             torch.tensor(0.0),
-            atol=1e-7, rtol=1e-5,
+            atol=1e-7,
+            rtol=1e-5,
         )
 
 
@@ -509,26 +630,33 @@ class TestFeatureWithProjector:
     """Feature loss with a projector module."""
 
     def test_feature_mse_with_projector(
-        self, batch_size, seq_len, model_logits, target_logits, ce_loss,
+        self,
+        batch_size,
+        seq_len,
+        model_logits,
+        target_logits,
+        ce_loss,
     ):
         import torch.nn as nn
+
         model_hidden_dim = 32
         teacher_hidden_dim = 64
         projector = nn.Linear(model_hidden_dim, teacher_hidden_dim)
 
         model_out = MagicMock()
-        model_out.hidden_states = (
-            torch.randn(batch_size, seq_len, model_hidden_dim),
-        )
+        model_out.hidden_states = (torch.randn(batch_size, seq_len, model_hidden_dim),)
         teacher_out = MagicMock()
-        teacher_out.hidden_states = (
-            torch.randn(batch_size, seq_len, teacher_hidden_dim),
-        )
+        teacher_out.hidden_states = (torch.randn(batch_size, seq_len, teacher_hidden_dim),)
 
-        s = FeatureLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0)], projector=projector)
+        s = FeatureLossStrategy(
+            ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0)], projector=projector
+        )
         out = s.compute(
-            model_logits, target_logits, ce_loss,
-            model_outputs=model_out, teacher_outputs=teacher_out,
+            model_logits,
+            target_logits,
+            ce_loss,
+            model_outputs=model_out,
+            teacher_outputs=teacher_out,
         )
         assert torch.isfinite(out.total_loss)
 
@@ -537,25 +665,38 @@ class TestCosineFeatureCoverage:
     """Cover CosineFeatureLoss compute paths: projector, dtype cast, empty mapping."""
 
     def test_cosine_empty_mapping(
-        self, model_logits, target_logits, ce_loss,
-        mock_model_outputs, mock_target_outputs,
+        self,
+        model_logits,
+        target_logits,
+        ce_loss,
+        mock_model_outputs,
+        mock_target_outputs,
     ):
         s = CosineFeatureLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[])
         out = s.compute(
-            model_logits, target_logits, ce_loss,
+            model_logits,
+            target_logits,
+            ce_loss,
             model_outputs=mock_model_outputs,
             teacher_outputs=mock_target_outputs,
         )
         torch.testing.assert_close(
             out.components["feature_cosine_raw"],
             torch.tensor(0.0),
-            atol=1e-7, rtol=1e-5,
+            atol=1e-7,
+            rtol=1e-5,
         )
 
     def test_cosine_with_projector(
-        self, batch_size, seq_len, model_logits, target_logits, ce_loss,
+        self,
+        batch_size,
+        seq_len,
+        model_logits,
+        target_logits,
+        ce_loss,
     ):
         import torch.nn as nn
+
         model_dim, teacher_dim = 32, 64
         projector = nn.Linear(model_dim, teacher_dim)
 
@@ -564,16 +705,26 @@ class TestCosineFeatureCoverage:
         teacher_out = MagicMock()
         teacher_out.hidden_states = (torch.randn(batch_size, seq_len, teacher_dim),)
 
-        s = CosineFeatureLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0)], projector=projector)
+        s = CosineFeatureLoss(
+            ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0)], projector=projector
+        )
         out = s.compute(
-            model_logits, target_logits, ce_loss,
-            model_outputs=model_out, teacher_outputs=teacher_out,
+            model_logits,
+            target_logits,
+            ce_loss,
+            model_outputs=model_out,
+            teacher_outputs=teacher_out,
         )
         assert torch.isfinite(out.total_loss)
 
     def test_cosine_dtype_casting(
-        self, batch_size, seq_len, hidden_size,
-        model_logits, target_logits, ce_loss,
+        self,
+        batch_size,
+        seq_len,
+        hidden_size,
+        model_logits,
+        target_logits,
+        ce_loss,
     ):
         """CosineFeatureLoss handles mixed dtypes (fp16 teacher, fp32 model)."""
         model_out = MagicMock()
@@ -587,8 +738,11 @@ class TestCosineFeatureCoverage:
 
         s = CosineFeatureLoss(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0)])
         out = s.compute(
-            model_logits, target_logits, ce_loss,
-            model_outputs=model_out, teacher_outputs=teacher_out,
+            model_logits,
+            target_logits,
+            ce_loss,
+            model_outputs=model_out,
+            teacher_outputs=teacher_out,
         )
         assert torch.isfinite(out.total_loss)
 
@@ -602,19 +756,26 @@ class TestAttentionEmptyMapping:
     """Attention loss with empty layer_mapping returns zero attention loss."""
 
     def test_attention_empty_mapping(
-        self, model_logits, target_logits, ce_loss,
-        mock_model_outputs, mock_target_outputs,
+        self,
+        model_logits,
+        target_logits,
+        ce_loss,
+        mock_model_outputs,
+        mock_target_outputs,
     ):
         s = AttentionLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[])
         out = s.compute(
-            model_logits, target_logits, ce_loss,
+            model_logits,
+            target_logits,
+            ce_loss,
             model_outputs=mock_model_outputs,
             teacher_outputs=mock_target_outputs,
         )
         torch.testing.assert_close(
             out.components["attention_raw"],
             torch.tensor(0.0),
-            atol=1e-7, rtol=1e-5,
+            atol=1e-7,
+            rtol=1e-5,
         )
 
 

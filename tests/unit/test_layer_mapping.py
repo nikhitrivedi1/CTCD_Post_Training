@@ -10,24 +10,27 @@ Run:
 import pytest
 
 from src.training.layer_mapping import (
+    LAYER_MAPPING_REGISTRY,
     CustomMappingStrategy,
     FirstLastMappingStrategy,
     LastNMappingStrategy,
     UniformMappingStrategy,
     get_layer_mapping,
-    LAYER_MAPPING_REGISTRY,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(params=[
-    UniformMappingStrategy,
-    LastNMappingStrategy,
-    FirstLastMappingStrategy,
-], ids=["uniform", "last_n", "first_last"])
+
+@pytest.fixture(
+    params=[
+        UniformMappingStrategy,
+        LastNMappingStrategy,
+        FirstLastMappingStrategy,
+    ],
+    ids=["uniform", "last_n", "first_last"],
+)
 def strategy(request):
     """Non-custom strategies (no constructor args needed)."""
     return request.param()
@@ -39,6 +42,7 @@ LAYER_PAIRS = [(12, 6), (24, 8), (6, 3), (6, 6), (10, 5)]
 # ---------------------------------------------------------------------------
 # Cross-strategy property tests
 # ---------------------------------------------------------------------------
+
 
 class TestStrategyProperties:
     """Properties that hold for all non-custom strategies."""
@@ -81,6 +85,7 @@ class TestStrategyProperties:
 # Strategy-specific tests
 # ---------------------------------------------------------------------------
 
+
 class TestUniform:
     def test_equal_layers_is_identity(self):
         mapping = UniformMappingStrategy().map(6, 6)
@@ -89,7 +94,7 @@ class TestUniform:
     def test_teacher_indices_evenly_spaced(self):
         mapping = UniformMappingStrategy().map(12, 6)
         t_indices = [t for t, _ in mapping]
-        diffs = [t_indices[i+1] - t_indices[i] for i in range(len(t_indices) - 1)]
+        diffs = [t_indices[i + 1] - t_indices[i] for i in range(len(t_indices) - 1)]
         assert len(set(diffs)) == 1, "Teacher indices should be evenly spaced"
 
 
@@ -133,7 +138,7 @@ class TestCustom:
     def test_preserves_user_indices_exactly(self):
         t_idx, s_idx = [2, 5, 11], [0, 1, 2]
         strategy = CustomMappingStrategy(teacher_indices=t_idx, model_indices=s_idx)
-        assert strategy.map(12, 6) == list(zip(t_idx, s_idx))
+        assert strategy.map(12, 6) == list(zip(t_idx, s_idx, strict=True))
 
     def test_map_ignores_layer_count_args(self):
         strategy = CustomMappingStrategy(teacher_indices=[0, 2], model_indices=[0, 1])
@@ -164,12 +169,16 @@ class TestCustom:
 # Factory tests
 # ---------------------------------------------------------------------------
 
+
 class TestGetLayerMapping:
-    @pytest.mark.parametrize("name,cls", [
-        ("uniform", UniformMappingStrategy),
-        ("last_n", LastNMappingStrategy),
-        ("first_last", FirstLastMappingStrategy),
-    ])
+    @pytest.mark.parametrize(
+        "name,cls",
+        [
+            ("uniform", UniformMappingStrategy),
+            ("last_n", LastNMappingStrategy),
+            ("first_last", FirstLastMappingStrategy),
+        ],
+    )
     def test_returns_correct_type(self, name, cls):
         assert isinstance(get_layer_mapping(name), cls)
 

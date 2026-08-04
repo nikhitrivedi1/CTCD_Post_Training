@@ -9,13 +9,51 @@ import shutil
 import sys
 import time
 import warnings
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+
+# Add project root to path for running without package install
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import numpy as np
 import torch
+import transformers
 import yaml
+from transformers import (
+    DataCollatorForSeq2Seq,
+    EarlyStoppingCallback,
+    ProgressCallback,
+    TrainingArguments,
+    set_seed,
+)
 
+from src.data.collators import VLMDataCollator
+from src.data.formatters import format_for_rl, format_for_sft
+from src.data.handlers import get_handler
+from src.evaluation import get_compute_metrics, run_evaluation
+from src.models import load_model, needs_attention_outputs
+from src.tasks import get_num_labels, get_primary_metric, get_task_type, is_ocr_task
+from src.training.callbacks import (
+    CheckpointMarkerCallback,
+    PeakMetricsCallback,
+    SLURMSignalCallback,
+    StepMetricsCallback,
+    StudentTeacherGradNormCallback,
+    TeacherEvalCallback,
+    TranslationMetricsCallback,
+)
+from src.training.losses import (
+    build_distill_topology_strategy,
+    build_layer_mapping_and_projector,
+    build_teacher_response_only_strategy,
+)
+from src.training.rewards import get_reward_funcs
+from src.training.trainer import DistillationTrainer, FinetuningTrainer
+from src.utils.checkpoint import LATEST_CHECKPOINT_FILE, TrainingState
+from src.utils.config import load_config, resolve_distillation_coefficients
+
+# Auto-loads .env file if it exists (override=False means Colab/HPC env vars take precedence)
+from src.utils.environment import detect_environment, get_device, get_num_workers
 from src.utils.jobs import get_job_key, guard_duplicate_job, locked_incomplete_jobs
 
 # Module-level logger
@@ -29,7 +67,11 @@ def setup_logging(debug: bool = False):
         debug: If True, use DEBUG level; otherwise INFO level
     """
     level = logging.DEBUG if debug else logging.INFO
-    format_str = "%(asctime)sZ - %(name)s - %(levelname)s - %(message)s" if debug else "%(asctime)sZ - %(levelname)s - %(message)s"
+    format_str = (
+        "%(asctime)sZ - %(name)s - %(levelname)s - %(message)s"
+        if debug
+        else "%(asctime)sZ - %(levelname)s - %(message)s"
+    )
 
     logging.basicConfig(
         level=level,
@@ -38,8 +80,6 @@ def setup_logging(debug: bool = False):
     )
     logging.Formatter.converter = time.gmtime
 
-    # Set transformers logging
-    import transformers
     transformers.logging.set_verbosity(logging.DEBUG if debug else logging.INFO)
 
     if debug:
@@ -69,24 +109,13 @@ def add_file_logging(output_dir: Path, debug: bool = False):
     setup_file_logging(log_file, update_transformers=True)
     logger.info(f"Logging to file: {log_file}")
 
-# Add project root to path for running without package install
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-# Import environment first - this auto-loads .env file if it exists
-# (override=False means Colab/HPC env vars take precedence)
-from src.utils.environment import detect_environment, get_device, get_num_workers
-
-from transformers import (
-    TrainingArguments,
-    ProgressCallback,
-    EarlyStoppingCallback,
-    set_seed,
-    DataCollatorForSeq2Seq,
-)
-
 
 def set_reproducibility_seed(seed: int = 42):
-    """Set seeds for reproducibility across all libraries."""
+    """Set seeds for reproducibility across all libraries.
+
+    Args:
+        seed: Seed value applied to Python's ``random``, NumPy, and PyTorch (CPU + CUDA).
+    """
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -96,31 +125,15 @@ def set_reproducibility_seed(seed: int = 42):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-from src.data.handlers import get_handler
-from src.data.formatters import format_for_sft, format_for_rl
-from src.data.collators import VLMDataCollator
-from src.evaluation import get_compute_metrics, run_evaluation
-from src.tasks import get_num_labels, get_primary_metric, get_task_type, is_ocr_task
-from src.models import load_model, needs_attention_outputs
-from src.training.callbacks import (
-    SLURMSignalCallback, CheckpointMarkerCallback, StepMetricsCallback,
-    StudentTeacherGradNormCallback,
-    TeacherEvalCallback, TranslationMetricsCallback, PeakMetricsCallback,
-)
-from src.training.trainer import FinetuningTrainer, DistillationTrainer
-from src.training.rewards import get_reward_funcs
-from src.training.losses import (
-    build_distill_topology_strategy,
-    build_layer_mapping_and_projector,
-    build_teacher_response_only_strategy,
-)
-from src.utils.checkpoint import LATEST_CHECKPOINT_FILE, TrainingState
-from src.utils.config import load_config, resolve_distillation_coefficients
 
 # Keys forwarded from config["data"] to handler.load(**kwargs)
 _HANDLER_DATA_KEYS = (
-    "max_train_samples", "include_reasoning", "sampling",
-    "source_lang", "target_lang", "max_samples",
+    "max_train_samples",
+    "include_reasoning",
+    "sampling",
+    "source_lang",
+    "target_lang",
+    "max_samples",
 )
 
 
@@ -153,6 +166,14 @@ def create_loss_strategy_from_config(
 ):
     """
     Create loss strategy from distillation config.
+
+    Args:
+        distill_config: The ``distillation`` section of the training config.
+        model: The student model (used to size layer mapping/projection).
+        teacher_model: The teacher model (used to size layer mapping/projection).
+        device: Device to move a newly created projector onto.
+        freeze_teacher: Whether the teacher is frozen; when False, also builds a
+            teacher-side loss strategy for co-distillation.
 
     Supports three modes:
     1. Single strategy (loss_type)
@@ -191,7 +212,10 @@ def create_loss_strategy_from_config(
     temperature = distill_config.get("temperature", 2.0)
 
     loss_strategy = build_distill_topology_strategy(
-        distill_config, alpha_h, alpha_s, temperature=temperature,
+        distill_config,
+        alpha_h,
+        alpha_s,
+        temperature=temperature,
     )
     teacher_loss_strategy = None
     if not freeze_teacher:
@@ -203,7 +227,11 @@ def create_loss_strategy_from_config(
         )
 
     layer_mapping, projector = build_layer_mapping_and_projector(
-        distill_config, loss_strategy, model, teacher_model, device,
+        distill_config,
+        loss_strategy,
+        model,
+        teacher_model,
+        device,
     )
     if layer_mapping is not None:
         logger.debug(f"  Layer mapping: {layer_mapping}")
@@ -238,9 +266,7 @@ def resolve_config_path(config_arg: str) -> Path:
 
     sys.exit(
         f"\nError: Config file not found: {config_arg}\n\n"
-        f"Tried:\n"
-        + "\n".join(f"  {p}" for p in candidates)
-        + "\n"
+        f"Tried:\n" + "\n".join(f"  {p}" for p in candidates) + "\n"
     )
 
 
@@ -267,7 +293,7 @@ def extract_stem(config_path: Path) -> str:
     try:
         configs_idx = parts.index("configs")
         # Everything after 'configs', rejoin, strip .yaml
-        relative = Path(*parts[configs_idx + 1:])
+        relative = Path(*parts[configs_idx + 1 :])
     except ValueError:
         # No configs/ prefix, just strip suffix
         relative = config_path
@@ -340,7 +366,7 @@ def generate_wandb_tags(stem: str) -> list:
     return []
 
 
-def remove_incomplete_job(job_key: str = None):
+def remove_incomplete_job(job_key: str | None = None):
     """Remove a job from incomplete jobs registry.
 
     Args:
@@ -389,7 +415,7 @@ def load_run_metadata(output_dir: Path) -> dict | None:
     return None
 
 
-def delete_wandb_run(run_id: str, project: str = None) -> bool:
+def delete_wandb_run(run_id: str, project: str | None = None) -> bool:
     """Delete a W&B run by ID.
 
     Args:
@@ -401,6 +427,7 @@ def delete_wandb_run(run_id: str, project: str = None) -> bool:
     """
     try:
         import wandb
+
         api = wandb.Api()
         project = project or os.environ.get("WANDB_PROJECT", "Forge-Default")
         entity = os.environ.get("WANDB_ENTITY") or api.default_entity
@@ -417,20 +444,28 @@ def delete_wandb_run(run_id: str, project: str = None) -> bool:
 def save_run_metadata(output_dir: Path, metadata: dict):
     """Save run metadata to output directory."""
     metadata_path = output_dir / "run_metadata.json"
-    with open(metadata_path, 'w') as f:
+    with open(metadata_path, "w") as f:
         json.dump(metadata, f, indent=2)
 
 
 def save_config_snapshot(output_dir: Path, config: dict):
-    """Save full resolved config to output directory for reproducibility."""
+    """Save full resolved config to output directory for reproducibility.
+
+    Returns:
+        Path to the written ``config.yaml``.
+    """
     config_path = output_dir / "config.yaml"
-    with open(config_path, 'w') as f:
+    with open(config_path, "w") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
     return config_path
 
 
 def load_config_snapshot(output_dir: Path) -> dict | None:
-    """Load stored config from output directory."""
+    """Load stored config from output directory.
+
+    Returns:
+        The parsed config, or ``None`` if ``output_dir`` has no ``config.yaml`` yet.
+    """
     config_path = output_dir / "config.yaml"
     if config_path.exists():
         with open(config_path) as f:
@@ -456,7 +491,9 @@ def should_load_best_model(config: dict) -> bool:
     """
     final_model_save = config.get("checkpointing", {}).get("final_model_save", "best")
     if final_model_save not in ("best", "last"):
-        raise ValueError(f"checkpointing.final_model_save must be 'best' or 'last', got {final_model_save!r}")
+        raise ValueError(
+            f"checkpointing.final_model_save must be 'best' or 'last', got {final_model_save!r}"
+        )
     if final_model_save == "last":
         return False
 
@@ -493,6 +530,11 @@ def warmup_kwargs_for_training_args(
 ) -> dict:
     """Build warmup fields for HuggingFace TrainingArguments.
 
+    Args:
+        training: The ``training`` section of the config.
+        default_warmup_steps: Fallback when neither ``warmup_ratio`` nor ``warmup_steps``
+            is set in ``training`` (0 for standard fine-tuning, 200 for GRPO).
+
     If ``training.warmup_ratio`` is set (non-null), it is used as a fraction of
     total optimizer steps (stable when batch size or step count changes). Otherwise
     ``training.warmup_steps`` is used when non-null; if both ratio and steps are
@@ -514,7 +556,7 @@ def warmup_kwargs_for_training_args(
     return {"warmup_steps": int(default_warmup_steps)}
 
 
-def _save_base_ref(output_dir: Path, model_name: str, revision: str = None):
+def _save_base_ref(output_dir: Path, model_name: str, revision: str | None = None):
     """Save base model reference to base/ directory.
 
     For HF Hub models, saves a model_ref.json with the model path and
@@ -534,7 +576,7 @@ def _save_base_ref(output_dir: Path, model_name: str, revision: str = None):
     ref = {"model_name_or_path": model_name}
     if revision:
         ref["revision"] = revision
-    with open(base_dir / "model_ref.json", 'w') as f:
+    with open(base_dir / "model_ref.json", "w") as f:
         json.dump(ref, f, indent=2)
     logger.info(f"Base ref saved: {model_name} (rev: {revision or 'unknown'})")
 
@@ -562,7 +604,8 @@ def _resolve_adapter(config, output_dir, task, processor=None, tokenizer=None):
     if not adapter_path:
         return model_name
 
-    from transformers import AutoModelForImageTextToText, AutoModelForCausalLM
+    from transformers import AutoModelForCausalLM, AutoModelForImageTextToText
+
     base_dir = output_dir / "base"
 
     # Resume: base/ already has merged weights from first run
@@ -570,11 +613,15 @@ def _resolve_adapter(config, output_dir, task, processor=None, tokenizer=None):
         logger.info(f"Loading base model from {base_dir} (cached from prior run)")
         if is_ocr_task(task):
             return AutoModelForImageTextToText.from_pretrained(
-                str(base_dir), torch_dtype="auto", attn_implementation="sdpa",
+                str(base_dir),
+                torch_dtype="auto",
+                attn_implementation="sdpa",
             )
         else:
             return AutoModelForCausalLM.from_pretrained(
-                str(base_dir), torch_dtype="auto", attn_implementation="sdpa",
+                str(base_dir),
+                torch_dtype="auto",
+                attn_implementation="sdpa",
             )
 
     # First run: download base, merge adapter, save to base/
@@ -583,11 +630,15 @@ def _resolve_adapter(config, output_dir, task, processor=None, tokenizer=None):
     logger.info(f"Loading base model: {model_name}")
     if is_ocr_task(task):
         base_model = AutoModelForImageTextToText.from_pretrained(
-            model_name, torch_dtype="auto", attn_implementation="sdpa",
+            model_name,
+            torch_dtype="auto",
+            attn_implementation="sdpa",
         )
     else:
         base_model = AutoModelForCausalLM.from_pretrained(
-            model_name, torch_dtype="auto", attn_implementation="sdpa",
+            model_name,
+            torch_dtype="auto",
+            attn_implementation="sdpa",
         )
 
     logger.info(f"Loading and merging adapter: {adapter_path}")
@@ -604,7 +655,7 @@ def _resolve_adapter(config, output_dir, task, processor=None, tokenizer=None):
 
     # Write model_ref.json for lineage tracking (adapter source path)
     ref = {"model_name_or_path": adapter_path}
-    with open(base_dir / "model_ref.json", 'w') as f:
+    with open(base_dir / "model_ref.json", "w") as f:
         json.dump(ref, f, indent=2)
     logger.info(f"Base model saved (ref: {adapter_path})")
 
@@ -622,6 +673,7 @@ def _sync_wandb(config, task, metadata, output_dir):
     """
     try:
         import wandb
+
         if wandb.run:
             wandb.config.update(config, allow_val_change=True)
             primary = get_primary_metric(task)
@@ -688,7 +740,6 @@ def _save_model(model, save_dir, model_name=None, processor=None, tokenizer=None
                 revision=getattr(model.config, "_commit_hash", None),
             )
 
-    # Save processor/tokenizer
     if processor is not None:
         processor.save_pretrained(save_dir)
     elif tokenizer is not None:
@@ -706,9 +757,13 @@ def _save_final_model(trainer, config, output_dir, processor=None, tokenizer=Non
         processor: AutoProcessor for VLMs (optional)
         tokenizer: Tokenizer for causal LMs (optional)
     """
-    _save_model(trainer.model, output_dir,
-                model_name=config["model"]["name"],
-                processor=processor, tokenizer=tokenizer)
+    _save_model(
+        trainer.model,
+        output_dir,
+        model_name=config["model"]["name"],
+        processor=processor,
+        tokenizer=tokenizer,
+    )
 
 
 def _remove_hf_checkpoint_dirs_after_success(output_dir: Path) -> None:
@@ -756,14 +811,22 @@ def _remove_model_weights(output_dir: Path) -> None:
         output_dir: Run output directory (Path).
     """
     _KEEP = {
-        "config.yaml", "run_metadata.json", "training_state.json",
-        "output.log", "wandb",
+        "config.yaml",
+        "run_metadata.json",
+        "training_state.json",
+        "output.log",
+        "wandb",
     }
     _WEIGHT_SUFFIXES = {".safetensors", ".bin", ".pt"}
     _HF_FILES = {
-        "config.json", "generation_config.json",
-        "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json",
-        "vocab.json", "merges.txt", "preprocessor_config.json",
+        "config.json",
+        "generation_config.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "special_tokens_map.json",
+        "vocab.json",
+        "merges.txt",
+        "preprocessor_config.json",
         "adapter_config.json",
     }
     removed = []
@@ -777,14 +840,30 @@ def _remove_model_weights(output_dir: Path) -> None:
             path.unlink()
             removed.append(path.name)
     if removed:
-        logger.info("no_weights mode: removed model files from %s: %s", output_dir, ", ".join(removed))
+        logger.info(
+            "no_weights mode: removed model files from %s: %s", output_dir, ", ".join(removed)
+        )
 
 
 def _train(
-    config, device, tokenizer, num_labels, task,
-    train_dataset, eval_dataset, compute_metrics, data_collator,
-    output_dir, run_name, args, state, resume_checkpoint,
-    env, report_to, metadata, processor=None,
+    config,
+    device,
+    tokenizer,
+    num_labels,
+    task,
+    train_dataset,
+    eval_dataset,
+    compute_metrics,
+    data_collator,
+    output_dir,
+    run_name,
+    args,
+    state,
+    resume_checkpoint,
+    env,
+    report_to,
+    metadata,
+    processor=None,
 ):
     """Run the training phase with models scoped locally.
 
@@ -810,6 +889,10 @@ def _train(
         report_to: Logging target ('wandb', 'none', etc.)
         metadata: Run metadata dict
         processor: AutoProcessor for VLMs (optional)
+
+    Returns:
+        ``True`` if training was interrupted by a SLURM signal (caller should exit
+        without marking the job complete), ``False`` otherwise.
     """
     # Load model
     eager = needs_attention_outputs(config)
@@ -817,10 +900,16 @@ def _train(
         logger.info("Using eager attention (required for attention distillation)")
     lora_config = config["training"]["lora"] if config.get("training", {}).get("use_lora") else None
     logger.info("Loading model...")
-    model = load_model(config["model"]["name"], task, device,
-                       init=config["model"].get("init", "pretrained"),
-                       tokenizer=tokenizer, num_labels=num_labels,
-                       eager=eager, lora_config=lora_config)
+    model = load_model(
+        config["model"]["name"],
+        task,
+        device,
+        init=config["model"].get("init", "pretrained"),
+        tokenizer=tokenizer,
+        num_labels=num_labels,
+        eager=eager,
+        lora_config=lora_config,
+    )
 
     # Load teacher (if applicable)
     teacher = None
@@ -838,9 +927,9 @@ def _train(
                 teacher_load_path = str(candidate)
                 logger.info(f"Resuming co-trained teacher from: {teacher_load_path}")
         logger.info("Loading teacher...")
-        teacher = load_model(teacher_load_path, task, device,
-                             tokenizer=tokenizer, num_labels=num_labels,
-                             eager=eager)
+        teacher = load_model(
+            teacher_load_path, task, device, tokenizer=tokenizer, num_labels=num_labels, eager=eager
+        )
         # Save teacher base reference for lineage tracking (mirrors base/model_ref.json)
         teacher_base_dir = output_dir / "teacher" / "base"
         teacher_base_dir.mkdir(parents=True, exist_ok=True)
@@ -848,19 +937,20 @@ def _train(
         revision = getattr(teacher.config, "_commit_hash", None)
         if revision:
             ref["revision"] = revision
-        with open(teacher_base_dir / "model_ref.json", 'w') as f:
+        with open(teacher_base_dir / "model_ref.json", "w") as f:
             json.dump(ref, f, indent=2)
         logger.info(f"Teacher ref saved: {teacher_name}")
     else:
         reason = "no teacher configured" if not teacher_name else "alpha_s=0.0"
         logger.info(f"No teacher ({reason}) - CE-only mode")
 
-    # Training arguments
     training_args = TrainingArguments(
         output_dir=str(output_dir),
         num_train_epochs=int(config["training"]["num_epochs"]),
         per_device_train_batch_size=int(config["training"]["batch_size"]),
-        per_device_eval_batch_size=int(config["training"].get("eval_batch_size", config["training"]["batch_size"])),
+        per_device_eval_batch_size=int(
+            config["training"].get("eval_batch_size", config["training"]["batch_size"])
+        ),
         gradient_accumulation_steps=int(config["training"].get("gradient_accumulation_steps", 1)),
         learning_rate=float(config["training"]["learning_rate"]),
         **warmup_kwargs_for_training_args(config["training"]),
@@ -872,8 +962,16 @@ def _train(
         eval_strategy=config.get("evaluation", {}).get("eval_strategy", "steps"),
         eval_steps=int(config.get("evaluation", {}).get("eval_steps", 500)),
         report_to=report_to,
-        fp16=(config["training"].get("fp16", True) and model.dtype != torch.float16) if device == "cuda" else False,
-        dataloader_num_workers=config["training"].get("dataloader_num_workers", get_num_workers()) if device == "cuda" else 0,
+        fp16=(
+            (config["training"].get("fp16", True) and model.dtype != torch.float16)
+            if device == "cuda"
+            else False
+        ),
+        dataloader_num_workers=(
+            config["training"].get("dataloader_num_workers", get_num_workers())
+            if device == "cuda"
+            else 0
+        ),
         dataloader_pin_memory=device == "cuda",  # Disable on MPS (not supported)
         run_name=run_name,
         max_steps=args.max_steps if args.max_steps > 0 else -1,
@@ -882,9 +980,16 @@ def _train(
         # Loss and metric can diverge; metric-based selection ensures we report the best achieved.
         # For translation: use loss since BLEU is computed separately by callback (generation-based),
         # not in eval metrics (which only has loss due to prediction_loss_only=True to avoid OOM).
-        metric_for_best_model="eval_loss" if num_labels is None else (f"eval_{get_primary_metric(task)}" if get_primary_metric(task) else "eval_loss"),
-        greater_is_better=False if num_labels is None else (get_primary_metric(task) is not None),  # Loss: lower is better; accuracy/f1/mcc: higher is better
-        prediction_loss_only=num_labels is None,  # Seq2seq tasks: prevents OOM, metrics need generation anyway
+        metric_for_best_model=(
+            "eval_loss"
+            if num_labels is None
+            else (f"eval_{get_primary_metric(task)}" if get_primary_metric(task) else "eval_loss")
+        ),
+        greater_is_better=(
+            False if num_labels is None else (get_primary_metric(task) is not None)
+        ),  # Loss: lower is better; accuracy/f1/mcc: higher is better
+        prediction_loss_only=num_labels
+        is None,  # Seq2seq tasks: prevents OOM, metrics need generation anyway
         seed=args.seed,
         data_seed=args.seed,
         # VLM datasets store raw images + text; the collator handles tokenization.
@@ -895,7 +1000,6 @@ def _train(
 
     # Choose trainer based on whether we have a teacher
     if teacher is None:
-        # CE-only baseline: use FinetuningTrainer
         logger.info("No teacher - using FinetuningTrainer (CE-only mode)")
         trainer = FinetuningTrainer(
             model=model,
@@ -909,12 +1013,14 @@ def _train(
     else:
         # Distillation: create loss strategy and use DistillationTrainer
         logger.info("Setting up distillation loss strategy...")
-        loss_strategy, teacher_loss_strategy, layer_mapping, projector = create_loss_strategy_from_config(
-            config["distillation"],
-            model,
-            teacher,
-            device,
-            freeze_teacher=config["model"].get("teacher", {}).get("freeze", True),
+        loss_strategy, teacher_loss_strategy, layer_mapping, projector = (
+            create_loss_strategy_from_config(
+                config["distillation"],
+                model,
+                teacher,
+                device,
+                freeze_teacher=config["model"].get("teacher", {}).get("freeze", True),
+            )
         )
 
         trainer = DistillationTrainer(
@@ -955,9 +1061,12 @@ def _train(
         logger.info("Adding student/teacher grad norm logging (co-training)...")
         trainer.add_callback(StudentTeacherGradNormCallback(trainer))
         logger.info("Adding teacher eval callback (co-training)...")
-        trainer.add_callback(TeacherEvalCallback(
-            trainer, teacher_label_map=trainer.teacher_label_map,
-        ))
+        trainer.add_callback(
+            TeacherEvalCallback(
+                trainer,
+                teacher_label_map=trainer.teacher_label_map,
+            )
+        )
 
     # Add peak metrics tracking
     logger.info("Adding peak metrics callback...")
@@ -976,7 +1085,9 @@ def _train(
             )
 
     # Add translation metrics callback for seq2seq tasks
-    if num_labels is None and config.get("evaluation", {}).get("compute_translation_metrics", False):
+    if num_labels is None and config.get("evaluation", {}).get(
+        "compute_translation_metrics", False
+    ):
         num_samples = config.get("evaluation", {}).get("translation_metrics_samples", 200)
         source_lang = config.get("data", {}).get("source_lang", "en")
         target_lang = config.get("data", {}).get("target_lang", "fr")
@@ -1007,10 +1118,7 @@ def _train(
     _sync_wandb(config, task, metadata, output_dir)
 
     # Update state
-    state.save(
-        epoch=trainer.state.epoch,
-        step=trainer.state.global_step
-    )
+    state.save(epoch=trainer.state.epoch, step=trainer.state.global_step)
 
     signal_interrupted = slurm_cb is not None and slurm_cb.caught_signal
 
@@ -1024,9 +1132,13 @@ def _train(
             teacher_name = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
             teacher_dir = output_dir / "teacher"
             logger.info(f"Saving co-trained teacher to {teacher_dir}...")
-            _save_model(teacher, teacher_dir,
-                        model_name=teacher_name,
-                        processor=processor, tokenizer=tokenizer)
+            _save_model(
+                teacher,
+                teacher_dir,
+                model_name=teacher_name,
+                processor=processor,
+                tokenizer=tokenizer,
+            )
         _remove_hf_checkpoint_dirs_after_success(output_dir)
     else:
         logger.info("Training interrupted - skipping final model save (checkpoint already saved)")
@@ -1034,8 +1146,16 @@ def _train(
     return signal_interrupted
 
 
-def _build_grpo_config(config, output_dir, run_name, args, device, report_to,
-                       reward_weights=None, chat_template_kwargs=None):
+def _build_grpo_config(
+    config,
+    output_dir,
+    run_name,
+    args,
+    device,
+    report_to,
+    reward_weights=None,
+    chat_template_kwargs=None,
+):
     """Build a GRPOConfig from the Forge YAML config.
 
     Args:
@@ -1046,6 +1166,8 @@ def _build_grpo_config(config, output_dir, run_name, args, device, report_to,
         device: Device string.
         report_to: Logging target.
         reward_weights: Resolved reward weights from get_reward_funcs.
+        chat_template_kwargs: Extra kwargs (e.g. ``enable_thinking``) forwarded to the
+            chat template when formatting generations.
 
     Returns:
         GRPOConfig instance.
@@ -1059,7 +1181,11 @@ def _build_grpo_config(config, output_dir, run_name, args, device, report_to,
         output_dir=str(output_dir),
         # GRPO-specific
         num_generations=int(rl.get("num_generations", 8)),
-        generation_batch_size=int(rl["generation_batch_size"]) if rl.get("generation_batch_size") is not None else None,
+        generation_batch_size=(
+            int(rl["generation_batch_size"])
+            if rl.get("generation_batch_size") is not None
+            else None
+        ),
         max_completion_length=int(rl.get("max_completion_length", 256)),
         beta=float(rl.get("beta", 0.0)),
         temperature=float(rl.get("temperature", 1.0)),
@@ -1086,7 +1212,9 @@ def _build_grpo_config(config, output_dir, run_name, args, device, report_to,
         # Hardware
         gradient_checkpointing=training.get("gradient_checkpointing", False),
         bf16=(device == "cuda"),
-        dataloader_num_workers=training.get("dataloader_num_workers", get_num_workers()) if device == "cuda" else 0,
+        dataloader_num_workers=(
+            training.get("dataloader_num_workers", get_num_workers()) if device == "cuda" else 0
+        ),
         dataloader_pin_memory=(device == "cuda"),
         # Overrides
         max_steps=args.max_steps if args.max_steps > 0 else -1,
@@ -1101,10 +1229,22 @@ def _build_grpo_config(config, output_dir, run_name, args, device, report_to,
 
 
 def _train_rl(
-    config, device, tokenizer, task,
-    train_dataset, eval_dataset,
-    output_dir, run_name, args, state, resume_checkpoint,
-    env, report_to, metadata, processor=None, chat_template_kwargs=None,
+    config,
+    device,
+    tokenizer,
+    task,
+    train_dataset,
+    eval_dataset,
+    output_dir,
+    run_name,
+    args,
+    state,
+    resume_checkpoint,
+    env,
+    report_to,
+    metadata,
+    processor=None,
+    chat_template_kwargs=None,
 ):
     """Run RL (GRPO) training.
 
@@ -1124,21 +1264,36 @@ def _train_rl(
         report_to: Logging target.
         metadata: Run metadata dict.
         processor: AutoProcessor for VLM models (or None).
+        chat_template_kwargs: Extra kwargs (e.g. ``enable_thinking``) forwarded to the
+            chat template when formatting generations.
+
+    Returns:
+        ``True`` if training was interrupted by a SLURM signal (caller should exit
+        without marking the job complete), ``False`` otherwise.
     """
-    from trl import GRPOTrainer
     from peft import LoraConfig
+    from trl import GRPOTrainer
 
     # Build reward functions from config
     reward_funcs, reward_weights = get_reward_funcs(config)
     logger.info(f"Reward functions: {[f.__name__ for f in reward_funcs]}")
 
     # Build GRPOConfig (pass resolved weights)
-    grpo_config = _build_grpo_config(config, output_dir, run_name, args, device, report_to,
-                                     reward_weights=reward_weights,
-                                     chat_template_kwargs=chat_template_kwargs)
-    logger.info(f"GRPO config: num_generations={grpo_config.num_generations}, "
-                f"max_completion_length={grpo_config.max_completion_length}, "
-                f"beta={grpo_config.beta}, loss_type={grpo_config.loss_type}")
+    grpo_config = _build_grpo_config(
+        config,
+        output_dir,
+        run_name,
+        args,
+        device,
+        report_to,
+        reward_weights=reward_weights,
+        chat_template_kwargs=chat_template_kwargs,
+    )
+    logger.info(
+        f"GRPO config: num_generations={grpo_config.num_generations}, "
+        f"max_completion_length={grpo_config.max_completion_length}, "
+        f"beta={grpo_config.beta}, loss_type={grpo_config.loss_type}"
+    )
 
     # Model loading (resolves --adapter if set, with base/ caching for resume)
     model = _resolve_adapter(config, output_dir, task, processor, tokenizer)
@@ -1156,10 +1311,8 @@ def _train_rl(
         )
         logger.info(f"LoRA enabled: r={peft_config.r}, alpha={peft_config.lora_alpha}")
 
-    # Processing class (tokenizer or processor for VLMs)
     processing_class = processor if processor is not None else tokenizer
 
-    # Create trainer
     trainer = GRPOTrainer(
         model=model,
         reward_funcs=reward_funcs,
@@ -1212,33 +1365,64 @@ def _train_rl(
 
 
 def main():
+    """CLI entry point: parse args, resolve a new-run or --resume output directory, then dispatch
+    to ``_train`` (SFT/KD) or ``_train_rl`` (GRPO) based on the config.
+
+    Registers the run in the SLURM incomplete-jobs registry for the duration of training and
+    writes config/metadata snapshots to ``output_dir`` as a side effect.
+    """
     parser = argparse.ArgumentParser(description="Forge Training")
-    parser.add_argument("--config", type=str, default=None,
-                        help="Path to config file (required for new runs)")
-    parser.add_argument("--resume", type=str, default=None,
-                        help="Path to output dir to resume (e.g. outputs/classification/mnli/.../20260304-1200Z)")
-    parser.add_argument("--run_name", type=str, default=None,
-                        help="Run name for flat output dir (e.g. seed42 -> outputs/seed42/). Create-only.")
-    parser.add_argument("--timestamp", action="store_true",
-                        help="Append timestamp to --run_name (e.g. seed42 -> seed42_20260304-1200Z).")
-    parser.add_argument("--force", action="store_true",
-                        help="Overwrite existing named run (deletes outputs and W&B run, starts fresh).")
-    parser.add_argument("--max_steps", type=int, default=-1, help="Max training steps (for testing)")
+    parser.add_argument(
+        "--config", type=str, default=None, help="Path to config file (required for new runs)"
+    )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Path to output dir to resume (e.g. outputs/classification/mnli/.../20260304-1200Z)",
+    )
+    parser.add_argument(
+        "--run_name",
+        type=str,
+        default=None,
+        help="Run name for flat output dir (e.g. seed42 -> outputs/seed42/). Create-only.",
+    )
+    parser.add_argument(
+        "--timestamp",
+        action="store_true",
+        help="Append timestamp to --run_name (e.g. seed42 -> seed42_20260304-1200Z).",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing named run (deletes outputs and W&B run, starts fresh).",
+    )
+    parser.add_argument(
+        "--max_steps", type=int, default=-1, help="Max training steps (for testing)"
+    )
     parser.add_argument("--epochs", type=int, default=None, help="Override num_epochs from config")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
-    parser.add_argument("--adapter", type=str, default=None,
-                        help="Path to adapter to merge before training (e.g. outputs/my_sft_run/)")
-    parser.add_argument("--teacher_adapter", type=str, default=None,
-                        help="Path to teacher checkpoint/adapter (overrides model.teacher.name)")
-    parser.add_argument("--debug", action="store_true",
-                        help="Enable DEBUG level logging for verbose output")
+    parser.add_argument(
+        "--adapter",
+        type=str,
+        default=None,
+        help="Path to adapter to merge before training (e.g. outputs/my_sft_run/)",
+    )
+    parser.add_argument(
+        "--teacher_adapter",
+        type=str,
+        default=None,
+        help="Path to teacher checkpoint/adapter (overrides model.teacher.name)",
+    )
+    parser.add_argument(
+        "--debug", action="store_true", help="Enable DEBUG level logging for verbose output"
+    )
     args = parser.parse_args()
 
-    # Setup logging early
     setup_logging(debug=args.debug)
 
     # Timestamp for new runs
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%MZ")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%MZ")
 
     # Determine output directory and mode
     if args.resume:
@@ -1264,7 +1448,7 @@ def main():
         # Strip outputs/ prefix if present, then ensure outputs/ base
         resume_path = args.resume
         if resume_path.startswith("outputs/"):
-            resume_path = resume_path[len("outputs/"):]
+            resume_path = resume_path[len("outputs/") :]
         resume_path = resume_path.rstrip("/")
 
         output_dir = Path(f"./outputs/{resume_path}")
@@ -1295,9 +1479,13 @@ def main():
         stem = extract_stem(config_path)
 
         if args.timestamp and not args.run_name:
-            logger.warning("--timestamp without --run_name is redundant (auto-named runs always include timestamp)")
+            logger.warning(
+                "--timestamp without --run_name is redundant (auto-named runs always include timestamp)"
+            )
         if args.force and not args.run_name:
-            logger.warning("--force without --run_name is redundant (auto-named runs are always unique)")
+            logger.warning(
+                "--force without --run_name is redundant (auto-named runs are always unique)"
+            )
 
         if args.run_name:
             # Named run (flat output dir)
@@ -1350,7 +1538,6 @@ def main():
     # Convert to string for compatibility
     args.output_dir = str(output_dir)
 
-    # Set reproducibility seed early
     set_reproducibility_seed(args.seed)
     logger.info(f"Random seed set to: {args.seed}")
 
@@ -1383,7 +1570,9 @@ def main():
                 # Migrate: add stem and display_name fields
                 existing_metadata["stem"] = stem
                 if "display_name" not in existing_metadata:
-                    existing_metadata["display_name"] = existing_metadata.get("run_name", output_dir.name)
+                    existing_metadata["display_name"] = existing_metadata.get(
+                        "run_name", output_dir.name
+                    )
                 save_run_metadata(output_dir, existing_metadata)
                 logger.warning(f"Migrated metadata: added stem={stem}")
         logger.info(f"Loaded stored config from: {output_dir / 'config.yaml'}")
@@ -1408,7 +1597,6 @@ def main():
 
     logger.info(f"Output directory: {args.output_dir}")
 
-    # Add file logging to output directory
     add_file_logging(output_dir, debug=args.debug)
 
     # Detect environment
@@ -1486,7 +1674,11 @@ def main():
         logger.info(f"Created run metadata: {output_dir / 'run_metadata.json'}")
 
     # Track job in incomplete registry for SLURM auto-resubmission
-    resume_path = str(output_dir.relative_to("./outputs")) if str(output_dir).startswith("./outputs") else str(output_dir).replace("outputs/", "", 1)
+    resume_path = (
+        str(output_dir.relative_to("./outputs"))
+        if str(output_dir).startswith("./outputs")
+        else str(output_dir).replace("outputs/", "", 1)
+    )
     add_incomplete_job(resume_path, output_dir)
 
     # Setup W&B
@@ -1525,12 +1717,17 @@ def main():
     if report_to == "wandb":
         try:
             import wandb
+
             wandb.init(
                 project=os.environ.get("WANDB_PROJECT"),
                 id=wandb_run_id,
                 name=display_name,
                 group=os.environ.get("WANDB_RUN_GROUP"),
-                tags=os.environ.get("WANDB_TAGS", "").split(",") if os.environ.get("WANDB_TAGS") else None,
+                tags=(
+                    os.environ.get("WANDB_TAGS", "").split(",")
+                    if os.environ.get("WANDB_TAGS")
+                    else None
+                ),
                 resume="allow" if is_resume else None,
             )
         except Exception as e:
@@ -1557,6 +1754,7 @@ def main():
         tokenizer = None
         if is_ocr_task(task):
             from transformers import AutoProcessor
+
             processor_name = config["model"].get("processor", config["model"]["name"])
             processor = AutoProcessor.from_pretrained(processor_name)
             max_visual_tokens = config.get("data", {}).get("max_visual_tokens")
@@ -1567,6 +1765,7 @@ def main():
             tokenizer = processor.tokenizer
         else:
             from transformers import AutoTokenizer
+
             model_name = config["model"]["name"]
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             tokenizer.padding_side = "left"
@@ -1575,6 +1774,7 @@ def main():
 
         # Resolve chat_template_kwargs: model profile defaults + config override
         from src.inference.model_profiles import get_chat_template_kwargs
+
         ct_kwargs = get_chat_template_kwargs(
             config["model"]["name"],
             explicit=config.get("model", {}).get("chat_template_kwargs"),
@@ -1585,10 +1785,21 @@ def main():
 
         set_reproducibility_seed(args.seed)
         signal_interrupted = _train_rl(
-            config, device, tokenizer, task,
-            train_dataset, eval_dataset,
-            output_dir, display_name, args, state, resume_checkpoint,
-            env, report_to, metadata, processor=processor,
+            config,
+            device,
+            tokenizer,
+            task,
+            train_dataset,
+            eval_dataset,
+            output_dir,
+            display_name,
+            args,
+            state,
+            resume_checkpoint,
+            env,
+            report_to,
+            metadata,
+            processor=processor,
             chat_template_kwargs=ct_kwargs or None,
         )
     else:
@@ -1602,6 +1813,7 @@ def main():
         processor = None
         if is_ocr_task(task):
             from transformers import AutoProcessor
+
             processor_name = config["model"].get("processor", config["model"]["name"])
             logger.info(f"Loading processor: {processor_name}...")
             processor = AutoProcessor.from_pretrained(processor_name)
@@ -1613,12 +1825,16 @@ def main():
             tokenizer = processor.tokenizer
         else:
             from transformers import AutoTokenizer
+
             teacher_cfg = config["model"].get("teacher", {})
-            tokenizer_model = teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
+            tokenizer_model = (
+                teacher_cfg.get("name") if isinstance(teacher_cfg, dict) else teacher_cfg
+            )
             if tokenizer_model is None:
                 tokenizer_model = config["model"]["name"]
             tokenizer = AutoTokenizer.from_pretrained(tokenizer_model)
             from src.tasks import is_translation_task
+
             if "llama" in tokenizer_model.lower() or is_translation_task(task):
                 tokenizer.padding_side = "left"
                 if tokenizer.pad_token is None:
@@ -1636,6 +1852,7 @@ def main():
 
         # Resolve chat_template_kwargs: model profile defaults + config override
         from src.inference.model_profiles import get_chat_template_kwargs
+
         ct_kwargs = get_chat_template_kwargs(
             config["model"]["name"],
             explicit=config.get("model", {}).get("chat_template_kwargs"),
@@ -1645,14 +1862,22 @@ def main():
             logger.info(f"Chat template kwargs: {ct_kwargs}")
 
         train_dataset = format_for_sft(
-            train_dataset, task_type, tokenizer_or_processor, max_length,
-            cache_dir=output_dir, split="train",
+            train_dataset,
+            task_type,
+            tokenizer_or_processor,
+            max_length,
+            cache_dir=output_dir,
+            split="train",
             chat_template_kwargs=ct_kwargs or None,
         )
         if eval_dataset is not None:
             eval_dataset = format_for_sft(
-                eval_dataset, task_type, tokenizer_or_processor, max_length,
-                cache_dir=output_dir, split="eval",
+                eval_dataset,
+                task_type,
+                tokenizer_or_processor,
+                max_length,
+                cache_dir=output_dir,
+                split="eval",
                 chat_template_kwargs=ct_kwargs or None,
             )
 
@@ -1686,34 +1911,64 @@ def main():
         # Pre-training evaluation
         model_pre = teacher_pre = None
         default_log_pre_post = num_labels is not None
-        log_pre_post = config.get("evaluation", {}).get("log_pre_post_metrics", default_log_pre_post)
+        log_pre_post = config.get("evaluation", {}).get(
+            "log_pre_post_metrics", default_log_pre_post
+        )
         if log_pre_post and num_labels is None:
-            logger.warning("log_pre_post_metrics enabled for translation - this may take hours on large eval sets")
+            logger.warning(
+                "log_pre_post_metrics enabled for translation - this may take hours on large eval sets"
+            )
         if log_pre_post:
             set_reproducibility_seed(args.seed)
             model_pre, teacher_pre = run_evaluation(
-                config, device, tokenizer, num_labels,
-                eval_dataset, compute_metrics, data_collator,
-                task, phase="pre",
+                config,
+                device,
+                tokenizer,
+                num_labels,
+                eval_dataset,
+                compute_metrics,
+                data_collator,
+                task,
+                phase="pre",
                 remove_unused_columns=not is_ocr_task(task),
             )
 
         # Training
         set_reproducibility_seed(args.seed)
         signal_interrupted = _train(
-            config, device, tokenizer, num_labels, task,
-            train_dataset, eval_dataset, compute_metrics, data_collator,
-            output_dir, display_name, args, state, resume_checkpoint,
-            env, report_to, metadata, processor=processor,
+            config,
+            device,
+            tokenizer,
+            num_labels,
+            task,
+            train_dataset,
+            eval_dataset,
+            compute_metrics,
+            data_collator,
+            output_dir,
+            display_name,
+            args,
+            state,
+            resume_checkpoint,
+            env,
+            report_to,
+            metadata,
+            processor=processor,
         )
 
         # Post-training evaluation (skip if training was interrupted by SLURM signal)
         if not signal_interrupted:
             set_reproducibility_seed(args.seed)
             model_post, teacher_post = run_evaluation(
-                config, device, tokenizer, num_labels,
-                eval_dataset, compute_metrics, data_collator,
-                task, phase="post",
+                config,
+                device,
+                tokenizer,
+                num_labels,
+                eval_dataset,
+                compute_metrics,
+                data_collator,
+                task,
+                phase="post",
                 checkpoint_dir=output_dir,
                 evaluate_teacher=log_pre_post,
                 prev_metrics=(model_pre, teacher_pre) if log_pre_post else None,
@@ -1733,16 +1988,24 @@ def main():
             logger.info("Training complete!")
         else:
             if state.state.get("target_steps"):
-                logger.info(f"Training complete (early stopping at step {state.state['completed_steps']}/{state.state['target_steps']})")
+                logger.info(
+                    f"Training complete (early stopping at step {state.state['completed_steps']}/{state.state['target_steps']})"
+                )
             else:
-                logger.info(f"Training complete (early stopping at epoch {state.state['completed_epochs']:.2f}/{state.state['target_epochs']})")
+                logger.info(
+                    f"Training complete (early stopping at epoch {state.state['completed_epochs']:.2f}/{state.state['target_epochs']})"
+                )
         logger.info("=" * 60)
     else:
         logger.info("=" * 60)
         if state.state.get("target_steps"):
-            logger.info(f"Training interrupted (step {state.state['completed_steps']}/{state.state['target_steps']})")
+            logger.info(
+                f"Training interrupted (step {state.state['completed_steps']}/{state.state['target_steps']})"
+            )
         else:
-            logger.info(f"Training interrupted (epoch {state.state['completed_epochs']}/{state.state['target_epochs']})")
+            logger.info(
+                f"Training interrupted (epoch {state.state['completed_epochs']}/{state.state['target_epochs']})"
+            )
         logger.info("Job remains in incomplete registry for resubmission")
         logger.info("=" * 60)
 

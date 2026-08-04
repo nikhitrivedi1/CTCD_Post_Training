@@ -18,7 +18,7 @@ class IdentityProjection:
     Example: BERT-base (768) -> DistilBERT (768)
     """
 
-    def __init__(self, dim: int = None):
+    def __init__(self, dim: int | None = None):
         """
         Initialize identity projection.
 
@@ -80,8 +80,8 @@ class MLPProjection(nn.Module):
         self,
         input_dim: int,
         output_dim: int,
-        hidden_dim: int = None,
-        activation: str = "relu"
+        hidden_dim: int | None = None,
+        activation: str = "relu",
     ):
         """
         Initialize MLP projection.
@@ -108,9 +108,7 @@ class MLPProjection(nn.Module):
             raise ValueError(f"Unknown activation: {activation}")
 
         self.proj = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            act,
-            nn.Linear(hidden_dim, output_dim)
+            nn.Linear(input_dim, hidden_dim), act, nn.Linear(hidden_dim, output_dim)
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -129,10 +127,7 @@ PROJECTION_REGISTRY = {
 
 
 def get_projection(
-    name: str,
-    input_dim: int = None,
-    output_dim: int = None,
-    **kwargs
+    name: str, input_dim: int | None = None, output_dim: int | None = None, **kwargs
 ):
     """
     Factory function to get a projection strategy by name.
@@ -148,8 +143,7 @@ def get_projection(
     """
     if name not in PROJECTION_REGISTRY:
         raise ValueError(
-            f"Unknown projection: {name}. "
-            f"Available: {list(PROJECTION_REGISTRY.keys())}"
+            f"Unknown projection: {name}. Available: {list(PROJECTION_REGISTRY.keys())}"
         )
 
     if name == "identity":
@@ -167,10 +161,7 @@ def get_projection(
 
 
 def create_projection_if_needed(
-    teacher_dim: int,
-    model_dim: int,
-    projection_type: str = "linear",
-    **kwargs
+    teacher_dim: int, model_dim: int, projection_type: str = "linear", **kwargs
 ):
     """
     Create projection only if dimensions differ.
@@ -187,9 +178,4 @@ def create_projection_if_needed(
     if teacher_dim == model_dim:
         return IdentityProjection(dim=model_dim)
 
-    return get_projection(
-        projection_type,
-        input_dim=teacher_dim,
-        output_dim=model_dim,
-        **kwargs
-    )
+    return get_projection(projection_type, input_dim=teacher_dim, output_dim=model_dim, **kwargs)

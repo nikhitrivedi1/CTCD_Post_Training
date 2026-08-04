@@ -2,7 +2,7 @@
 
 import inspect
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import torch
 import torch.nn.functional as F
@@ -23,11 +23,18 @@ from .losses import (
 logger = logging.getLogger(__name__)
 
 
-def _inputs_for_model(inputs: Dict[str, Any], model: torch.nn.Module) -> Dict[str, Any]:
+def _inputs_for_model(inputs: dict[str, Any], model: torch.nn.Module) -> dict[str, Any]:
     """Restrict a batch dict to the keys ``model.forward`` actually accepts.
 
     Student and teacher models can have different forward signatures (e.g. DistilBERT
     doesn't accept ``token_type_ids``, BERT does); each must only receive what it can consume.
+
+    Args:
+        inputs: Full batch dict as produced by the data collator.
+        model: Model whose ``forward`` signature determines which keys are kept.
+
+    Returns:
+        Copy of ``inputs`` filtered down to keys accepted by ``model.forward``.
     """
     accepted = set(inspect.signature(model.forward).parameters.keys())
     return {k: v for k, v in inputs.items() if k in accepted}
@@ -63,23 +70,23 @@ class DistillationTrainer(FinetuningTrainer):
     """
 
     def __init__(
-            self,
-            teacher_model: torch.nn.Module,
-            temperature: float = 2.0,
-            alpha_h: float = 1.0,
-            alpha_s: float = 1.0,
-            beta_h: Optional[float] = None,
-            beta_s: Optional[float] = None,
-            freeze_teacher: bool = True,
-            loss_strategy: Optional[DistillationLossStrategy] = None,
-            teacher_loss_strategy: Optional[DistillationLossStrategy] = None,
-            loss_type: Optional[str] = None,
-            teacher_label_map: Optional[list] = None,
-            layer_mapping_type: Optional[str] = None,
-            layer_mapping: Optional[List[Tuple[int, int]]] = None,
-            projector: Optional[torch.nn.Module] = None,
-            *args,
-            **kwargs
+        self,
+        teacher_model: torch.nn.Module,
+        temperature: float = 2.0,
+        alpha_h: float = 1.0,
+        alpha_s: float = 1.0,
+        beta_h: float | None = None,
+        beta_s: float | None = None,
+        freeze_teacher: bool = True,
+        loss_strategy: DistillationLossStrategy | None = None,
+        teacher_loss_strategy: DistillationLossStrategy | None = None,
+        loss_type: str | None = None,
+        teacher_label_map: list | None = None,
+        layer_mapping_type: str | None = None,
+        layer_mapping: list[tuple[int, int]] | None = None,
+        projector: torch.nn.Module | None = None,
+        *args,
+        **kwargs,
     ):
         """
         Initialize DistillationTrainer.
@@ -115,19 +122,17 @@ class DistillationTrainer(FinetuningTrainer):
         self.teacher_label_map = teacher_label_map
         self.temperature = temperature
 
-
-
         # Accumulate per-step metrics for averaged logging at logging_steps intervals.
         # Without this, self.log() fires every step, creating noisy W&B charts.
-        self._metric_accumulator = {}
+        self._metric_accumulator: dict[str, float] = {}
         self._metric_count = 0
 
         # Per-class teacher prediction counts, accumulated across the same logging_steps
         # window as _metric_accumulator (reset alongside it) to derive teacher_pred_top1_frac.
-        self._teacher_pred_counts: Optional[torch.Tensor] = None
+        self._teacher_pred_counts: torch.Tensor | None = None
 
         # Filled in on_pre_optimizer_step (co-training) for the next HF training log bundle.
-        self._last_student_teacher_grad_norms: Optional[Tuple[float, float]] = None
+        self._last_student_teacher_grad_norms: tuple[float, float] | None = None
 
         # ===========================================================================
         #  Student Model Initialization
@@ -161,9 +166,9 @@ class DistillationTrainer(FinetuningTrainer):
         self.projector = projector
 
         # Track what outputs we need based on loss strategy requirements
-        self.output_hidden_states = getattr(self.loss_strategy, 'requires_hidden_states', False)
-        self.output_attentions = getattr(self.loss_strategy, 'requires_attentions', False)
-        
+        self.output_hidden_states = getattr(self.loss_strategy, "requires_hidden_states", False)
+        self.output_attentions = getattr(self.loss_strategy, "requires_attentions", False)
+
         # ===========================================================================
         #  Teacher Model Initialization
         # ===========================================================================
@@ -174,7 +179,6 @@ class DistillationTrainer(FinetuningTrainer):
         else:
             self.teacher.train()  # Training mode for co-training
 
-
         if freeze_teacher:
             self.beta_h = 0.0
             self.beta_s = 0.0
@@ -183,7 +187,6 @@ class DistillationTrainer(FinetuningTrainer):
         else:
             self.beta_s = float(beta_s)
             self.beta_h = float(beta_h)
-
 
         if freeze_teacher:
             self.teacher_loss_strategy = None
@@ -195,8 +198,6 @@ class DistillationTrainer(FinetuningTrainer):
                 ce_loss_coeff=self.beta_h,
                 kd_loss_coeff=self.beta_s,
             )
-
-
 
         logger.info("DistillationTrainer initialized:")
         logger.info(f"  Loss strategy: {self.loss_strategy.name}")
@@ -250,6 +251,13 @@ class DistillationTrainer(FinetuningTrainer):
         """
         Attach student/teacher grad norms to the standard HF training log dict (the one
         that includes ``loss``), without mixing them into other ``log()`` calls.
+
+        Args:
+            logs: Metrics dict being logged; mutated in place with grad norms when applicable.
+            start_time: Passed through to ``Trainer.log`` unchanged.
+
+        Returns:
+            Whatever ``Trainer.log`` returns (HF's base implementation returns ``None``).
         """
         if (
             isinstance(logs, dict)
@@ -279,11 +287,13 @@ class DistillationTrainer(FinetuningTrainer):
     def create_optimizer(self):
         """
         Create optimizer, including teacher parameters if co-training.
+
+        Returns:
+            The optimizer instance (also stored on ``self.optimizer``).
         """
         if self.optimizer is not None:
             return self.optimizer
 
-        # Get default optimizer for model
         super().create_optimizer()
 
         # If co-training, add teacher parameters to optimizer
@@ -321,6 +331,7 @@ class DistillationTrainer(FinetuningTrainer):
 
             if updates:
                 from dataclasses import replace
+
                 return replace(outputs, **updates)
 
         return outputs
@@ -399,20 +410,8 @@ class DistillationTrainer(FinetuningTrainer):
             # Student branch: detach teacher F/A so gradients do not flow into teacher via KD/F/A.
             teacher_outputs_for_distill = self._detach_output_intermediates(teacher_outputs)
 
-        # Task loss (cross-entropy with labels)
         ce_loss = outputs.loss
-
-        # Get labels if available
         labels = inputs.get("labels", None)
-
-        # Debugging: Print labels
-        # if self.state.global_step % 2 == 0:
-        #     tp = teacher_logits.softmax(-1)
-        #     print(f"[teach] step={self.state.global_step} "
-        #         f"acc={(teacher_logits.argmax(-1) == labels).float().mean().item():.4f} "
-        #         f"maxprob={tp.max(-1).values.mean().item():.4f} "
-        #         f"logit_absmax={teacher_logits.abs().max().item():.2f} "
-        #         f"pred_hist={teacher_logits.argmax(-1).bincount(minlength=tp.shape[-1]).tolist()}")
 
         # Always-on teacher accuracy / prediction-distribution monitoring, so a corrupted
         # in-loop teacher (e.g. missing an input the student doesn't need but the teacher
@@ -426,8 +425,10 @@ class DistillationTrainer(FinetuningTrainer):
                 teacher_preds = teacher_logits.argmax(-1)
                 teacher_accuracy = (teacher_preds == labels).float().mean()
                 pred_counts = teacher_preds.bincount(minlength=teacher_logits.size(-1)).float()
-                if (self._teacher_pred_counts is None
-                        or self._teacher_pred_counts.numel() != pred_counts.numel()):
+                if (
+                    self._teacher_pred_counts is None
+                    or self._teacher_pred_counts.numel() != pred_counts.numel()
+                ):
                     self._teacher_pred_counts = torch.zeros_like(pred_counts)
                 self._teacher_pred_counts += pred_counts
 
@@ -452,7 +453,7 @@ class DistillationTrainer(FinetuningTrainer):
             labels=labels,
             model_outputs=outputs,
             teacher_outputs=teacher_outputs_for_distill,
-            **loss_kwargs
+            **loss_kwargs,
         )
 
         total_loss = student_loss_output.total_loss
@@ -504,8 +505,11 @@ class DistillationTrainer(FinetuningTrainer):
         self._metric_count += 1
 
         # Flush averaged metrics at logging intervals
-        if (hasattr(self, 'args') and self.args.logging_steps > 0
-                and self._metric_count >= self.args.logging_steps):
+        if (
+            hasattr(self, "args")
+            and self.args.logging_steps > 0
+            and self._metric_count >= self.args.logging_steps
+        ):
             avg_dict = {k: v / self._metric_count for k, v in self._metric_accumulator.items()}
             # Top1 fraction must come from aggregated counts, not an average of per-step
             # fractions - the latter is a biased estimate when class balance shifts step to step.
@@ -523,10 +527,10 @@ class DistillationTrainer(FinetuningTrainer):
     @classmethod
     def setup_from_config(
         cls,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         teacher_model: torch.nn.Module,
         model: torch.nn.Module,
-    ) -> Tuple[Dict[str, Any], Optional[List[Tuple[int, int]]], Optional[torch.nn.Module]]:
+    ) -> tuple[dict[str, Any], list[tuple[int, int]] | None, torch.nn.Module | None]:
         """
         Parse distillation config and prepare trainer arguments.
 
@@ -572,12 +576,18 @@ class DistillationTrainer(FinetuningTrainer):
 
         temp = trainer_kwargs["temperature"]
         loss_strategy = build_distill_topology_strategy(
-            distill_config, coeffs["alpha_h"], coeffs["alpha_s"], temperature=temp,
+            distill_config,
+            coeffs["alpha_h"],
+            coeffs["alpha_s"],
+            temperature=temp,
         )
         trainer_kwargs["loss_strategy"] = loss_strategy
         if not freeze_teacher:
             trainer_kwargs["teacher_loss_strategy"] = build_teacher_response_only_strategy(
-                distill_config, coeffs["beta_h"], coeffs["beta_s"], temperature=temp,
+                distill_config,
+                coeffs["beta_h"],
+                coeffs["beta_s"],
+                temperature=temp,
             )
 
         # Teacher label remapping
@@ -586,7 +596,11 @@ class DistillationTrainer(FinetuningTrainer):
 
         device = str(next(model.parameters()).device)
         layer_mapping, projector = build_layer_mapping_and_projector(
-            distill_config, loss_strategy, model, teacher_model, device,
+            distill_config,
+            loss_strategy,
+            model,
+            teacher_model,
+            device,
         )
         layer_mapping_config = distill_config.get("layer_mapping", {})
         if layer_mapping_config:
@@ -614,8 +628,16 @@ class DistillationTrainer(FinetuningTrainer):
 
         We temporarily disable self.output_hidden_states and self.output_attentions
         so that compute_loss (if called) won't add these kwargs to the forward pass.
+
+        Args:
+            model: Model being evaluated.
+            inputs: Batch dict for this eval step.
+            prediction_loss_only: Whether to skip returning logits (only compute loss).
+            ignore_keys: Output keys to exclude when gathering predictions.
+
+        Returns:
+            Same ``(loss, logits, labels)`` tuple as ``Trainer.prediction_step``.
         """
-        # Temporarily disable hidden states/attentions for eval
         old_hidden = self.output_hidden_states
         old_attn = self.output_attentions
         self.output_hidden_states = False
@@ -629,6 +651,5 @@ class DistillationTrainer(FinetuningTrainer):
                 ignore_keys=ignore_keys,
             )
         finally:
-            # Restore original settings
             self.output_hidden_states = old_hidden
             self.output_attentions = old_attn

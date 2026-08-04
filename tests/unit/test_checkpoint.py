@@ -14,10 +14,10 @@ import pytest
 
 from src.utils.checkpoint import TrainingState, mark_checkpoint_complete
 
-
 # ===========================================================================
 # 1. Save/load round-trip
 # ===========================================================================
+
 
 class TestRoundTrip:
     """Save then load preserves completed_epochs and completed_steps."""
@@ -60,25 +60,34 @@ class TestRoundTrip:
 # 2. is_complete()
 # ===========================================================================
 
+
 class TestIsComplete:
     """True when target reached, False before."""
 
-    @pytest.mark.parametrize("current,target,expected", [
-        (2, 3, False),
-        (3, 3, True),
-        (5, 3, True),
-    ], ids=["before", "at-target", "beyond"])
+    @pytest.mark.parametrize(
+        "current,target,expected",
+        [
+            (2, 3, False),
+            (3, 3, True),
+            (5, 3, True),
+        ],
+        ids=["before", "at-target", "beyond"],
+    )
     def test_epoch_target(self, tmp_path, current, target, expected):
         ts = TrainingState(str(tmp_path))
         ts.set_targets(epochs=target)
         ts.save(epoch=current, step=0)
         assert ts.is_complete() is expected
 
-    @pytest.mark.parametrize("current,target,expected", [
-        (500, 1000, False),
-        (1000, 1000, True),
-        (1500, 1000, True),
-    ], ids=["before", "at-target", "beyond"])
+    @pytest.mark.parametrize(
+        "current,target,expected",
+        [
+            (500, 1000, False),
+            (1000, 1000, True),
+            (1500, 1000, True),
+        ],
+        ids=["before", "at-target", "beyond"],
+    )
     def test_step_target(self, tmp_path, current, target, expected):
         ts = TrainingState(str(tmp_path))
         ts.set_targets(steps=target)
@@ -102,14 +111,19 @@ class TestIsComplete:
 # 3. Corrupt JSON recovery
 # ===========================================================================
 
+
 class TestCorruptRecovery:
     """Corrupt JSON recovers gracefully to fresh state."""
 
-    @pytest.mark.parametrize("content", [
-        "{truncated",
-        "",
-        "not json at all",
-    ], ids=["truncated", "empty", "garbage"])
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "{truncated",
+            "",
+            "not json at all",
+        ],
+        ids=["truncated", "empty", "garbage"],
+    )
     def test_corrupt_falls_back_to_defaults(self, tmp_path, content):
         (tmp_path / "training_state.json").write_text(content)
         ts = TrainingState(str(tmp_path))
@@ -120,6 +134,7 @@ class TestCorruptRecovery:
 # ===========================================================================
 # 4. get_resume_checkpoint()
 # ===========================================================================
+
 
 class TestGetResumeCheckpoint:
     """Finds latest numeric checkpoint dir, skips non-numeric."""
@@ -185,6 +200,7 @@ class TestGetResumeCheckpoint:
 # 5. mark_checkpoint_complete()
 # ===========================================================================
 
+
 class TestMarkCheckpointComplete:
     """Writes atomically, no temp file leftovers."""
 
@@ -212,6 +228,7 @@ class TestMarkCheckpointComplete:
 # ===========================================================================
 # 6. is_pipeline_complete() and mark_pipeline_complete()
 # ===========================================================================
+
 
 class TestPipelineComplete:
     """Pipeline completion tracking."""

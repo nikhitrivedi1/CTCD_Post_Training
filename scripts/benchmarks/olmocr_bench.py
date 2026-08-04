@@ -40,7 +40,6 @@ from tqdm import tqdm
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.utils.environment import get_num_workers
 from src.evaluation.bench_utils import (
     add_common_bench_args,
     apply_shard,
@@ -55,6 +54,7 @@ from src.evaluation.bench_utils import (
     validate_bench_args,
 )
 from src.inference import InferenceEngine
+from src.utils.environment import get_num_workers
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -67,6 +67,7 @@ DEFAULT_OUTPUT_BASE = "outputs/bench/olmocr"
 DEFAULT_MAX_NEW_TOKENS = 2048
 DEFAULT_DPI = 150
 OCR_PROMPT = "Extract all text from this document page. Output clean markdown."
+
 
 # ---------------------------------------------------------------------------
 # PDF rendering
@@ -142,8 +143,9 @@ def load_bench_data(bench_dir: str):
                 test["_jsonl"] = os.path.basename(jsonl_path)
                 all_tests.append(test)
 
-    logger.info(f"Loaded {len(all_tests)} tests from "
-                f"{len(set(t['_category'] for t in all_tests))} categories")
+    logger.info(
+        f"Loaded {len(all_tests)} tests from {len({t['_category'] for t in all_tests})} categories"
+    )
     return all_tests, os.path.abspath(pdf_base_dir)
 
 
@@ -190,9 +192,10 @@ def _ensure_playwright_chromium():
     """
     try:
         from playwright.sync_api import sync_playwright
+
         with sync_playwright() as p:
             # Try to get the executable - raises if not installed
-            p.chromium.executable_path
+            _ = p.chromium.executable_path
         return True
     except Exception:
         pass
@@ -201,9 +204,12 @@ def _ensure_playwright_chromium():
     logger.info("Playwright Chromium not found. Installing...")
     try:
         import subprocess
+
         result = subprocess.run(
             [sys.executable, "-m", "playwright", "install", "chromium"],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True,
+            text=True,
+            timeout=300,
         )
         if result.returncode == 0:
             logger.info("Playwright Chromium installed successfully")
@@ -227,9 +233,10 @@ def _check_olmocr_scoring():
     Returns:
         Tuple of (load_single_test function or None, set of skipped test types, mock_katex bool)
     """
-    skip_types = set()
+    skip_types: set[str] = set()
     try:
         from olmocr.bench.tests import load_single_test
+
         logger.info("Using olmocr.bench.tests for scoring (exact comparability)")
         return load_single_test, skip_types, False
     except ImportError as e:
@@ -240,6 +247,7 @@ def _check_olmocr_scoring():
                 # Retry import after installing Chromium
                 try:
                     from olmocr.bench.tests import load_single_test
+
                     logger.info("Using olmocr.bench.tests for scoring (exact comparability)")
                     return load_single_test, skip_types, False
                 except ImportError:
@@ -249,10 +257,12 @@ def _check_olmocr_scoring():
             logger.warning("Playwright Chromium unavailable - math tests will be skipped")
             try:
                 import unittest.mock
+
                 katex_mock = unittest.mock.MagicMock()
                 sys.modules["olmocr.bench.katex"] = katex_mock
                 sys.modules["olmocr.bench.katex.render"] = katex_mock
                 from olmocr.bench.tests import load_single_test
+
                 skip_types.add("math")
                 return load_single_test, skip_types, True
             except Exception:
@@ -275,6 +285,7 @@ def _score_single_test(args):
     # Apply katex mock in worker if parent needed it
     if use_olmocr and mock_katex:
         import unittest.mock
+
         katex_mock = unittest.mock.MagicMock()
         sys.modules.setdefault("olmocr.bench.katex", katex_mock)
         sys.modules.setdefault("olmocr.bench.katex.render", katex_mock)
@@ -291,14 +302,23 @@ def _score_single_test(args):
     if use_olmocr:
         try:
             from olmocr.bench.tests import load_single_test
+
             test_data = {k: v for k, v in test.items() if not k.startswith("_")}
             test_obj = load_single_test(test_data)
             passed, explanation = test_obj.run(md_content)
-            return test, {"test_id": test.get("id", "unknown"), "status": "scored",
-                          "result": "pass" if passed else "fail", "explanation": explanation}
+            return test, {
+                "test_id": test.get("id", "unknown"),
+                "status": "scored",
+                "result": "pass" if passed else "fail",
+                "explanation": explanation,
+            }
         except Exception as e:
-            return test, {"test_id": test.get("id", "unknown"), "status": "scored",
-                          "result": "fail", "explanation": f"error: {e}"}
+            return test, {
+                "test_id": test.get("id", "unknown"),
+                "status": "scored",
+                "result": "fail",
+                "explanation": f"error: {e}",
+            }
     else:
         return test, _fallback_score(test, md_content)
 
@@ -321,9 +341,13 @@ def score_tests(all_tests, markdowns_dir: str, num_workers: int = 1):
     load_single_test, skip_types, mock_katex = _check_olmocr_scoring()
     use_olmocr = load_single_test is not None
 
-    results_by_category = defaultdict(lambda: {"passed": 0, "failed": 0, "missing": 0, "total": 0})
-    results_by_jsonl = defaultdict(lambda: {"passed": 0, "failed": 0, "missing": 0, "total": 0})
-    individual_results = []
+    results_by_category: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"passed": 0, "failed": 0, "missing": 0, "total": 0}
+    )
+    results_by_jsonl: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"passed": 0, "failed": 0, "missing": 0, "total": 0}
+    )
+    individual_results: list[dict] = []
 
     # Filter out unsupported test types
     scoreable_tests = []
@@ -341,11 +365,17 @@ def score_tests(all_tests, markdowns_dir: str, num_workers: int = 1):
     if num_workers > 1:
         logger.info(f"Scoring with {num_workers} parallel workers")
         with ProcessPoolExecutor(max_workers=num_workers) as pool:
-            futures = {pool.submit(_score_single_test, item): i for i, item in enumerate(work_items)}
-            pbar = tqdm(as_completed(futures), total=len(futures), desc="Scoring tests", unit="test")
+            futures = {
+                pool.submit(_score_single_test, item): i for i, item in enumerate(work_items)
+            }
+            pbar = tqdm(
+                as_completed(futures), total=len(futures), desc="Scoring tests", unit="test"
+            )
             for future in pbar:
                 test_dict, result = future.result()
-                _accumulate_score(test_dict, result, results_by_category, results_by_jsonl, individual_results)
+                _accumulate_score(
+                    test_dict, result, results_by_category, results_by_jsonl, individual_results
+                )
                 if result["result"] == "pass":
                     pass_count += 1
                 elif result["result"] != "skip":
@@ -354,7 +384,9 @@ def score_tests(all_tests, markdowns_dir: str, num_workers: int = 1):
     else:
         for item in (pbar := tqdm(work_items, desc="Scoring tests", unit="test")):
             test_dict, result = _score_single_test(item)
-            _accumulate_score(test_dict, result, results_by_category, results_by_jsonl, individual_results)
+            _accumulate_score(
+                test_dict, result, results_by_category, results_by_jsonl, individual_results
+            )
             if result["result"] == "pass":
                 pass_count += 1
             elif result["result"] != "skip":
@@ -406,8 +438,12 @@ def _fallback_score(test: dict, md_content: str) -> dict:
             passed = text.lower() in md_content.lower()
         else:
             passed = text in md_content
-        return {"test_id": test_id, "status": "scored", "result": "pass" if passed else "fail",
-                "explanation": "fallback: simple text match"}
+        return {
+            "test_id": test_id,
+            "status": "scored",
+            "result": "pass" if passed else "fail",
+            "explanation": "fallback: simple text match",
+        }
 
     elif test_type == "absent":
         text = test.get("text", "")
@@ -415,12 +451,20 @@ def _fallback_score(test: dict, md_content: str) -> dict:
             passed = text.lower() not in md_content.lower()
         else:
             passed = text not in md_content
-        return {"test_id": test_id, "status": "scored", "result": "pass" if passed else "fail",
-                "explanation": "fallback: simple text absence"}
+        return {
+            "test_id": test_id,
+            "status": "scored",
+            "result": "pass" if passed else "fail",
+            "explanation": "fallback: simple text absence",
+        }
 
     else:
-        return {"test_id": test_id, "status": "scored", "result": "fail",
-                "explanation": f"fallback: {test_type} not supported"}
+        return {
+            "test_id": test_id,
+            "status": "scored",
+            "result": "fail",
+            "explanation": f"fallback: {test_type} not supported",
+        }
 
 
 def compute_overall_score(results_by_jsonl: dict) -> tuple:
@@ -441,7 +485,7 @@ def compute_overall_score(results_by_jsonl: dict) -> tuple:
     """
     total_scores = []
     scored_scores = []
-    for jsonl, counts in results_by_jsonl.items():
+    for _jsonl, counts in results_by_jsonl.items():
         if counts["total"] > 0:
             total_scores.append(counts["passed"] / counts["total"])
         scored = counts["passed"] + counts["failed"]
@@ -477,7 +521,9 @@ def print_results_table(results_by_category: dict, score_of_total: float, score_
         scored = c["passed"] + c["failed"]
         pct_scored = c["passed"] / scored * 100 if scored > 0 else 0
         pct_total = c["passed"] / c["total"] * 100 if c["total"] > 0 else 0
-        logger.info(f"{category:<22} {c['passed']:>6} {c['failed']:>6} {c['missing']:>6} {c['total']:>6}  {pct_scored:>7.1f}% {pct_total:>7.1f}%")
+        logger.info(
+            f"{category:<22} {c['passed']:>6} {c['failed']:>6} {c['missing']:>6} {c['total']:>6}  {pct_scored:>7.1f}% {pct_total:>7.1f}%"
+        )
 
     total_passed = sum(c["passed"] for c in results_by_category.values())
     total_failed = sum(c["failed"] for c in results_by_category.values())
@@ -487,14 +533,24 @@ def print_results_table(results_by_category: dict, score_of_total: float, score_
     agg_scored = total_passed / total_scored * 100 if total_scored > 0 else 0
     agg_total = total_passed / total_tests * 100 if total_tests > 0 else 0
     logger.info("-" * 78)
-    logger.info(f"{'Aggregate':<22} {total_passed:>6} {total_failed:>6} {total_missing:>6} {total_tests:>6}  {agg_scored:>7.1f}% {agg_total:>7.1f}%")
-    logger.info(f"{'Per-JSONL Average':<22} {'':>6} {'':>6} {'':>6} {'':>6}  {score_of_scored:>7.1f}% {score_of_total:>7.1f}%")
+    logger.info(
+        f"{'Aggregate':<22} {total_passed:>6} {total_failed:>6} {total_missing:>6} {total_tests:>6}  {agg_scored:>7.1f}% {agg_total:>7.1f}%"
+    )
+    logger.info(
+        f"{'Per-JSONL Average':<22} {'':>6} {'':>6} {'':>6} {'':>6}  {score_of_scored:>7.1f}% {score_of_total:>7.1f}%"
+    )
     logger.info("=" * 78)
 
 
-def save_olmocr_results(output_dir: str, results_by_category: dict, results_by_jsonl: dict,
-                        score_of_total: float, score_of_scored: float,
-                        metadata: dict, individual_results: list):
+def save_olmocr_results(
+    output_dir: str,
+    results_by_category: dict,
+    results_by_jsonl: dict,
+    score_of_total: float,
+    score_of_scored: float,
+    metadata: dict,
+    individual_results: list,
+):
     """Save results, metadata, and per-test details to output directory.
 
     Args:
@@ -506,10 +562,14 @@ def save_olmocr_results(output_dir: str, results_by_category: dict, results_by_j
         metadata: Run metadata dict.
         individual_results: Per-test results.
     """
+
     def _cat_summary(c):
         scored = c["passed"] + c["failed"]
         return {
-            "passed": c["passed"], "failed": c["failed"], "missing": c["missing"], "total": c["total"],
+            "passed": c["passed"],
+            "failed": c["failed"],
+            "missing": c["missing"],
+            "total": c["total"],
             "score_of_scored": round(c["passed"] / scored * 100, 2) if scored > 0 else 0,
             "score_of_total": round(c["passed"] / c["total"] * 100, 2) if c["total"] > 0 else 0,
         }
@@ -534,7 +594,9 @@ def save_olmocr_results(output_dir: str, results_by_category: dict, results_by_j
 def main():
     parser = argparse.ArgumentParser(description="Evaluate VLM on olmOCR-Bench")
     add_common_bench_args(parser, max_new_tokens=DEFAULT_MAX_NEW_TOKENS)
-    parser.add_argument("--bench_dir", type=str, default=DEFAULT_BENCH_DIR, help="Path to olmOCR-bench data")
+    parser.add_argument(
+        "--bench_dir", type=str, default=DEFAULT_BENCH_DIR, help="Path to olmOCR-bench data"
+    )
     parser.add_argument("--dpi", type=int, default=DEFAULT_DPI, help="PDF render DPI")
     args = parser.parse_args()
 
@@ -558,16 +620,24 @@ def main():
         register_bench_job(output_dir, "olmocr", args.shard)
         device = "cuda" if torch.cuda.is_available() else "cpu"
         engine = InferenceEngine.load(
-            model_id=args.model, checkpoint_path=args.checkpoint,
-            model_type="vlm", device=device, task="ocr",
+            model_id=args.model,
+            checkpoint_path=args.checkpoint,
+            model_type="vlm",
+            device=device,
+            task="ocr",
         )
 
-        metadata = build_metadata(args, engine, "olmocr", {
-            "max_new_tokens": args.max_new_tokens,
-            "do_sample": False,
-            "dpi": args.dpi,
-            "prompt": OCR_PROMPT,
-        })
+        metadata = build_metadata(
+            args,
+            engine,
+            "olmocr",
+            {
+                "max_new_tokens": args.max_new_tokens,
+                "do_sample": False,
+                "dpi": args.dpi,
+                "prompt": OCR_PROMPT,
+            },
+        )
         save_metadata(output_dir, metadata)
 
         # Build work items (skip missing PDFs upfront)
@@ -578,20 +648,25 @@ def main():
             if not os.path.exists(pdf_abs):
                 logger.warning(f"PDF not found: {pdf_abs}")
                 continue
-            work_items.append({
-                "md_path": md_path,
-                "pdf_abs": pdf_abs,
-                "page_num": page_num,
-                "pdf_rel": pdf_rel,
-            })
+            work_items.append(
+                {
+                    "md_path": md_path,
+                    "pdf_abs": pdf_abs,
+                    "page_num": page_num,
+                    "pdf_rel": pdf_rel,
+                }
+            )
 
         def _render_page(item):
-            return render_pdf_page(item["pdf_abs"], item["page_num"],
-                                   dpi=args.dpi)
+            return render_pdf_page(item["pdf_abs"], item["page_num"], dpi=args.dpi)
 
         generate_markdowns(
-            engine, work_items, OCR_PROMPT, args.max_new_tokens,
-            markdowns_dir, image_fn=_render_page,
+            engine,
+            work_items,
+            OCR_PROMPT,
+            args.max_new_tokens,
+            markdowns_dir,
+            image_fn=_render_page,
             label_fn=lambda item: f"{item['pdf_rel']} page {item['page_num']}",
         )
         save_metadata(output_dir, metadata)
@@ -610,24 +685,38 @@ def main():
     # Scoring phase (skip for sharded runs)
     if args.shard and not args.score_only:
         remove_bench_job()
-        logger.info(f"Shard {args.shard} complete - run with --score_only to score after all shards finish")
+        logger.info(
+            f"Shard {args.shard} complete - run with --score_only to score after all shards finish"
+        )
         return
 
     # Completeness check: report how many markdowns are available
     all_unique = collect_unique_pages(all_tests)
     available = sum(
-        1 for pdf_rel, page_num in all_unique
+        1
+        for pdf_rel, page_num in all_unique
         if os.path.exists(os.path.join(markdowns_dir, pdf_to_md_name(pdf_rel, page_num)))
     )
     pct_available = available / len(all_unique) * 100
     missing = len(all_unique) - available
-    logger.info(f"Scoring {available}/{len(all_unique)} pages ({pct_available:.1f}% available, {missing} missing)")
+    logger.info(
+        f"Scoring {available}/{len(all_unique)} pages ({pct_available:.1f}% available, {missing} missing)"
+    )
     num_workers = get_num_workers()
-    results_by_category, results_by_jsonl, individual_results = score_tests(all_tests, markdowns_dir, num_workers=num_workers)
+    results_by_category, results_by_jsonl, individual_results = score_tests(
+        all_tests, markdowns_dir, num_workers=num_workers
+    )
     score_of_total, score_of_scored = compute_overall_score(results_by_jsonl)
     print_results_table(results_by_category, score_of_total, score_of_scored)
-    save_olmocr_results(output_dir, results_by_category, results_by_jsonl,
-                        score_of_total, score_of_scored, metadata, individual_results)
+    save_olmocr_results(
+        output_dir,
+        results_by_category,
+        results_by_jsonl,
+        score_of_total,
+        score_of_scored,
+        metadata,
+        individual_results,
+    )
 
     # Mark complete in registry
     remove_bench_job()

@@ -9,10 +9,10 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 
-
 # ---------------------------------------------------------------------------
 # Primitive dimensions
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def batch_size():
@@ -43,6 +43,7 @@ def seq_len():
 # Tensor fixtures — classification logits (batch, num_classes)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def model_logits(batch_size, num_classes):
     torch.manual_seed(42)
@@ -64,6 +65,7 @@ def ce_loss():
 # Tensor fixtures — language model logits (batch, seq_len, vocab_size)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def lm_model_logits(batch_size, seq_len, vocab_size):
     torch.manual_seed(42)
@@ -79,6 +81,7 @@ def lm_target_logits(batch_size, seq_len, vocab_size):
 # ---------------------------------------------------------------------------
 # Hidden state fixtures — (batch, seq_len, hidden_size) per layer
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def hidden_states_model(batch_size, seq_len, hidden_size):
@@ -97,6 +100,7 @@ def hidden_states_target(batch_size, seq_len, hidden_size):
 # ---------------------------------------------------------------------------
 # Attention weight fixtures — (batch, heads, seq, seq), softmax-normalized
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def attention_weights_model(batch_size, seq_len):
@@ -118,6 +122,7 @@ def attention_weights_target(batch_size, seq_len):
 # Mock model output fixtures (for loss strategy tests)
 # ---------------------------------------------------------------------------
 
+
 def _make_mock_outputs(logits, hidden_states=None, attentions=None, loss=None):
     m = MagicMock()
     m.logits = logits
@@ -134,12 +139,15 @@ def mock_model_outputs(model_logits, hidden_states_model, attention_weights_mode
 
 @pytest.fixture
 def mock_target_outputs(target_logits, hidden_states_target, attention_weights_target):
-    return _make_mock_outputs(target_logits, hidden_states_target, attention_weights_target, torch.tensor(1.2))
+    return _make_mock_outputs(
+        target_logits, hidden_states_target, attention_weights_target, torch.tensor(1.2)
+    )
 
 
 # ---------------------------------------------------------------------------
 # Layer mapping fixture
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def bert_distilbert_mapping():
@@ -151,13 +159,19 @@ def bert_distilbert_mapping():
 # Tiny BERT fixtures (for trainer/evaluation tests needing HF Trainer compat)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def tiny_bert_model():
     """2-layer BertForSequenceClassification, random init, no download."""
     from transformers import BertConfig, BertForSequenceClassification
+
     cfg = BertConfig(
-        hidden_size=64, num_hidden_layers=2, num_attention_heads=2,
-        intermediate_size=128, num_labels=3, vocab_size=1000,
+        hidden_size=64,
+        num_hidden_layers=2,
+        num_attention_heads=2,
+        intermediate_size=128,
+        num_labels=3,
+        vocab_size=1000,
         attn_implementation="eager",
     )
     return BertForSequenceClassification(cfg)
@@ -167,9 +181,14 @@ def tiny_bert_model():
 def tiny_bert_teacher():
     """4-layer BertForSequenceClassification, random init, no download."""
     from transformers import BertConfig, BertForSequenceClassification
+
     cfg = BertConfig(
-        hidden_size=64, num_hidden_layers=4, num_attention_heads=2,
-        intermediate_size=128, num_labels=3, vocab_size=1000,
+        hidden_size=64,
+        num_hidden_layers=4,
+        num_attention_heads=2,
+        intermediate_size=128,
+        num_labels=3,
+        vocab_size=1000,
         attn_implementation="eager",
     )
     return BertForSequenceClassification(cfg)

@@ -54,7 +54,7 @@ def _make_batch_inputs(sequences, pad_id=0):
     max_len = max(len(s) for s in sequences)
     input_ids = torch.full((len(sequences), max_len), pad_id, dtype=torch.long)
     for i, seq in enumerate(sequences):
-        input_ids[i, :len(seq)] = torch.tensor(seq, dtype=torch.long)
+        input_ids[i, : len(seq)] = torch.tensor(seq, dtype=torch.long)
     attention_mask = (input_ids != pad_id).long()
     return {"input_ids": input_ids, "attention_mask": attention_mask}
 
@@ -62,6 +62,7 @@ def _make_batch_inputs(sequences, pad_id=0):
 # ===========================================================================
 # Tests
 # ===========================================================================
+
 
 class TestVLMDataCollator:
     """VLMDataCollator prompt masking and label creation."""

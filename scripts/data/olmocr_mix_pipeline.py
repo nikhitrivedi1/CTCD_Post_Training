@@ -35,7 +35,7 @@ import tarfile
 import threading
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from datasets import Dataset, Features, Image, Value, load_dataset, load_dataset_builder
@@ -385,7 +385,9 @@ def render_to_pngs(
             t_render = time.monotonic()
             if workers > 1:
                 with ProcessPoolExecutor(max_workers=workers) as pool:
-                    futures = {pool.submit(_render_and_save_png, job): job[3] for job in render_jobs}
+                    futures = {
+                        pool.submit(_render_and_save_png, job): job[3] for job in render_jobs
+                    }
                     for future in tqdm(
                         as_completed(futures),
                         total=len(futures),
@@ -476,15 +478,17 @@ def build_hf_dataset(png_dir: str, jsonl_path: str, output_path: str) -> int:
                     "is_diagram": meta["is_diagram"],
                 }
 
-    features = Features({
-        "image": Image(),
-        "text": Value("string"),
-        "id": Value("string"),
-        "page_number": Value("int64"),
-        "primary_language": Value("string"),
-        "is_table": Value("bool"),
-        "is_diagram": Value("bool"),
-    })
+    features = Features(
+        {
+            "image": Image(),
+            "text": Value("string"),
+            "id": Value("string"),
+            "page_number": Value("int64"),
+            "primary_language": Value("string"),
+            "is_table": Value("bool"),
+            "is_diagram": Value("bool"),
+        }
+    )
 
     dataset = Dataset.from_generator(generator, features=features)
     dataset.save_to_disk(output_path)
@@ -597,7 +601,7 @@ def process_subset(
         "source": source_metadata,
         "preparation": {
             "script": "scripts/data/prepare_ocr_data.py",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "params": {
                 "subset": subset,
                 "max_samples": max_samples,
@@ -618,19 +622,35 @@ def process_subset(
 
 def main():
     parser = argparse.ArgumentParser(description="Pre-process olmOCR-mix-1025 for training")
-    parser.add_argument("--subset", type=str, default="all",
-                        choices=ALL_SUBSETS + ["all"],
-                        help="Dataset subset to process ('all' for full 268K)")
-    parser.add_argument("--output", type=str, default="data/ocr/olmocr-mix-full",
-                        help="Output directory for processed dataset")
-    parser.add_argument("--max_samples", type=int, default=None,
-                        help="Maximum training samples to process per subset (None for all)")
-    parser.add_argument("--target_dim", type=int, default=1288,
-                        help="Target longest image dimension in pixels")
-    parser.add_argument("--cache_dir", type=str, default=None,
-                        help="HuggingFace cache directory")
-    parser.add_argument("--workers", type=int, default=None,
-                        help="Number of parallel workers for PDF rendering (default: all CPUs)")
+    parser.add_argument(
+        "--subset",
+        type=str,
+        default="all",
+        choices=ALL_SUBSETS + ["all"],
+        help="Dataset subset to process ('all' for full 268K)",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="data/ocr/olmocr-mix-full",
+        help="Output directory for processed dataset",
+    )
+    parser.add_argument(
+        "--max_samples",
+        type=int,
+        default=None,
+        help="Maximum training samples to process per subset (None for all)",
+    )
+    parser.add_argument(
+        "--target_dim", type=int, default=1288, help="Target longest image dimension in pixels"
+    )
+    parser.add_argument("--cache_dir", type=str, default=None, help="HuggingFace cache directory")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of parallel workers for PDF rendering (default: all CPUs)",
+    )
     args = parser.parse_args()
 
     # Prefer SLURM allocation, then explicit arg, then all CPUs

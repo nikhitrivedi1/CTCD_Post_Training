@@ -1,4 +1,5 @@
 """Quick single-math-test across all bench models. Diagnoses KaTeX scoring."""
+
 import os
 
 from olmocr.bench.tests import load_single_test

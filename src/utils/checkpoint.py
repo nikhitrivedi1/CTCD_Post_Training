@@ -5,7 +5,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class TrainingState:
         self.state_file = self.output_dir / "training_state.json"
         self.state = self._load()
 
-    def _load(self) -> Dict[str, Any]:
+    def _load(self) -> dict[str, Any]:
         """
         Load existing state from file or create new state.
 
@@ -41,7 +41,7 @@ class TrainingState:
         """
         if self.state_file.exists():
             try:
-                with open(self.state_file, 'r') as f:
+                with open(self.state_file) as f:
                     return json.load(f)
             except ValueError:
                 logger.warning(
@@ -54,7 +54,7 @@ class TrainingState:
             "completed_steps": 0,
             "target_epochs": None,
             "target_steps": None,
-            "jobs": []
+            "jobs": [],
         }
 
     def save(self, epoch: float, step: int):
@@ -67,14 +67,16 @@ class TrainingState:
         """
         self.state["completed_epochs"] = int(epoch)
         self.state["completed_steps"] = step
-        self.state["jobs"].append({
-            "job_id": os.environ.get("SLURM_JOB_ID", "local"),
-            "timestamp": datetime.now().isoformat(),
-            "epoch": epoch,
-            "step": step
-        })
+        self.state["jobs"].append(
+            {
+                "job_id": os.environ.get("SLURM_JOB_ID", "local"),
+                "timestamp": datetime.now().isoformat(),
+                "epoch": epoch,
+                "step": step,
+            }
+        )
 
-        with open(self.state_file, 'w') as f:
+        with open(self.state_file, "w") as f:
             json.dump(self.state, f, indent=2)
 
     def is_complete(self) -> bool:
@@ -106,10 +108,10 @@ class TrainingState:
     def mark_pipeline_complete(self):
         """Mark the full pipeline as complete (training + post-eval done)."""
         self.state["pipeline_complete"] = True
-        with open(self.state_file, 'w') as f:
+        with open(self.state_file, "w") as f:
             json.dump(self.state, f, indent=2)
 
-    def get_resume_checkpoint(self, output_dir: Optional[str] = None) -> Optional[str]:
+    def get_resume_checkpoint(self, output_dir: str | None = None) -> str | None:
         """
         Find the latest safely-completed checkpoint to resume from.
 
@@ -144,9 +146,7 @@ class TrainingState:
                     if resolved.exists() and resolved.is_dir():
                         logger.info(f"Resuming from latest_checkpoint: {resolved}")
                         return str(resolved)
-            logger.warning(
-                f"latest_checkpoint points to {raw_path} but it doesn't exist"
-            )
+            logger.warning(f"latest_checkpoint points to {raw_path} but it doesn't exist")
 
         # Fallback: glob for checkpoint dirs (backward compat)
         checkpoints = []
@@ -164,7 +164,7 @@ class TrainingState:
         latest = max(checkpoints, key=lambda x: int(x.name.split("-")[1]))
         return str(latest)
 
-    def set_targets(self, epochs: Optional[int] = None, steps: Optional[int] = None):
+    def set_targets(self, epochs: int | None = None, steps: int | None = None):
         """
         Set target epochs or steps for training completion.
 
@@ -177,7 +177,7 @@ class TrainingState:
         if steps is not None:
             self.state["target_steps"] = steps
 
-        with open(self.state_file, 'w') as f:
+        with open(self.state_file, "w") as f:
             json.dump(self.state, f, indent=2)
 
 

@@ -16,10 +16,22 @@ logger = logging.getLogger(__name__)
 
 # Language name mapping for prompts
 LANG_NAMES = {
-    "en": "English", "fr": "French", "de": "German", "es": "Spanish",
-    "it": "Italian", "pt": "Portuguese", "nl": "Dutch", "da": "Danish",
-    "sv": "Swedish", "fi": "Finnish", "el": "Greek", "cs": "Czech",
-    "pl": "Polish", "hu": "Hungarian", "ro": "Romanian", "bg": "Bulgarian",
+    "en": "English",
+    "fr": "French",
+    "de": "German",
+    "es": "Spanish",
+    "it": "Italian",
+    "pt": "Portuguese",
+    "nl": "Dutch",
+    "da": "Danish",
+    "sv": "Swedish",
+    "fi": "Finnish",
+    "el": "Greek",
+    "cs": "Czech",
+    "pl": "Polish",
+    "hu": "Hungarian",
+    "ro": "Romanian",
+    "bg": "Bulgarian",
 }
 
 

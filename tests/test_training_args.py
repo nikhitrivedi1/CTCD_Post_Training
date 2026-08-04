@@ -3,8 +3,8 @@
 import pytest
 import yaml
 
-from src.utils.config import load_config
 from forge import should_load_best_model, warmup_kwargs_for_training_args
+from src.utils.config import load_config
 
 
 @pytest.fixture
@@ -15,53 +15,73 @@ def kd_config_tree(tmp_path):
         base.yaml -> model/base.yaml -> kd/base.yaml -> kd/teacher/base.yaml -> leaf.yaml
     """
     # Root base
-    (tmp_path / "base.yaml").write_text(yaml.dump({
-        "data": {"task": "ocr", "dataset": "formatting"},
-        "training": {
-            "num_epochs": 3,
-            "use_lora": True,
-            "lora": {"r": 16, "alpha": 16},
-        },
-        "evaluation": {"eval_strategy": "steps", "eval_steps": 50},
-        "checkpointing": {"save_steps": 50},
-    }))
+    (tmp_path / "base.yaml").write_text(
+        yaml.dump(
+            {
+                "data": {"task": "ocr", "dataset": "formatting"},
+                "training": {
+                    "num_epochs": 3,
+                    "use_lora": True,
+                    "lora": {"r": 16, "alpha": 16},
+                },
+                "evaluation": {"eval_strategy": "steps", "eval_steps": 50},
+                "checkpointing": {"save_steps": 50},
+            }
+        )
+    )
 
     # Model base (student)
     model_dir = tmp_path / "student"
     model_dir.mkdir()
-    (model_dir / "base.yaml").write_text(yaml.dump({
-        "inherit": "../base.yaml",
-        "model": {"name": "Qwen/Qwen3.5-0.8B"},
-        "training": {"batch_size": 1, "learning_rate": "2e-6"},
-        "evaluation": {"eval_strategy": "no"},
-        "checkpointing": {"save_steps": 999999, "final_model_save": "last"},
-    }))
+    (model_dir / "base.yaml").write_text(
+        yaml.dump(
+            {
+                "inherit": "../base.yaml",
+                "model": {"name": "Qwen/Qwen3.5-0.8B"},
+                "training": {"batch_size": 1, "learning_rate": "2e-6"},
+                "evaluation": {"eval_strategy": "no"},
+                "checkpointing": {"save_steps": 999999, "final_model_save": "last"},
+            }
+        )
+    )
 
     # KD base
     kd_dir = model_dir / "kd"
     kd_dir.mkdir()
-    (kd_dir / "base.yaml").write_text(yaml.dump({
-        "inherit": "../base.yaml",
-    }))
+    (kd_dir / "base.yaml").write_text(
+        yaml.dump(
+            {
+                "inherit": "../base.yaml",
+            }
+        )
+    )
 
     # Teacher base
     teacher_dir = kd_dir / "teacher"
     teacher_dir.mkdir()
-    (teacher_dir / "base.yaml").write_text(yaml.dump({
-        "inherit": "../base.yaml",
-        "model": {"teacher": {"name": "Qwen/Qwen3.5-0.8B", "freeze": True}},
-    }))
+    (teacher_dir / "base.yaml").write_text(
+        yaml.dump(
+            {
+                "inherit": "../base.yaml",
+                "model": {"teacher": {"name": "Qwen/Qwen3.5-0.8B", "freeze": True}},
+            }
+        )
+    )
 
     # Leaf config (response_kl)
-    (teacher_dir / "01_response_kl.yaml").write_text(yaml.dump({
-        "inherit": "base.yaml",
-        "distillation": {
-            "loss_type": "response_kl",
-            "temperature": 2.0,
-            "alpha_h": 0.5,
-            "alpha_s": 0.5,
-        },
-    }))
+    (teacher_dir / "01_response_kl.yaml").write_text(
+        yaml.dump(
+            {
+                "inherit": "base.yaml",
+                "distillation": {
+                    "loss_type": "response_kl",
+                    "temperature": 2.0,
+                    "alpha_h": 0.5,
+                    "alpha_s": 0.5,
+                },
+            }
+        )
+    )
 
     return teacher_dir / "01_response_kl.yaml"
 
@@ -107,18 +127,18 @@ class TestShouldLoadBestModel:
             should_load_best_model(config)
 
     def test_none_strategy_raises(self):
-        config = {"evaluation": {"eval_strategy": None}}
+        config: dict = {"evaluation": {"eval_strategy": None}}
         with pytest.raises(ValueError):
             should_load_best_model(config)
 
     def test_missing_eval_strategy(self):
         """No eval_strategy key - defaults to steps (existing behavior)."""
-        config = {"evaluation": {}}
+        config: dict = {"evaluation": {}}
         assert should_load_best_model(config) is True
 
     def test_missing_evaluation_section(self):
         """No evaluation section at all - defaults to steps."""
-        config = {}
+        config: dict = {}
         assert should_load_best_model(config) is True
 
     def test_eval_no_from_config_file(self, kd_config_tree):
@@ -128,16 +148,25 @@ class TestShouldLoadBestModel:
 
     def test_final_model_save_last_with_eval_running(self):
         """final_model_save: last always saves the last checkpoint, even with eval on."""
-        config = {"evaluation": {"eval_strategy": "steps"}, "checkpointing": {"final_model_save": "last"}}
+        config = {
+            "evaluation": {"eval_strategy": "steps"},
+            "checkpointing": {"final_model_save": "last"},
+        }
         assert should_load_best_model(config) is False
 
     def test_final_model_save_best_explicit(self):
-        config = {"evaluation": {"eval_strategy": "steps"}, "checkpointing": {"final_model_save": "best"}}
+        config = {
+            "evaluation": {"eval_strategy": "steps"},
+            "checkpointing": {"final_model_save": "best"},
+        }
         assert should_load_best_model(config) is True
 
     def test_final_model_save_best_with_eval_disabled_raises(self):
         """Can't select a 'best' checkpoint with no eval metrics to compare."""
-        config = {"evaluation": {"eval_strategy": "no"}, "checkpointing": {"final_model_save": "best"}}
+        config = {
+            "evaluation": {"eval_strategy": "no"},
+            "checkpointing": {"final_model_save": "best"},
+        }
         with pytest.raises(ValueError, match="final_model_save"):
             should_load_best_model(config)
 

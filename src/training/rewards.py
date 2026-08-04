@@ -15,6 +15,10 @@ sequential GPU idle time during reward scoring.
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
+from src.evaluation.formatting_metrics import (
+    extract_formatting_spans as _extract_formatting_spans,
+)
+from src.evaluation.formatting_metrics import fuzzy_set_match as _fuzzy_set_match
 from src.tasks import get_default_reward
 
 logger = logging.getLogger(__name__)
@@ -51,7 +55,7 @@ def _score_parallel(score_fn, completions, references=None):
     """
     completions = [_unwrap_completion(c) for c in completions]
     if references is not None:
-        items = list(zip(completions, references))
+        items = list(zip(completions, references, strict=True))
         return list(_get_reward_pool().map(lambda args: score_fn(*args), items))
     return list(_get_reward_pool().map(score_fn, completions))
 
@@ -109,7 +113,7 @@ def ocr_reward(completions, ground_truth, **kwargs):
 def unit_test_reward(completions, tests, **kwargs):
     """Reward based on olmOCR-bench unit test pass rate.
 
-    Each sample has a list of test dicts (absent, order, math, table).
+    Each sample has a list of test dicts (present, absent, order, math, table).
     Score = fraction of tests passed per completion.
 
     Args:
@@ -122,13 +126,14 @@ def unit_test_reward(completions, tests, **kwargs):
     # Try olmocr's test runner for exact scoring (handles math, tables, etc.)
     try:
         from olmocr.bench.tests import load_single_test
+
         use_olmocr = True
     except ImportError:
         use_olmocr = False
         logger.warning("olmocr not installed, using fallback unit test scoring")
 
     rewards = []
-    for completion, test_list in zip(completions, tests):
+    for completion, test_list in zip(completions, tests, strict=True):
         if isinstance(completion, list):
             completion = completion[-1]["content"]
 
@@ -142,7 +147,9 @@ def unit_test_reward(completions, tests, **kwargs):
                 if use_olmocr:
                     # Strip private keys and None values (HF Dataset adds None
                     # for missing keys when schema-unifying heterogeneous dicts)
-                    test_data = {k: v for k, v in test.items() if not k.startswith("_") and v is not None}
+                    test_data = {
+                        k: v for k, v in test.items() if not k.startswith("_") and v is not None
+                    }
                     test_obj = load_single_test(test_data)
                     result, _ = test_obj.run(completion)
                     if result:
@@ -201,7 +208,9 @@ def _score_format(completion):
     if len(completion.strip()) > 50:
         score += 0.2
     # Inline formatting: bold or italic markers present
-    if re.search(r"\*\*[^*]+\*\*", completion) or re.search(r"(?<!\*)\*(?!\*)[^*]+(?<!\*)\*(?!\*)", completion):
+    if re.search(r"\*\*[^*]+\*\*", completion) or re.search(
+        r"(?<!\*)\*(?!\*)[^*]+(?<!\*)\*(?!\*)", completion
+    ):
         score += 0.2
     return min(1.0, score)
 
@@ -544,13 +553,6 @@ def _lcs_length(a: list[int], b: list[int]) -> int:
     return dp[n]
 
 
-# Formatting span extraction and matching imported from shared module
-from src.evaluation.formatting_metrics import (
-    extract_formatting_spans as _extract_formatting_spans,
-    fuzzy_set_match as _fuzzy_set_match,
-)
-
-
 def _score_inline_formatting(completion, reference):
     """Score inline formatting preservation between completion and reference.
 
@@ -629,9 +631,7 @@ def inline_formatting_pertype_reward(completions, ground_truth, **kwargs):
     Returns:
         List of float rewards in [0, 1].
     """
-    return _score_parallel(
-        _score_inline_formatting_pertype, completions, ground_truth
-    )
+    return _score_parallel(_score_inline_formatting_pertype, completions, ground_truth)
 
 
 def inline_formatting_reward(completions, ground_truth, **kwargs):
@@ -663,11 +663,21 @@ class ParallelRewardGroup:
     """
 
     def __init__(self, funcs):
+        """
+        Args:
+            funcs: Reward functions to run concurrently; each must have a unique ``__name__``.
+        """
         self._funcs = funcs
         self._cache = {}
         self._last_completions = None
 
     def _run_all(self, **kwargs):
+        """Run every wrapped reward function once and cache the results for this batch.
+
+        Uses object identity (not equality) to detect a new batch: trl passes a fresh
+        ``completions`` list on each call, so an identity match means this batch's rewards
+        were already computed (by an earlier wrapper in ``wrap()``) and the cache is reused.
+        """
         completions = kwargs.get("completions")
         if completions is self._last_completions:
             return
@@ -684,12 +694,15 @@ class ParallelRewardGroup:
         """
         wrappers = []
         for func in self._funcs:
+
             def _make(f):
                 def wrapper(**kwargs):
                     self._run_all(**kwargs)
                     return self._cache[f.__name__]
+
                 wrapper.__name__ = f.__name__
                 return wrapper
+
             wrappers.append(_make(func))
         return wrappers
 
@@ -750,10 +763,14 @@ def get_reward_funcs(config):
         weights = []
         for name, weight in reward_spec.items():
             if name not in REWARD_REGISTRY:
-                raise ValueError(f"Unknown reward: {name}. Available: {list(REWARD_REGISTRY.keys())}")
+                raise ValueError(
+                    f"Unknown reward: {name}. Available: {list(REWARD_REGISTRY.keys())}"
+                )
             funcs.append(REWARD_REGISTRY[name])
             weights.append(float(weight))
-        logger.info(f"Using reward functions: {dict(zip(reward_spec.keys(), weights))}")
+        logger.info(
+            f"Using reward functions: {dict(zip(reward_spec.keys(), weights, strict=True))}"
+        )
         if len(funcs) > 1:
             logger.info("Wrapping in ParallelRewardGroup for concurrent scoring")
             funcs = ParallelRewardGroup(funcs).wrap()
@@ -764,7 +781,9 @@ def get_reward_funcs(config):
         funcs = []
         for name in reward_spec:
             if name not in REWARD_REGISTRY:
-                raise ValueError(f"Unknown reward: {name}. Available: {list(REWARD_REGISTRY.keys())}")
+                raise ValueError(
+                    f"Unknown reward: {name}. Available: {list(REWARD_REGISTRY.keys())}"
+                )
             funcs.append(REWARD_REGISTRY[name])
         logger.info(f"Using reward functions: {reward_spec}")
         if len(funcs) > 1:

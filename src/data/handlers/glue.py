@@ -41,7 +41,7 @@ _GLUE_TASKS = {
         "subset": "mrpc",
         "input_columns": ("sentence1", "sentence2"),
         # Note that test split is available for MRPC
-        "eval_split": "validation", 
+        "eval_split": "validation",
     },
     "qnli": {
         "subset": "qnli",
@@ -84,7 +84,9 @@ class GLUEHandler(DatasetHandler):
         Args:
             data_dir: Not used.
         """
-        logger.info(f"GLUE/{self.task} requires no preparation (downloaded from HF Hub at load time)")
+        logger.info(
+            f"GLUE/{self.task} requires no preparation (downloaded from HF Hub at load time)"
+        )
 
     def validate(self, data_dir: str) -> dict:
         """Validate by checking HF Hub availability.

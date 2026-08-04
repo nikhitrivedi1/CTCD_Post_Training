@@ -1,13 +1,14 @@
 """Evaluation metrics for different tasks."""
 
 import logging
-from typing import Dict, Any, Optional, Callable
-
-import numpy as np
+from collections.abc import Callable
+from typing import Any
 
 import evaluate
+import numpy as np
 from calibration_toolbox import ACE
-from src.tasks import is_classification_task, is_translation_task, is_ocr_task
+
+from src.tasks import is_classification_task, is_ocr_task, is_translation_task
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ def _ace_num_bins(num_samples: int) -> int:
     return max(1, min(100, int(np.floor(np.sqrt(num_samples)))))
 
 
-def compute_classification_metrics(eval_pred) -> Dict[str, float]:
+def compute_classification_metrics(eval_pred) -> dict[str, float]:
     """
     Compute metrics for classification tasks.
 
@@ -88,7 +89,7 @@ def compute_translation_metrics(tokenizer):
         Function that computes BLEU and COMET scores
     """
 
-    def compute_metrics(eval_pred) -> Dict[str, float]:
+    def compute_metrics(eval_pred) -> dict[str, float]:
         """
         Compute metrics for translation tasks (Europarl).
 
@@ -133,7 +134,7 @@ def compute_translation_metrics(tokenizer):
 
         # Try to compute COMET (may fail if not available or too slow)
         try:
-            comet_metric = evaluate.load("comet")
+            evaluate.load("comet")
             # COMET needs source text, but we don't have it in eval_pred
             # For now, we'll skip COMET during training and compute it separately
             # comet_result = comet_metric.compute(predictions=decoded_preds, references=decoded_labels)
@@ -179,7 +180,7 @@ def compute_ocr_metrics(tokenizer):
         Function that computes edit_similarity and exact_match
     """
 
-    def compute_metrics(eval_pred) -> Dict[str, float]:
+    def compute_metrics(eval_pred) -> dict[str, float]:
         """Compute OCR metrics: edit similarity and exact match.
 
         Args:
@@ -205,7 +206,7 @@ def compute_ocr_metrics(tokenizer):
         edit_sims = []
         exact_matches = 0
 
-        for pred, label in zip(decoded_preds, decoded_labels):
+        for pred, label in zip(decoded_preds, decoded_labels, strict=True):
             pred, label = pred.strip(), label.strip()
             if pred == label:
                 exact_matches += 1
@@ -226,7 +227,7 @@ def compute_ocr_metrics(tokenizer):
     return compute_metrics
 
 
-def get_compute_metrics(task: str, tokenizer: Optional[Any] = None) -> Optional[Callable]:
+def get_compute_metrics(task: str, tokenizer: Any | None = None) -> Callable | None:
     """
     Get the appropriate compute_metrics function for a task.
 

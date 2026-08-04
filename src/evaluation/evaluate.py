@@ -6,7 +6,6 @@ Models are function-local and GC'd on return — no manual memory management nee
 
 import inspect
 import logging
-from typing import Dict, List, Optional, Tuple
 
 import torch
 from torch.utils.data import DataLoader
@@ -25,10 +24,10 @@ def evaluate_model(
     compute_metrics,
     data_collator=None,
     batch_size: int = 32,
-    device: str = None,
+    device: str | None = None,
     loss_only: bool = False,
     remove_unused_columns: bool = True,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Evaluate a model using a direct torch inference loop.
 
@@ -83,8 +82,7 @@ def evaluate_model(
     num_samples = 0
 
     for batch in dataloader:
-        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v
-                 for k, v in batch.items()}
+        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
         with torch.no_grad():
             outputs = model(**batch)
 
@@ -115,7 +113,7 @@ def evaluate_model(
 
 
 def log_pre_post_metrics(
-    metrics: Dict[str, float],
+    metrics: dict[str, float],
     model_name: str,
     phase: str,
     to_wandb: bool = True,
@@ -141,6 +139,7 @@ def log_pre_post_metrics(
     if to_wandb:
         try:
             import wandb
+
             if wandb.run:
                 wandb_metrics = {f"{prefix}/{k}": v for k, v in metrics.items()}
                 wandb.log(wandb_metrics, commit=False)
@@ -148,7 +147,7 @@ def log_pre_post_metrics(
             logger.debug(f"W&B logging failed: {e}")
 
 
-def _remap_compute_metrics(compute_metrics, label_map: List[int]):
+def _remap_compute_metrics(compute_metrics, label_map: list[int]):
     """Wrap compute_metrics to remap logits before metric computation.
 
     Args:
@@ -158,16 +157,18 @@ def _remap_compute_metrics(compute_metrics, label_map: List[int]):
     Returns:
         Wrapped compute_metrics function
     """
+
     def wrapped(eval_pred):
         logits, labels = eval_pred
         remapped = logits[:, label_map]
         return compute_metrics((remapped, labels))
+
     return wrapped
 
 
 def evaluate_models(
     model: torch.nn.Module,
-    teacher: Optional[torch.nn.Module],
+    teacher: torch.nn.Module | None,
     eval_dataset,
     tokenizer,
     compute_metrics,
@@ -176,9 +177,9 @@ def evaluate_models(
     device: str,
     phase: str,
     loss_only: bool = False,
-    teacher_label_map: Optional[List[int]] = None,
+    teacher_label_map: list[int] | None = None,
     remove_unused_columns: bool = True,
-) -> Tuple[Dict[str, float], Optional[Dict[str, float]]]:
+) -> tuple[dict[str, float], dict[str, float] | None]:
     """
     Evaluate model and teacher, logging metrics with the given phase prefix.
 
@@ -199,16 +200,16 @@ def evaluate_models(
     Returns:
         Tuple of (model_metrics, teacher_metrics)
     """
-    eval_kwargs = dict(
-        eval_dataset=eval_dataset,
-        tokenizer=tokenizer,
-        compute_metrics=compute_metrics,
-        data_collator=data_collator,
-        batch_size=eval_batch_size,
-        device=device,
-        loss_only=loss_only,
-        remove_unused_columns=remove_unused_columns,
-    )
+    eval_kwargs = {
+        "eval_dataset": eval_dataset,
+        "tokenizer": tokenizer,
+        "compute_metrics": compute_metrics,
+        "data_collator": data_collator,
+        "batch_size": eval_batch_size,
+        "device": device,
+        "loss_only": loss_only,
+        "remove_unused_columns": remove_unused_columns,
+    }
 
     logger.info(f"Evaluating model ({phase}-training)...")
     model_metrics = evaluate_model(model=model, **eval_kwargs)
@@ -231,10 +232,10 @@ def evaluate_models(
 
 def log_transfer_metrics(
     task: str,
-    model: Dict[str, float],
-    teacher: Optional[Dict[str, float]],
-    model_prev: Optional[Dict[str, float]] = None,
-    teacher_prev: Optional[Dict[str, float]] = None,
+    model: dict[str, float],
+    teacher: dict[str, float] | None,
+    model_prev: dict[str, float] | None = None,
+    teacher_prev: dict[str, float] | None = None,
 ) -> None:
     """
     Compute and log transfer metrics from evaluation results.
@@ -268,7 +269,11 @@ def log_transfer_metrics(
         logger.info(f"  Model gain ({primary_metric}): {model_gain:+.4f}")
 
         # Transfer efficiency (model gain / pre-training teacher advantage)
-        if teacher_prev is not None and primary_metric in teacher_prev and primary_metric in model_prev:
+        if (
+            teacher_prev is not None
+            and primary_metric in teacher_prev
+            and primary_metric in model_prev
+        ):
             teacher_advantage_pre = teacher_prev[primary_metric] - model_prev[primary_metric]
             if abs(teacher_advantage_pre) > 1e-6:
                 efficiency = model_gain / teacher_advantage_pre
@@ -285,6 +290,7 @@ def log_transfer_metrics(
     if metrics:
         try:
             import wandb
+
             if wandb.run:
                 wandb.log(metrics, commit=False)
         except Exception as e:
@@ -295,7 +301,7 @@ def run_evaluation(
     config: dict,
     device: str,
     tokenizer,
-    num_labels: Optional[int],
+    num_labels: int | None,
     eval_dataset,
     compute_metrics,
     data_collator,
@@ -303,9 +309,9 @@ def run_evaluation(
     phase: str,
     checkpoint_dir=None,
     evaluate_teacher: bool = True,
-    prev_metrics: Optional[Tuple[Dict, Optional[Dict]]] = None,
+    prev_metrics: tuple[dict, dict | None] | None = None,
     remove_unused_columns: bool = True,
-) -> Tuple[Dict[str, float], Optional[Dict[str, float]]]:
+) -> tuple[dict[str, float], dict[str, float] | None]:
     """
     Run a complete evaluation phase: load models, evaluate, return metrics.
 
@@ -330,21 +336,31 @@ def run_evaluation(
         Tuple of (model_metrics, teacher_metrics)
     """
     logger.info("=" * 60)
-    logger.info(f"{'Pre' if phase == 'pre' else 'Post'}-training evaluation{' (baselines)' if phase == 'pre' else ''}...")
+    logger.info(
+        f"{'Pre' if phase == 'pre' else 'Post'}-training evaluation{' (baselines)' if phase == 'pre' else ''}..."
+    )
     logger.info("=" * 60)
 
     from pathlib import Path
 
     # Load model
     if checkpoint_dir is not None:
-        model = load_model(str(checkpoint_dir), task, device,
-                           tokenizer=tokenizer, num_labels=num_labels)
+        model = load_model(
+            str(checkpoint_dir), task, device, tokenizer=tokenizer, num_labels=num_labels
+        )
     else:
-        lora_config = config["training"]["lora"] if config.get("training", {}).get("use_lora") else None
-        model = load_model(config["model"]["name"], task, device,
-                           init=config["model"].get("init", "pretrained"),
-                           tokenizer=tokenizer, num_labels=num_labels,
-                           lora_config=lora_config)
+        lora_config = (
+            config["training"]["lora"] if config.get("training", {}).get("use_lora") else None
+        )
+        model = load_model(
+            config["model"]["name"],
+            task,
+            device,
+            init=config["model"].get("init", "pretrained"),
+            tokenizer=tokenizer,
+            num_labels=num_labels,
+            lora_config=lora_config,
+        )
 
     # Load teacher (if applicable)
     teacher_for_eval = None
@@ -366,8 +382,9 @@ def run_evaluation(
                 teacher_src = str(teacher_path) if teacher_has_weights else teacher_name
             else:
                 teacher_src = teacher_name
-            teacher_for_eval = load_model(teacher_src, task, device,
-                                          tokenizer=tokenizer, num_labels=num_labels)
+            teacher_for_eval = load_model(
+                teacher_src, task, device, tokenizer=tokenizer, num_labels=num_labels
+            )
 
     eval_batch_size = config["training"].get("eval_batch_size", config["training"]["batch_size"])
     loss_only = num_labels is None
@@ -392,8 +409,11 @@ def run_evaluation(
     if prev_metrics is not None:
         model_prev, teacher_prev = prev_metrics
         log_transfer_metrics(
-            task, model_metrics, teacher_metrics,
-            model_prev=model_prev, teacher_prev=teacher_prev,
+            task,
+            model_metrics,
+            teacher_metrics,
+            model_prev=model_prev,
+            teacher_prev=teacher_prev,
         )
 
     return model_metrics, teacher_metrics

@@ -12,8 +12,8 @@ import os
 import re
 from pathlib import Path
 
-from PIL import Image
 from datasets import Dataset
+from PIL import Image
 
 from .base import DatasetHandler
 
@@ -21,8 +21,14 @@ logger = logging.getLogger(__name__)
 
 # Block types to skip (not textual content)
 _SKIP_TYPES = {
-    "figure", "abandon", "text_mask", "table_mask", "need_mask",
-    "page_number", "header", "footer",
+    "figure",
+    "abandon",
+    "text_mask",
+    "table_mask",
+    "need_mask",
+    "page_number",
+    "header",
+    "footer",
 }
 
 
@@ -153,6 +159,7 @@ class OmniDocBenchHandler(DatasetHandler):
         if not annotations_path.exists():
             logger.info("Downloading OmniDocBench from HuggingFace...")
             from huggingface_hub import snapshot_download
+
             snapshot_download(
                 "opendatalab/OmniDocBench",
                 local_dir=str(data_path),
@@ -162,7 +169,9 @@ class OmniDocBenchHandler(DatasetHandler):
 
         # Step 2: Convert JSON to markdown (idempotent - skip if exists)
         if markdown_dir.exists() and any(markdown_dir.glob("*.md")):
-            logger.info(f"Markdown already exists ({len(list(markdown_dir.glob('*.md')))} files), skipping conversion")
+            logger.info(
+                f"Markdown already exists ({len(list(markdown_dir.glob('*.md')))} files), skipping conversion"
+            )
             return
 
         logger.info("Converting OmniDocBench annotations to markdown...")
@@ -245,9 +254,13 @@ class OmniDocBenchHandler(DatasetHandler):
         markdown_dir = data_path / "markdown"
 
         if not images_dir.exists():
-            raise FileNotFoundError(f"images/ not found in {data_dir}. Run: prepare.py --dataset omnidocbench")
+            raise FileNotFoundError(
+                f"images/ not found in {data_dir}. Run: prepare.py --dataset omnidocbench"
+            )
         if not markdown_dir.exists():
-            raise FileNotFoundError(f"markdown/ not found in {data_dir}. Run: prepare.py --dataset omnidocbench")
+            raise FileNotFoundError(
+                f"markdown/ not found in {data_dir}. Run: prepare.py --dataset omnidocbench"
+            )
 
         pairs = []
         for md_path in sorted(markdown_dir.glob("*.md")):
@@ -284,9 +297,13 @@ class OmniDocBenchHandler(DatasetHandler):
         markdown_dir = data_path / "markdown"
 
         if not images_dir.exists():
-            raise FileNotFoundError(f"images/ not found in {data_dir}. Run: prepare.py --dataset omnidocbench")
+            raise FileNotFoundError(
+                f"images/ not found in {data_dir}. Run: prepare.py --dataset omnidocbench"
+            )
         if not markdown_dir.exists():
-            raise FileNotFoundError(f"markdown/ not found in {data_dir}. Run: prepare.py --dataset omnidocbench")
+            raise FileNotFoundError(
+                f"markdown/ not found in {data_dir}. Run: prepare.py --dataset omnidocbench"
+            )
 
         samples = []
         for md_path in sorted(markdown_dir.glob("*.md")):

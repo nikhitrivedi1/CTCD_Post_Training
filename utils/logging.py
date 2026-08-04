@@ -80,6 +80,7 @@ def setup_file_logging(log_path: Path, update_transformers: bool = False):
     if update_transformers:
         try:
             import transformers.utils.logging as tf_logging
+
             for handler in tf_logging.get_logger().handlers:
                 if isinstance(handler, logging.StreamHandler):
                     handler.stream = sys.stdout

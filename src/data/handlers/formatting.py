@@ -12,8 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PIL import Image
 from datasets import Dataset
+from PIL import Image
 
 from .base import DatasetHandler
 
@@ -59,16 +59,23 @@ class FormattingHandler(DatasetHandler):
         logger.info(f"Generating synthetic formatting data at {data_dir}...")
 
         # Find the generator script
-        script = Path(__file__).resolve().parents[3] / "scripts" / "data" / "formatting_generator.py"
+        script = (
+            Path(__file__).resolve().parents[3] / "scripts" / "data" / "formatting_generator.py"
+        )
         if not script.exists():
             raise FileNotFoundError(f"Generator script not found: {script}")
 
         cmd = [
-            sys.executable, str(script),
-            "--output_dir", str(data_dir),
-            "--num_pages", str(num_pages),
-            "--eval_frac", str(eval_frac),
-            "--seed", str(seed),
+            sys.executable,
+            str(script),
+            "--output_dir",
+            str(data_dir),
+            "--num_pages",
+            str(num_pages),
+            "--eval_frac",
+            str(eval_frac),
+            "--seed",
+            str(seed),
         ]
         if categories and categories != "all":
             cmd += ["--categories"] + categories.split(",")
@@ -144,7 +151,9 @@ class FormattingHandler(DatasetHandler):
         """
         data_path = Path(data_dir)
         if not data_path.exists():
-            raise FileNotFoundError(f"Data not found at {data_dir}. Run: prepare.py --dataset formatting")
+            raise FileNotFoundError(
+                f"Data not found at {data_dir}. Run: prepare.py --dataset formatting"
+            )
 
         splits = [split] if split else ["train", "eval"]
         pairs = []
@@ -187,10 +196,12 @@ class FormattingHandler(DatasetHandler):
         """
         data_path = Path(data_dir)
         if not data_path.exists():
-            raise FileNotFoundError(f"Data not found at {data_dir}. Run: prepare.py --dataset formatting")
+            raise FileNotFoundError(
+                f"Data not found at {data_dir}. Run: prepare.py --dataset formatting"
+            )
 
-        train_samples = []
-        eval_samples = []
+        train_samples: list[dict] = []
+        eval_samples: list[dict] = []
 
         for category_dir in sorted(data_path.iterdir()):
             if not category_dir.is_dir():

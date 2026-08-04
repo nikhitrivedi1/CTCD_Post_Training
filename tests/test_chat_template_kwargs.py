@@ -5,17 +5,16 @@ from MODEL_PROFILES -> forge.py -> formatters -> apply_chat_template, with
 config overrides taking precedence.
 """
 
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
+
 import pytest
 
+from src.data.formatters import _cache_key
 from src.inference.model_profiles import (
-    get_chat_template_kwargs,
-    _resolve_model_family,
     _match_profile,
-    MODEL_PROFILES,
+    _resolve_model_family,
+    get_chat_template_kwargs,
 )
-from src.data.formatters import _cache_key, format_for_sft
-
 
 # =============================================================================
 # Model profile resolution
@@ -173,18 +172,23 @@ class TestOCRFormatterPassesKwargs:
 
     @patch("src.data.formatters.get_num_workers", return_value=1)
     def test_kwargs_forwarded(self, _mock_workers):
-        from src.data.formatters import _format_ocr_sft
         from PIL import Image
+
+        from src.data.formatters import _format_ocr_sft
 
         processor = MagicMock()
         processor.apply_chat_template.return_value = "<formatted>"
 
         img = Image.new("RGB", (10, 10))
         from datasets import Dataset
+
         ds = Dataset.from_dict({"image": [img], "ground_truth": ["hello"]})
 
         _format_ocr_sft(
-            ds, processor, max_length=1024, system_prompt="OCR",
+            ds,
+            processor,
+            max_length=1024,
+            system_prompt="OCR",
             chat_template_kwargs={"enable_thinking": False},
         )
 
@@ -195,14 +199,16 @@ class TestOCRFormatterPassesKwargs:
 
     @patch("src.data.formatters.get_num_workers", return_value=1)
     def test_no_kwargs_no_extra_args(self, _mock_workers):
-        from src.data.formatters import _format_ocr_sft
         from PIL import Image
+
+        from src.data.formatters import _format_ocr_sft
 
         processor = MagicMock()
         processor.apply_chat_template.return_value = "<formatted>"
 
         img = Image.new("RGB", (10, 10))
         from datasets import Dataset
+
         ds = Dataset.from_dict({"image": [img], "ground_truth": ["hello"]})
 
         _format_ocr_sft(ds, processor, max_length=1024, system_prompt="OCR")
@@ -227,14 +233,19 @@ class TestTranslationFormatterPassesKwargs:
         }
 
         from datasets import Dataset
-        ds = Dataset.from_dict({
-            "source_text": ["hello"],
-            "ground_truth": ["hola"],
-            "system_message": ["Translate"],
-        })
+
+        ds = Dataset.from_dict(
+            {
+                "source_text": ["hello"],
+                "ground_truth": ["hola"],
+                "system_message": ["Translate"],
+            }
+        )
 
         _format_translation_sft(
-            ds, tokenizer, max_length=128,
+            ds,
+            tokenizer,
+            max_length=128,
             chat_template_kwargs={"enable_thinking": False},
         )
 
@@ -323,49 +334,59 @@ class TestForgeResolvesKwargs:
 class TestChainConfigProfiles:
     """Verify OCR training configs resolve correctly per model family."""
 
-    @pytest.mark.parametrize("model_name", [
-        "Qwen/Qwen3.5-0.8B",
-        "Qwen/Qwen3.5-2B",
-        "Qwen/Qwen3.5-4B",
-        "Qwen/Qwen3.5-9B",
-        "Qwen/Qwen3.5-27B",
-    ])
+    @pytest.mark.parametrize(
+        "model_name",
+        [
+            "Qwen/Qwen3.5-0.8B",
+            "Qwen/Qwen3.5-2B",
+            "Qwen/Qwen3.5-4B",
+            "Qwen/Qwen3.5-9B",
+            "Qwen/Qwen3.5-27B",
+        ],
+    )
     def test_qwen35_ocr_disables_thinking(self, model_name):
         kwargs = get_chat_template_kwargs(model_name, task="ocr")
         assert kwargs.get("enable_thinking") is False, (
             f"{model_name} with task='ocr' should have enable_thinking=False"
         )
 
-    @pytest.mark.parametrize("model_name", [
-        "Qwen/Qwen3.5-0.8B",
-        "Qwen/Qwen3.5-2B",
-        "Qwen/Qwen3.5-4B",
-        "Qwen/Qwen3.5-9B",
-        "Qwen/Qwen3.5-27B",
-    ])
+    @pytest.mark.parametrize(
+        "model_name",
+        [
+            "Qwen/Qwen3.5-0.8B",
+            "Qwen/Qwen3.5-2B",
+            "Qwen/Qwen3.5-4B",
+            "Qwen/Qwen3.5-9B",
+            "Qwen/Qwen3.5-27B",
+        ],
+    )
     def test_qwen35_wildcard_enables_thinking(self, model_name):
         kwargs = get_chat_template_kwargs(model_name)
         assert kwargs.get("enable_thinking") is True, (
             f"{model_name} with no task should have enable_thinking=True"
         )
 
-    @pytest.mark.parametrize("model_name", [
-        "Qwen/Qwen3-VL-2B-Instruct",
-        "Qwen/Qwen3-VL-4B-Instruct",
-        "Qwen/Qwen3-VL-8B-Instruct",
-    ])
+    @pytest.mark.parametrize(
+        "model_name",
+        [
+            "Qwen/Qwen3-VL-2B-Instruct",
+            "Qwen/Qwen3-VL-4B-Instruct",
+            "Qwen/Qwen3-VL-8B-Instruct",
+        ],
+    )
     def test_qwen3vl_returns_empty(self, model_name):
         """Qwen3-VL chat template has no enable_thinking support."""
         kwargs = get_chat_template_kwargs(model_name)
-        assert kwargs == {}, (
-            f"{model_name} should return empty dict (no enable_thinking support)"
-        )
+        assert kwargs == {}, f"{model_name} should return empty dict (no enable_thinking support)"
 
-    @pytest.mark.parametrize("model_name", [
-        "Qwen/Qwen3-VL-2B-Instruct",
-        "Qwen/Qwen3-VL-4B-Instruct",
-        "Qwen/Qwen3-VL-8B-Instruct",
-    ])
+    @pytest.mark.parametrize(
+        "model_name",
+        [
+            "Qwen/Qwen3-VL-2B-Instruct",
+            "Qwen/Qwen3-VL-4B-Instruct",
+            "Qwen/Qwen3-VL-8B-Instruct",
+        ],
+    )
     def test_qwen3vl_with_task_returns_empty(self, model_name):
         kwargs = get_chat_template_kwargs(model_name, task="ocr")
         assert kwargs == {}

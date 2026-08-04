@@ -7,10 +7,9 @@ Run this after installation to ensure all dependencies are working:
 """
 
 import sys
-from typing import Tuple
 
 
-def check_python_version() -> Tuple[bool, str]:
+def check_python_version() -> tuple[bool, str]:
     """Check Python version is 3.10+"""
     version = sys.version_info
     if version >= (3, 10):
@@ -18,7 +17,7 @@ def check_python_version() -> Tuple[bool, str]:
     return False, f"✗ Python {version.major}.{version.minor} (need 3.10+)"
 
 
-def check_import(module_name: str, package_name: str = None) -> Tuple[bool, str]:
+def check_import(module_name: str, package_name: str | None = None) -> tuple[bool, str]:
     """Test if a module can be imported"""
     display_name = package_name or module_name
     try:
@@ -28,7 +27,7 @@ def check_import(module_name: str, package_name: str = None) -> Tuple[bool, str]
         return False, f"✗ {display_name}: {str(e)}"
 
 
-def check_pytorch_gpu() -> Tuple[bool, str]:
+def check_pytorch_gpu() -> tuple[bool, str]:
     """Check if PyTorch can detect GPU"""
     try:
         import torch
@@ -44,7 +43,7 @@ def check_pytorch_gpu() -> Tuple[bool, str]:
         return False, f"✗ PyTorch GPU check failed: {str(e)}"
 
 
-def check_qwen35_support() -> Tuple[bool, str]:
+def check_qwen35_support() -> tuple[bool, str]:
     """Check if transformers supports Qwen3.5 architecture natively"""
     try:
         from transformers import AutoConfig
@@ -57,14 +56,9 @@ def check_qwen35_support() -> Tuple[bool, str]:
         return False, f"✗ Qwen3.5: {str(e)}"
 
 
-def check_framework_imports() -> Tuple[bool, str]:
+def check_framework_imports() -> tuple[bool, str]:
     """Test custom framework imports"""
     try:
-        from src.utils import detect_environment, load_config
-        from src.data import get_handler, format_for_sft
-        from src.models import load_model
-        from src.training import FinetuningTrainer, DistillationTrainer
-
         return True, "✓ Framework modules"
     except Exception as e:
         return False, f"✗ Framework modules: {str(e)}"
@@ -112,7 +106,9 @@ def main():
         print()
         print("Next steps:")
         print("  1. Configure W&B: wandb login")
-        print("  2. Test training: python forge.py --config configs/classification/mnli/distilbert/bert-base/00_sft.yaml --max_steps 10")
+        print(
+            "  2. Test training: python forge.py --config configs/classification/mnli/distilbert/bert-base/00_sft.yaml --max_steps 10"
+        )
         return 0
     else:
         print("✗ Some checks failed. Please install missing dependencies:")

@@ -3,20 +3,20 @@
 import pytest
 
 from src.evaluation.document_metrics import (
-    normalized_edit_distance,
-    edit_similarity,
-    extract_text_blocks,
-    extract_markdown_tables,
-    extract_latex,
-    markdown_table_to_html,
-    teds_score,
-    hungarian_match,
-    score_text,
-    score_tables,
-    score_formulas,
-    score_reading_order,
-    score_page,
     compute_aggregate,
+    edit_similarity,
+    extract_latex,
+    extract_markdown_tables,
+    extract_text_blocks,
+    hungarian_match,
+    markdown_table_to_html,
+    normalized_edit_distance,
+    score_formulas,
+    score_page,
+    score_reading_order,
+    score_tables,
+    score_text,
+    teds_score,
 )
 
 

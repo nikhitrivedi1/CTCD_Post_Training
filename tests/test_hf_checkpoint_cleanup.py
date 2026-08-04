@@ -2,9 +2,8 @@
 
 from pathlib import Path
 
-from src.utils.checkpoint import LATEST_CHECKPOINT_FILE
-
 from forge import _remove_hf_checkpoint_dirs_after_success
+from src.utils.checkpoint import LATEST_CHECKPOINT_FILE
 
 
 def test_remove_hf_checkpoint_dirs_keeps_run_root(tmp_path: Path) -> None:

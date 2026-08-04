@@ -48,7 +48,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.data.ocr_utils import OCR_SYSTEM_PROMPT
-from src.utils.environment import get_num_workers
 from src.evaluation.bench_utils import (
     add_common_bench_args,
     apply_shard,
@@ -63,10 +62,11 @@ from src.evaluation.bench_utils import (
     validate_bench_args,
 )
 from src.evaluation.formatting_metrics import (
-    score_formatting,
     compute_aggregate,
+    score_formatting,
 )
 from src.inference import InferenceEngine
+from src.utils.environment import get_num_workers
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -81,6 +81,7 @@ DEFAULT_MAX_NEW_TOKENS = 2048
 # ---------------------------------------------------------------------------
 # Data loading (delegates to handlers for consistency)
 # ---------------------------------------------------------------------------
+
 
 def load_eval_paths(data_dir: str, dataset: str = "formatting") -> list[dict]:
     """Load eval file paths using the registered dataset handler.
@@ -107,6 +108,7 @@ def load_eval_paths(data_dir: str, dataset: str = "formatting") -> list[dict]:
 # ---------------------------------------------------------------------------
 # Scoring from existing predictions (ad-hoc --pred_dir/--gt_dir mode)
 # ---------------------------------------------------------------------------
+
 
 def _score_formatting_worker(args):
     """Score one page's formatting. Top-level function for ProcessPoolExecutor pickling.
@@ -146,7 +148,9 @@ def _run_scoring(work_items: list[tuple], num_workers: int) -> list[dict]:
         logger.info(f"Scoring with {num_workers} parallel workers")
         with ProcessPoolExecutor(max_workers=num_workers) as pool:
             futures = {pool.submit(_score_formatting_worker, item): item[0] for item in work_items}
-            for future in tqdm(as_completed(futures), total=len(futures), desc="Scoring formatting"):
+            for future in tqdm(
+                as_completed(futures), total=len(futures), desc="Scoring formatting"
+            ):
                 results.append(future.result())
     else:
         for item in tqdm(work_items, desc="Scoring formatting"):
@@ -181,6 +185,7 @@ def score_from_files(pred_dir: str, gt_dir: str, num_workers: int = 1) -> list[d
 # ---------------------------------------------------------------------------
 # Scoring from markdowns directory (handler paths provide GT)
 # ---------------------------------------------------------------------------
+
 
 def score_from_markdowns(paths: list[dict], markdowns_dir: str, num_workers: int = 1) -> list[dict]:
     """Score generated markdowns against GT from handler paths.
@@ -228,7 +233,7 @@ def select_stratified(paths: list[dict], n: int, seed: int = 42) -> list[dict]:
 
     def has_rare_type(gt_path) -> bool:
         try:
-            return bool(re.search(r'~~[^~]+~~', Path(gt_path).read_text(errors="replace")))
+            return bool(re.search(r"~~[^~]+~~", Path(gt_path).read_text(errors="replace")))
         except Exception:
             return False
 
@@ -239,8 +244,12 @@ def select_stratified(paths: list[dict], n: int, seed: int = 42) -> list[dict]:
     n_rare = min(len(rare_pages), max(1, n // 3))
     n_other = n - n_rare
 
-    selected = rng.sample(rare_pages, n_rare) + rng.sample(other_pages, min(n_other, len(other_pages)))
-    logger.info(f"Stratified sample: {n_rare} rare-type + {len(selected) - n_rare} other = {len(selected)} pages")
+    selected = rng.sample(rare_pages, n_rare) + rng.sample(
+        other_pages, min(n_other, len(other_pages))
+    )
+    logger.info(
+        f"Stratified sample: {n_rare} rare-type + {len(selected) - n_rare} other = {len(selected)} pages"
+    )
     return selected
 
 
@@ -267,25 +276,31 @@ def print_results(agg: dict):
         "overall": "Overall",
     }
     logger.info(f"  {'Metric':<20} {'Precision':>10} {'Recall':>10} {'F1':>10}  {'n':>5}")
-    logger.info(f"  {'-'*20} {'-'*10} {'-'*10} {'-'*10}  {'-'*5}")
+    logger.info(f"  {'-' * 20} {'-' * 10} {'-' * 10} {'-' * 10}  {'-' * 5}")
     for key, name in metric_names.items():
         val = scores.get(key)
         n = counts.get(key, 0)
         if val is not None:
             if isinstance(val, dict):
                 p, r, f1 = val["precision"], val["recall"], val["f1"]
-                logger.info(f"  {name:<20} {p*100:>9.2f}% {r*100:>9.2f}% {f1*100:>9.2f}%  {n:>5}")
+                logger.info(
+                    f"  {name:<20} {p * 100:>9.2f}% {r * 100:>9.2f}% {f1 * 100:>9.2f}%  {n:>5}"
+                )
             else:
                 # Old format (f1 only)
-                logger.info(f"  {name:<20} {'':>10} {'':>10} {val*100:>9.2f}%  {n:>5}")
+                logger.info(f"  {name:<20} {'':>10} {'':>10} {val * 100:>9.2f}%  {n:>5}")
         else:
             logger.info(f"  {name:<20} {'N/A':>10} {'N/A':>10} {'N/A':>10}")
 
     logger.info("-" * 60)
     gt = agg["gt_span_totals"]
     pred = agg["pred_span_totals"]
-    logger.info(f"GT spans:   bold={gt['bold']}, italic={gt['italic']}, strike={gt['strikethrough']}")
-    logger.info(f"Pred spans: bold={pred['bold']}, italic={pred['italic']}, strike={pred['strikethrough']}")
+    logger.info(
+        f"GT spans:   bold={gt['bold']}, italic={gt['italic']}, strike={gt['strikethrough']}"
+    )
+    logger.info(
+        f"Pred spans: bold={pred['bold']}, italic={pred['italic']}, strike={pred['strikethrough']}"
+    )
 
     hall = agg.get("hallucination", {})
     if hall.get("total_pred", 0) > 0:
@@ -294,7 +309,7 @@ def print_results(agg: dict):
         logger.info(f"  Matched:        {hall['matched']:>5}  (correct formatting)")
         logger.info(f"  Over-formatted: {hall['over_formatted']:>5}  (real text, wrong formatting)")
         logger.info(f"  Hallucinated:   {hall['hallucinated']:>5}  (fabricated content)")
-        logger.info(f"  Hallucination rate: {hall['hallucination_rate']*100:.2f}%")
+        logger.info(f"  Hallucination rate: {hall['hallucination_rate'] * 100:.2f}%")
     logger.info("=" * 60)
 
 
@@ -302,8 +317,10 @@ def print_results(agg: dict):
 # Output
 # ---------------------------------------------------------------------------
 
-def save_formatting_results(output_dir: str, aggregates: dict, page_results: list,
-                            metadata: dict = None):
+
+def save_formatting_results(
+    output_dir: str, aggregates: dict, page_results: list, metadata: dict | None = None
+):
     """Save results, metadata, and per-page scores to output directory.
 
     Args:
@@ -324,21 +341,41 @@ def save_formatting_results(output_dir: str, aggregates: dict, page_results: lis
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(description="Formatting-specific benchmark")
-    parser.add_argument("--dataset", type=str, default="formatting",
-                        help="Dataset handler name (default: formatting)")
-    parser.add_argument("--data_dir", type=str, default="data/ocr/formatting",
-                        help="Data root directory (default: data/ocr/formatting)")
-    parser.add_argument("--pred_dir", type=str, default=None,
-                        help="Directory with predicted .md files (ad-hoc score mode)")
-    parser.add_argument("--gt_dir", type=str, default=None,
-                        help="Directory with ground truth .md files (for --pred_dir mode)")
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="formatting",
+        help="Dataset handler name (default: formatting)",
+    )
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        default="data/ocr/formatting",
+        help="Data root directory (default: data/ocr/formatting)",
+    )
+    parser.add_argument(
+        "--pred_dir",
+        type=str,
+        default=None,
+        help="Directory with predicted .md files (ad-hoc score mode)",
+    )
+    parser.add_argument(
+        "--gt_dir",
+        type=str,
+        default=None,
+        help="Directory with ground truth .md files (for --pred_dir mode)",
+    )
 
     add_common_bench_args(parser, max_new_tokens=DEFAULT_MAX_NEW_TOKENS)
-    parser.add_argument("--max_pages", type=int, default=None,
-                        help="Limit pages, sampled stratified by formatting type. "
-                             "Omit to run all eval pages.")
+    parser.add_argument(
+        "--max_pages",
+        type=int,
+        default=None,
+        help="Limit pages, sampled stratified by formatting type. Omit to run all eval pages.",
+    )
     args = parser.parse_args()
 
     # -----------------------------------------------------------------------
@@ -378,20 +415,30 @@ def main():
         register_bench_job(output_dir, "formatting", args.shard)
         device = "cuda" if torch.cuda.is_available() else "cpu"
         engine = InferenceEngine.load(
-            model_id=args.model, checkpoint_path=args.checkpoint,
-            model_type="vlm", device=device, task="ocr",
+            model_id=args.model,
+            checkpoint_path=args.checkpoint,
+            model_type="vlm",
+            device=device,
+            task="ocr",
         )
 
-        metadata = build_metadata(args, engine, "formatting", {
-            "max_new_tokens": args.max_new_tokens,
-            "do_sample": False,
-        })
+        metadata = build_metadata(
+            args,
+            engine,
+            "formatting",
+            {
+                "max_new_tokens": args.max_new_tokens,
+                "do_sample": False,
+            },
+        )
         save_metadata(output_dir, metadata)
 
         # Build work items
         work_items = [
-            {"md_path": os.path.join(markdowns_dir, p["image_path"].stem + ".md"),
-             "image_path": p["image_path"]}
+            {
+                "md_path": os.path.join(markdowns_dir, p["image_path"].stem + ".md"),
+                "image_path": p["image_path"],
+            }
             for p in paths
         ]
 
@@ -402,8 +449,12 @@ def main():
             return image
 
         generate_markdowns(
-            engine, work_items, OCR_SYSTEM_PROMPT, args.max_new_tokens,
-            markdowns_dir, image_fn=_load_image,
+            engine,
+            work_items,
+            OCR_SYSTEM_PROMPT,
+            args.max_new_tokens,
+            markdowns_dir,
+            image_fn=_load_image,
         )
         save_metadata(output_dir, metadata)
 
@@ -421,7 +472,9 @@ def main():
     # Scoring phase (skip for sharded runs)
     if args.shard and not args.score_only:
         remove_bench_job()
-        logger.info(f"Shard {args.shard} complete - run with --score_only to score after all shards finish")
+        logger.info(
+            f"Shard {args.shard} complete - run with --score_only to score after all shards finish"
+        )
         return
 
     # Reload all paths for scoring (not just this shard)

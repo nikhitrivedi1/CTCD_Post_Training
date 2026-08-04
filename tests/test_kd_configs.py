@@ -1,13 +1,12 @@
 """Tests for KD configuration, teacher_adapter CLI, teacher ref saving, and _save_model."""
 
 import json
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
 import pytest
 import torch
 
 from src.utils.config import load_config, resolve_distillation_coefficients
-
 
 # =============================================================================
 # Config inheritance tests (self-contained fixtures, no dependency on configs/)
@@ -30,25 +29,12 @@ def config_tree(tmp_path):
     kd = model / "kd"
     kd.mkdir(parents=True)
 
-    (task / "base.yaml").write_text(
-        "data:\n"
-        "  dataset: formatting\n"
-        "training:\n"
-        "  num_epochs: 3\n"
-    )
+    (task / "base.yaml").write_text("data:\n  dataset: formatting\ntraining:\n  num_epochs: 3\n")
     (model / "base.yaml").write_text(
-        "inherit: ../base.yaml\n"
-        "model:\n"
-        "  name: TestStudent/2B\n"
-        "training:\n"
-        "  learning_rate: 5e-6\n"
+        "inherit: ../base.yaml\nmodel:\n  name: TestStudent/2B\ntraining:\n  learning_rate: 5e-6\n"
     )
-    (model / "sft.yaml").write_text(
-        "inherit: base.yaml\n"
-    )
-    (kd / "base.yaml").write_text(
-        "inherit: ../base.yaml\n"
-    )
+    (model / "sft.yaml").write_text("inherit: base.yaml\n")
+    (kd / "base.yaml").write_text("inherit: ../base.yaml\n")
     (kd / "kd.yaml").write_text(
         "inherit: base.yaml\n"
         "model:\n"
@@ -111,6 +97,7 @@ class TestKDConfigInheritance:
 # teacher_adapter CLI override tests (pure dict manipulation, no config files)
 # =============================================================================
 
+
 class TestTeacherAdapterOverride:
     """Test that --teacher_adapter correctly overrides config."""
 
@@ -155,7 +142,9 @@ class TestDistillationCoefficientResolution:
         assert coeffs["beta_s"] == 0.0
 
     def test_cotrain_teacher_defaults_beta_ce_only(self):
-        coeffs = resolve_distillation_coefficients({"alpha_s": 0.6, "alpha_h": 0.4}, freeze_teacher=False)
+        coeffs = resolve_distillation_coefficients(
+            {"alpha_s": 0.6, "alpha_h": 0.4}, freeze_teacher=False
+        )
         assert coeffs["beta_h"] == 1.0
         assert coeffs["beta_s"] == 0.0
 
@@ -172,6 +161,7 @@ class TestDistillationCoefficientResolution:
 # Teacher ref saving tests
 # =============================================================================
 
+
 class TestTeacherRefSaving:
     """Test teacher/base/model_ref.json creation."""
 
@@ -184,7 +174,7 @@ class TestTeacherRefSaving:
         teacher_base_dir = output_dir / "teacher" / "base"
         teacher_base_dir.mkdir(parents=True, exist_ok=True)
         ref = {"model_name_or_path": teacher_name}
-        with open(teacher_base_dir / "model_ref.json", 'w') as f:
+        with open(teacher_base_dir / "model_ref.json", "w") as f:
             json.dump(ref, f, indent=2)
 
         # Verify
@@ -207,7 +197,7 @@ class TestTeacherRefSaving:
         ref = {"model_name_or_path": teacher_name}
         if revision:
             ref["revision"] = revision
-        with open(teacher_base_dir / "model_ref.json", 'w') as f:
+        with open(teacher_base_dir / "model_ref.json", "w") as f:
             json.dump(ref, f, indent=2)
 
         ref_path = output_dir / "teacher" / "base" / "model_ref.json"
@@ -224,13 +214,13 @@ class TestTeacherRefSaving:
         # Student base ref
         student_base = output_dir / "base"
         student_base.mkdir()
-        with open(student_base / "model_ref.json", 'w') as f:
+        with open(student_base / "model_ref.json", "w") as f:
             json.dump({"model_name_or_path": "Qwen/Qwen3.5-2B"}, f)
 
         # Teacher base ref
         teacher_base = output_dir / "teacher" / "base"
         teacher_base.mkdir(parents=True)
-        with open(teacher_base / "model_ref.json", 'w') as f:
+        with open(teacher_base / "model_ref.json", "w") as f:
             json.dump({"model_name_or_path": "outputs/fmt_grpo_qwen35-9b"}, f)
 
         # Both exist with parallel structure
@@ -285,8 +275,9 @@ class TestSaveModel:
 
     def test_lora_model_saves_adapter_then_merged(self, tmp_path):
         """LoRA model: saves adapter, then merges and saves merged weights."""
-        from forge import _save_model
         from peft import PeftModel
+
+        from forge import _save_model
 
         save_dir = tmp_path / "model_out"
         save_dir.mkdir(parents=True)  # mock save_pretrained won't create it
@@ -371,6 +362,7 @@ class TestSaveModel:
 # =============================================================================
 # _save_final_model delegation test
 # =============================================================================
+
 
 class TestSaveFinalModel:
     """Test that _save_final_model delegates to _save_model correctly."""

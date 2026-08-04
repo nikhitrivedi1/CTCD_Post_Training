@@ -5,24 +5,30 @@ hallucinated spans, over-formatting, type swaps, table drops, merge errors,
 and missing text.
 """
 
-import os
-import re
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from rapidfuzz.distance import Levenshtein
+
 from src.evaluation.formatting_metrics import (
-    extract_formatting_spans,
     _strip_all_formatting,
-    _strip_inner_markers,
+    extract_formatting_spans,
 )
 
 CATEGORIES = [
-    "00_text", "01_tables", "02_academic", "03_financial", "04_legal",
-    "05_technical", "06_books", "07_slides", "08_news", "09_forms",
+    "00_text",
+    "01_tables",
+    "02_academic",
+    "03_financial",
+    "04_legal",
+    "05_technical",
+    "06_books",
+    "07_slides",
+    "08_news",
+    "09_forms",
 ]
 
 DATA_DIR = Path("data/ocr/formatting")
@@ -117,7 +123,7 @@ def analyze_all(pages):
             matched, unmatched_p, unmatched_g = fuzzy_match_with_details(
                 pred_spans[fmt_type], gt_spans[fmt_type]
             )
-            for gt_s, pred_s, sim in matched:
+            for gt_s, pred_s, _sim in matched:
                 per_type_matched_pred.add((fmt_type, pred_s))
                 per_type_matched_gt.add((fmt_type, gt_s))
 
@@ -165,7 +171,11 @@ def analyze_all(pages):
             for p_text in pred_spans[fmt_type]:
                 contained_gt = []
                 for g_text in gt_spans[fmt_type]:
-                    if len(g_text) >= 3 and g_text.lower() in p_text.lower() and g_text.lower() != p_text.lower():
+                    if (
+                        len(g_text) >= 3
+                        and g_text.lower() in p_text.lower()
+                        and g_text.lower() != p_text.lower()
+                    ):
                         contained_gt.append(g_text)
                 if len(contained_gt) >= 2:
                     all_merge_errors.append((stem, fmt_type, p_text, contained_gt))
@@ -191,39 +201,39 @@ def print_results(results):
     hall = results["hallucinated"]
     print(f"\n{'=' * 80}")
     print(f"1. HALLUCINATED SPANS ({len(hall)} total)")
-    print(f"   Pred spans where plain text doesn't appear anywhere in GT document")
+    print("   Pred spans where plain text doesn't appear anywhere in GT document")
     print(f"{'=' * 80}")
     for i, (stem, fmt_type, text) in enumerate(hall):
         trunc = text[:100] + "..." if len(text) > 100 else text
-        print(f"  [{i+1:>3}] {stem} | {fmt_type:<15} | {trunc}")
+        print(f"  [{i + 1:>3}] {stem} | {fmt_type:<15} | {trunc}")
 
     # 2. Over-formatted spans
     ovf = results["over_formatted"]
     print(f"\n{'=' * 80}")
     print(f"2. OVER-FORMATTED SPANS ({len(ovf)} total)")
-    print(f"   Pred spans matching real GT text but shouldn't be formatted")
+    print("   Pred spans matching real GT text but shouldn't be formatted")
     print(f"{'=' * 80}")
     # Count by text
     text_counts = Counter(text for _, _, text in ovf)
     type_counts = Counter(fmt_type for _, fmt_type, _ in ovf)
-    print(f"\n  By formatting type:")
+    print("\n  By formatting type:")
     for ft, c in type_counts.most_common():
         print(f"    {ft}: {c}")
-    print(f"\n  Top 20 most common over-formatted texts:")
+    print("\n  Top 20 most common over-formatted texts:")
     for i, (text, count) in enumerate(text_counts.most_common(20)):
         trunc = text[:80] + "..." if len(text) > 80 else text
         # Find which types this text appears under
-        types_for_text = set(ft for _, ft, t in ovf if t == text)
-        print(f"  [{i+1:>3}] (x{count}) [{', '.join(types_for_text)}] {trunc}")
+        types_for_text = {ft for _, ft, t in ovf if t == text}
+        print(f"  [{i + 1:>3}] (x{count}) [{', '.join(types_for_text)}] {trunc}")
 
     # 3. Type swaps
     swaps = results["type_swaps"]
     print(f"\n{'=' * 80}")
     print(f"3. TYPE SWAPS ({len(swaps)} total)")
-    print(f"   GT spans matched by pred but under wrong formatting type")
+    print("   GT spans matched by pred but under wrong formatting type")
     print(f"{'=' * 80}")
     swap_matrix = Counter((gt_t, pred_t) for _, gt_t, pred_t, _ in swaps)
-    print(f"\n  Confusion matrix (GT type -> Pred type):")
+    print("\n  Confusion matrix (GT type -> Pred type):")
     for (gt_t, pred_t), count in swap_matrix.most_common():
         print(f"    {gt_t} -> {pred_t}: {count}")
     # Show top 10 examples for most common swap direction
@@ -233,7 +243,7 @@ def print_results(results):
         examples = [(s, t) for s, gt, pr, t in swaps if gt == top_gt and pr == top_pred]
         for i, (stem, text) in enumerate(examples[:10]):
             trunc = text[:80] + "..." if len(text) > 80 else text
-            print(f"  [{i+1:>3}] {stem} | {trunc}")
+            print(f"  [{i + 1:>3}] {stem} | {trunc}")
 
     # Also show examples for second most common if exists
     if len(swap_matrix) >= 2:
@@ -242,32 +252,32 @@ def print_results(results):
         examples = [(s, t) for s, gt, pr, t in swaps if gt == sec_gt and pr == sec_pred]
         for i, (stem, text) in enumerate(examples[:10]):
             trunc = text[:80] + "..." if len(text) > 80 else text
-            print(f"  [{i+1:>3}] {stem} | {trunc}")
+            print(f"  [{i + 1:>3}] {stem} | {trunc}")
 
     # 4. Table formatting drops
     td = results["table_drops"]
     print(f"\n{'=' * 80}")
     print(f"4. TABLE FORMATTING DROPS ({len(td)} total)")
-    print(f"   Missed GT spans inside markdown table rows")
+    print("   Missed GT spans inside markdown table rows")
     print(f"{'=' * 80}")
     type_dist = Counter(ft for _, ft, _ in td)
-    print(f"\n  By formatting type:")
+    print("\n  By formatting type:")
     for ft, c in type_dist.most_common():
         print(f"    {ft}: {c}")
-    print(f"\n  5 examples:")
+    print("\n  5 examples:")
     for i, (stem, fmt_type, text) in enumerate(td[:5]):
         trunc = text[:80] + "..." if len(text) > 80 else text
-        print(f"  [{i+1}] {stem} | {fmt_type:<15} | {trunc}")
+        print(f"  [{i + 1}] {stem} | {fmt_type:<15} | {trunc}")
 
     # 5. Merge errors
     me = results["merge_errors"]
     print(f"\n{'=' * 80}")
     print(f"5. MERGE ERRORS ({len(me)} total)")
-    print(f"   Pred span contains multiple GT spans merged together")
+    print("   Pred span contains multiple GT spans merged together")
     print(f"{'=' * 80}")
     for i, (stem, fmt_type, pred_text, gt_texts) in enumerate(me[:5]):
         p_trunc = pred_text[:80] + "..." if len(pred_text) > 80 else pred_text
-        print(f"  [{i+1}] {stem} | {fmt_type}")
+        print(f"  [{i + 1}] {stem} | {fmt_type}")
         print(f"       Pred: {p_trunc}")
         print(f"       GT spans ({len(gt_texts)}): {gt_texts[:5]}")
 
@@ -275,16 +285,16 @@ def print_results(results):
     mt = results["missing_text"]
     print(f"\n{'=' * 80}")
     print(f"6. TEXT MISSING ENTIRELY ({len(mt)} total)")
-    print(f"   GT formatted text not found anywhere in pred output")
+    print("   GT formatted text not found anywhere in pred output")
     print(f"{'=' * 80}")
     type_dist = Counter(ft for _, ft, _ in mt)
-    print(f"\n  By formatting type:")
+    print("\n  By formatting type:")
     for ft, c in type_dist.most_common():
         print(f"    {ft}: {c}")
-    print(f"\n  Top 10 examples:")
+    print("\n  Top 10 examples:")
     for i, (stem, fmt_type, text) in enumerate(mt[:10]):
         trunc = text[:80] + "..." if len(text) > 80 else text
-        print(f"  [{i+1:>3}] {stem} | {fmt_type:<15} | {trunc}")
+        print(f"  [{i + 1:>3}] {stem} | {fmt_type:<15} | {trunc}")
 
     # Summary
     print(f"\n{'=' * 80}")

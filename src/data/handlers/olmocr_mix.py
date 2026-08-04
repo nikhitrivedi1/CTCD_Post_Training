@@ -9,8 +9,8 @@ Pipeline: download + render PDFs (via prepare_ocr_data.py) -> load HF dataset fr
 import logging
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from datasets import Dataset, concatenate_datasets, load_from_disk
 
@@ -99,11 +99,11 @@ class OlmOCRMixHandler(DatasetHandler):
         has_train = (data_path / "train").exists()
         if not has_train:
             # Check multi-subset layout
-            has_train = any(
-                (d / "train").exists()
-                for d in data_path.iterdir()
-                if d.is_dir()
-            ) if data_path.exists() else False
+            has_train = (
+                any((d / "train").exists() for d in data_path.iterdir() if d.is_dir())
+                if data_path.exists()
+                else False
+            )
 
         if has_train:
             logger.info(f"olmOCR-mix data already exists at {data_dir}, skipping")
@@ -165,8 +165,8 @@ class OlmOCRMixHandler(DatasetHandler):
             "train": train_count,
             "eval": eval_count,
             "subsets": len(subsets) if subsets else 1,
-            "details": f"{train_count} train, {eval_count} eval" +
-                       (f" across {len(subsets)} subsets" if subsets else ""),
+            "details": f"{train_count} train, {eval_count} eval"
+            + (f" across {len(subsets)} subsets" if subsets else ""),
         }
         return result
 
@@ -200,7 +200,9 @@ class OlmOCRMixHandler(DatasetHandler):
 
         if (data_path / "train").exists():
             train_dataset = load_from_disk(str(data_path / "train"))
-            eval_dataset = load_from_disk(str(data_path / "eval")) if (data_path / "eval").exists() else None
+            eval_dataset = (
+                load_from_disk(str(data_path / "eval")) if (data_path / "eval").exists() else None
+            )
         else:
             train_parts, eval_parts = [], []
             for subset_dir in sorted(data_path.iterdir()):
@@ -211,7 +213,9 @@ class OlmOCRMixHandler(DatasetHandler):
                 if (subset_dir / "eval").exists():
                     eval_parts.append(load_from_disk(str(subset_dir / "eval")))
             if not train_parts:
-                raise FileNotFoundError(f"No train splits found in {data_path}. Run: prepare.py --dataset olmocr-mix")
+                raise FileNotFoundError(
+                    f"No train splits found in {data_path}. Run: prepare.py --dataset olmocr-mix"
+                )
             train_dataset = concatenate_datasets(train_parts)
             eval_dataset = concatenate_datasets(eval_parts) if eval_parts else None
 

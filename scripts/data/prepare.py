@@ -92,21 +92,32 @@ Examples:
         """,
     )
     parser.add_argument(
-        "--dataset", type=str, required=True,
+        "--dataset",
+        type=str,
+        required=True,
         help="Dataset name or 'all'. Options: " + ", ".join(sorted(DEFAULT_DIRS.keys())),
     )
     parser.add_argument(
-        "--action", type=str, default="all", choices=["prepare", "validate", "all"],
+        "--action",
+        type=str,
+        default="all",
+        choices=["prepare", "validate", "all"],
         help="Action to perform (default: all)",
     )
     parser.add_argument(
-        "--data_dir", type=str, default=None,
+        "--data_dir",
+        type=str,
+        default=None,
         help="Override default data directory",
     )
 
     # Formatting-specific args
-    parser.add_argument("--num_pages", type=int, default=200, help="Pages per category (formatting)")
-    parser.add_argument("--categories", type=str, default="all", help="Categories to generate (formatting)")
+    parser.add_argument(
+        "--num_pages", type=int, default=200, help="Pages per category (formatting)"
+    )
+    parser.add_argument(
+        "--categories", type=str, default="all", help="Categories to generate (formatting)"
+    )
     parser.add_argument("--augment", action="store_true", help="Apply augmentations (formatting)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
 
@@ -138,9 +149,9 @@ Examples:
         datasets_to_prep = ["omnidocbench", "synthmix", "formatting", "olmocr-mix"]
         all_ok = True
         for name in datasets_to_prep:
-            logger.info(f"\n{'='*60}")
+            logger.info(f"\n{'=' * 60}")
             logger.info(f"Dataset: {name}")
-            logger.info(f"{'='*60}")
+            logger.info(f"{'=' * 60}")
             if not run_dataset(name, args.action, None, {}):
                 all_ok = False
         if not all_ok:

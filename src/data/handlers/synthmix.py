@@ -12,8 +12,8 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
-from PIL import Image
 from datasets import Dataset
+from PIL import Image
 
 from .base import DatasetHandler
 
@@ -34,7 +34,7 @@ class SynthmixHandler(DatasetHandler):
         import glob as globmod
         from concurrent.futures import ProcessPoolExecutor, as_completed
 
-        from src.data.ocr_utils import render_pdf_page, pdf_image_name
+        from src.data.ocr_utils import pdf_image_name, render_pdf_page
 
         data_path = Path(data_dir)
         bench_dir = data_path / "bench_data"
@@ -44,6 +44,7 @@ class SynthmixHandler(DatasetHandler):
         if not bench_dir.exists():
             logger.info("Downloading olmOCR-synthmix-1025 from HuggingFace...")
             from huggingface_hub import snapshot_download
+
             snapshot_download(
                 "allenai/olmOCR-synthmix-1025",
                 local_dir=str(data_path),
@@ -89,7 +90,9 @@ class SynthmixHandler(DatasetHandler):
             logger.info(f"All {skipped} images already exist, nothing to render")
             return
 
-        logger.info(f"Rendering {len(jobs)} pages ({skipped} already exist) with {workers} workers...")
+        logger.info(
+            f"Rendering {len(jobs)} pages ({skipped} already exist) with {workers} workers..."
+        )
 
         def _render_one(args):
             pdf_path, page_num, dpi, out_path = args
@@ -183,9 +186,13 @@ class SynthmixHandler(DatasetHandler):
         images_dir = data_path / "images"
 
         if not bench_dir.exists():
-            raise FileNotFoundError(f"bench_data/ not found in {data_dir}. Run: prepare.py --dataset synthmix")
+            raise FileNotFoundError(
+                f"bench_data/ not found in {data_dir}. Run: prepare.py --dataset synthmix"
+            )
         if not images_dir.exists():
-            raise FileNotFoundError(f"images/ not found in {data_dir}. Run: prepare.py --dataset synthmix")
+            raise FileNotFoundError(
+                f"images/ not found in {data_dir}. Run: prepare.py --dataset synthmix"
+            )
 
         # Group tests by (pdf, page)
         tests_by_page = defaultdict(list)
@@ -220,7 +227,9 @@ class SynthmixHandler(DatasetHandler):
         if not samples:
             raise ValueError(f"No valid samples found in {data_dir}")
 
-        logger.info(f"Loaded {len(samples)} pages with {sum(len(s['tests']) for s in samples)} tests")
+        logger.info(
+            f"Loaded {len(samples)} pages with {sum(len(s['tests']) for s in samples)} tests"
+        )
 
         dataset = Dataset.from_list(samples)
         splits = dataset.train_test_split(test_size=eval_fraction, seed=42)

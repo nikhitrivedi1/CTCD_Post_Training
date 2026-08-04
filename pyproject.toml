@@ -108,6 +108,8 @@ include = '\.pyi?$'
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
 select = [
     "E", # pycodestyle errors
     "W", # pycodestyle warnings
@@ -123,7 +125,12 @@ ignore = [
     "C901", # too complex
 ]
 
-[tool.ruff.isort]
+[tool.ruff.lint.per-file-ignores]
+# Standalone scripts insert the repo root onto sys.path before importing
+# `src`, so the src imports can't be hoisted above that sys.path.insert.
+"scripts/*" = ["E402"]
+
+[tool.ruff.lint.isort]
 known-first-party = ["src"]
 
 [tool.mypy]

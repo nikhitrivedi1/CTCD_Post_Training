@@ -27,7 +27,10 @@ logger = logging.getLogger(__name__)
 
 
 def _cache_key(
-    processor_name: str, num_samples: int, max_length: int, split: str,
+    processor_name: str,
+    num_samples: int,
+    max_length: int,
+    split: str,
     chat_template_kwargs: dict | None = None,
 ) -> str:
     """Build a deterministic cache key from formatting parameters.
@@ -42,13 +45,16 @@ def _cache_key(
     Returns:
         Hex digest string.
     """
-    raw = json.dumps({
-        "processor": processor_name,
-        "num_samples": num_samples,
-        "max_length": max_length,
-        "split": split,
-        "chat_template_kwargs": chat_template_kwargs or {},
-    }, sort_keys=True)
+    raw = json.dumps(
+        {
+            "processor": processor_name,
+            "num_samples": num_samples,
+            "max_length": max_length,
+            "split": split,
+            "chat_template_kwargs": chat_template_kwargs or {},
+        },
+        sort_keys=True,
+    )
     return hashlib.sha256(raw.encode()).hexdigest()[:12]
 
 
@@ -134,6 +140,7 @@ def _format_ocr_rl(dataset: Dataset, system_prompt: str | None = None) -> Datase
         Dataset with 'prompt', 'image', and 'ground_truth'/'tests' columns.
     """
     from src.data.ocr_utils import OCR_SYSTEM_PROMPT
+
     prompt_text = system_prompt or OCR_SYSTEM_PROMPT
 
     # Detect whether this is a ground_truth or tests-based dataset
@@ -142,10 +149,15 @@ def _format_ocr_rl(dataset: Dataset, system_prompt: str | None = None) -> Datase
 
     def format_fn(example):
         return {
-            "prompt": [{"role": "user", "content": [
-                {"type": "text", "text": prompt_text},
-                {"type": "image"},
-            ]}],
+            "prompt": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt_text},
+                        {"type": "image"},
+                    ],
+                }
+            ],
         }
 
     remove_cols = [c for c in dataset.column_names if c not in {"image", keep_col}]
@@ -161,6 +173,7 @@ def _format_translation_rl(dataset: Dataset) -> Dataset:
     Returns:
         Dataset with 'prompt' and 'ground_truth' columns.
     """
+
     def format_fn(example):
         return {
             "prompt": [
@@ -224,9 +237,13 @@ def format_for_sft(
 
     # Format
     if task_type == "ocr":
-        result = _format_ocr_sft(dataset, tokenizer_or_processor, max_length, system_prompt, chat_template_kwargs)
+        result = _format_ocr_sft(
+            dataset, tokenizer_or_processor, max_length, system_prompt, chat_template_kwargs
+        )
     elif task_type == "translation":
-        result = _format_translation_sft(dataset, tokenizer_or_processor, max_length, chat_template_kwargs)
+        result = _format_translation_sft(
+            dataset, tokenizer_or_processor, max_length, chat_template_kwargs
+        )
     elif task_type == "classification":
         result = _format_classification_sft(dataset, tokenizer_or_processor, max_length)
     else:
@@ -240,7 +257,10 @@ def format_for_sft(
 
 
 def _format_ocr_sft(
-    dataset: Dataset, processor, max_length: int, system_prompt: str | None,
+    dataset: Dataset,
+    processor,
+    max_length: int,
+    system_prompt: str | None,
     chat_template_kwargs: dict | None = None,
 ) -> Dataset:
     """Format OCR dataset for SFT training.
@@ -256,6 +276,7 @@ def _format_ocr_sft(
         Dataset with 'formatted_text' and 'image' columns.
     """
     from src.data.ocr_utils import OCR_SYSTEM_PROMPT
+
     prompt_text = system_prompt or OCR_SYSTEM_PROMPT
     extra_kwargs = chat_template_kwargs or {}
 
@@ -279,7 +300,9 @@ def _format_ocr_sft(
             },
         ]
         formatted_text = processor.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=False,
+            messages,
+            tokenize=False,
+            add_generation_prompt=False,
             **extra_kwargs,
         )
         return {"formatted_text": formatted_text}
@@ -293,7 +316,9 @@ def _format_ocr_sft(
 
 
 def _format_translation_sft(
-    dataset: Dataset, tokenizer, max_length: int,
+    dataset: Dataset,
+    tokenizer,
+    max_length: int,
     chat_template_kwargs: dict | None = None,
 ) -> Dataset:
     """Format translation dataset for SFT training with prompt masking.
@@ -321,7 +346,9 @@ def _format_translation_sft(
                 {"role": "assistant", "content": target_text},
             ]
             formatted_text = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=False,
+                messages,
+                tokenize=False,
+                add_generation_prompt=False,
                 **extra_kwargs,
             )
             prompt_messages = [
@@ -329,7 +356,9 @@ def _format_translation_sft(
                 {"role": "user", "content": source_text},
             ]
             prompt_text = tokenizer.apply_chat_template(
-                prompt_messages, tokenize=False, add_generation_prompt=True,
+                prompt_messages,
+                tokenize=False,
+                add_generation_prompt=True,
                 **extra_kwargs,
             )
         else:
@@ -359,7 +388,9 @@ def _format_translation_sft(
         return model_inputs
 
     num_proc = get_num_workers()
-    return dataset.map(format_fn, num_proc=num_proc if num_proc > 1 else None, remove_columns=dataset.column_names)
+    return dataset.map(
+        format_fn, num_proc=num_proc if num_proc > 1 else None, remove_columns=dataset.column_names
+    )
 
 
 def _format_classification_sft(dataset: Dataset, tokenizer, max_length: int) -> Dataset:
@@ -385,9 +416,13 @@ def _format_classification_sft(dataset: Dataset, tokenizer, max_length: int) -> 
 
         def preprocess(examples):
             return tokenizer(
-                examples[col_a], examples[col_b],
-                truncation=True, max_length=max_length, padding="max_length",
+                examples[col_a],
+                examples[col_b],
+                truncation=True,
+                max_length=max_length,
+                padding="max_length",
             )
+
     else:
         # Single sentence task (SST-2, CoLA)
         col = text_cols[0]
@@ -395,8 +430,15 @@ def _format_classification_sft(dataset: Dataset, tokenizer, max_length: int) -> 
         def preprocess(examples):
             return tokenizer(
                 examples[col],
-                truncation=True, max_length=max_length, padding="max_length",
+                truncation=True,
+                max_length=max_length,
+                padding="max_length",
             )
 
     num_proc = get_num_workers()
-    return dataset.map(preprocess, batched=True, num_proc=num_proc if num_proc > 1 else None, remove_columns=text_cols)
+    return dataset.map(
+        preprocess,
+        batched=True,
+        num_proc=num_proc if num_proc > 1 else None,
+        remove_columns=text_cols,
+    )

@@ -168,6 +168,7 @@ def _ensure_base_ref(model_dir):
 
     try:
         import yaml
+
         with open(config_path) as f:
             config = yaml.safe_load(f)
     except Exception:
@@ -190,14 +191,15 @@ def _ensure_base_ref(model_dir):
     ref = {"model_name_or_path": model_name}
     if revision:
         ref["revision"] = revision
-    with open(ref_path, 'w') as f:
+    with open(ref_path, "w") as f:
         json.dump(ref, f, indent=2)
     print(f"Backfilled {ref_path.relative_to(model_dir)} -> {model_name}")
     return True
 
 
-def push_model(model_dir, org, private=True, include_resume=False, dry_run=False,
-               repo_name=None, prefix=None):
+def push_model(
+    model_dir, org, private=True, include_resume=False, dry_run=False, repo_name=None, prefix=None
+):
     """Push model files to HuggingFace Hub.
 
     Args:

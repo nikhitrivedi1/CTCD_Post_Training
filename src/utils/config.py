@@ -1,7 +1,7 @@
 """Configuration loading with YAML inheritance support."""
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 
@@ -9,7 +9,7 @@ import yaml
 MAX_INHERITANCE_DEPTH = 10
 
 
-def load_config(config_path: str, _depth: int = 0) -> Dict[str, Any]:
+def load_config(config_path: str, _depth: int = 0) -> dict[str, Any]:
     """
     Load a YAML configuration file with inheritance support.
 
@@ -34,30 +34,30 @@ def load_config(config_path: str, _depth: int = 0) -> Dict[str, Any]:
 
     config_path = Path(config_path)
 
-    with open(config_path, 'r') as f:
+    with open(config_path) as f:
         config = yaml.safe_load(f) or {}
 
     # Handle inheritance (string or list of paths)
-    if 'inherit' in config:
-        parents = config['inherit']
+    if "inherit" in config:
+        parents = config["inherit"]
         if isinstance(parents, str):
             parents = [parents]
 
         # Merge parents left-to-right, then overlay current config
-        merged = {}
+        merged: dict = {}
         for parent_ref in parents:
             parent_path = config_path.parent / parent_ref
             parent_config = load_config(str(parent_path), _depth=_depth + 1)
             merged = _deep_merge(merged, parent_config)
 
-        del config['inherit']
+        del config["inherit"]
         merged_config = _deep_merge(merged, config)
         return merged_config
 
     return config
 
 
-def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """
     Deep merge two dictionaries, with override taking precedence.
 
@@ -80,10 +80,10 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any
 
 
 def resolve_distillation_coefficients(
-    distillation: Optional[Dict[str, Any]] = None,
+    distillation: dict[str, Any] | None = None,
     *,
     freeze_teacher: bool = True,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Resolve student (alpha_h, alpha_s) and teacher (beta_h, beta_s) distillation weights.
 
     Student:

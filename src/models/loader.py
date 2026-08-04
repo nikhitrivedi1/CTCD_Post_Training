@@ -5,13 +5,13 @@ import logging
 import torch
 from peft import LoraConfig, get_peft_model
 from transformers import (
-    AutoModelForSequenceClassification,
-    AutoModelForCausalLM,
     AutoConfig,
-    PreTrainedTokenizer
+    AutoModelForCausalLM,
+    AutoModelForSequenceClassification,
+    PreTrainedTokenizer,
 )
 
-from src.tasks import is_translation_task, is_ocr_task
+from src.tasks import is_ocr_task, is_translation_task
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,7 @@ def _detect_attn_implementation(eager_attention: bool, device: str):
 # Primitives: load a single model
 # =============================================================================
 
+
 def _load_classifier(name: str, init: str, num_labels: int, device: str):
     """Load a single sequence classification model.
 
@@ -56,18 +57,20 @@ def _load_classifier(name: str, init: str, num_labels: int, device: str):
         # DistilBert doesn't register with AutoModel for from_config
         if "distilbert" in name.lower():
             from transformers import DistilBertForSequenceClassification
+
             model = DistilBertForSequenceClassification(model_config)
         else:
             model = AutoModelForSequenceClassification.from_config(model_config)
         return model.to(device)
 
-    return AutoModelForSequenceClassification.from_pretrained(
-        name, num_labels=num_labels
-    ).to(device)
+    return AutoModelForSequenceClassification.from_pretrained(name, num_labels=num_labels).to(
+        device
+    )
 
 
-def _load_causal_lm(name: str, init: str, device: str, tokenizer: PreTrainedTokenizer,
-                     eager_attention: bool = False):
+def _load_causal_lm(
+    name: str, init: str, device: str, tokenizer: PreTrainedTokenizer, eager_attention: bool = False
+):
     """Load a single causal language model with embedding resize.
 
     Args:
@@ -192,10 +195,14 @@ def needs_attention_outputs(config: dict) -> bool:
     return False
 
 
-def _resolve_checkpoint(name: str, task: str, device: str,
-                        eager_attention: bool = False,
-                        tokenizer: PreTrainedTokenizer = None,
-                        num_labels: int = None):
+def _resolve_checkpoint(
+    name: str,
+    task: str,
+    device: str,
+    eager_attention: bool = False,
+    tokenizer: PreTrainedTokenizer | None = None,
+    num_labels: int | None = None,
+):
     """Load a model from a local checkpoint, handling both merged and adapter-only cases.
 
     Mirrors the InferenceEngine loading pattern: checks for merged weights first,
@@ -213,14 +220,12 @@ def _resolve_checkpoint(name: str, task: str, device: str,
         Loaded model, or None if path is not a local checkpoint.
     """
     from pathlib import Path
+
     path = Path(name)
     if not path.is_dir():
         return None
 
-    has_merged = (
-        (path / "model.safetensors").exists()
-        or (path / "pytorch_model.bin").exists()
-    )
+    has_merged = (path / "model.safetensors").exists() or (path / "pytorch_model.bin").exists()
     has_adapter = (path / "adapter_config.json").exists()
 
     if not has_merged and not has_adapter:
@@ -238,8 +243,9 @@ def _resolve_checkpoint(name: str, task: str, device: str,
         return _load(name)
 
     # Adapter-only: resolve base, load, merge
-    from src.inference.engine import _resolve_base_model
     from peft import PeftModel
+
+    from src.inference.engine import _resolve_base_model
 
     base_model_id, revision = _resolve_base_model(path)
     logger.info(f"Resolving adapter checkpoint: base={base_model_id}, adapter={path}")
@@ -255,12 +261,18 @@ def _resolve_checkpoint(name: str, task: str, device: str,
 # Public API
 # =============================================================================
 
-def load_model(name: str, task: str, device: str, *,
-               init: str = "pretrained",
-               tokenizer: PreTrainedTokenizer = None,
-               num_labels: int = None,
-               eager: bool = False,
-               lora_config: dict = None) -> torch.nn.Module:
+
+def load_model(
+    name: str,
+    task: str,
+    device: str,
+    *,
+    init: str = "pretrained",
+    tokenizer: PreTrainedTokenizer | None = None,
+    num_labels: int | None = None,
+    eager: bool = False,
+    lora_config: dict | None = None,
+) -> torch.nn.Module:
     """Load a single model, routing by task type.
 
     Tries local checkpoint first (merged or adapter-only), falls back to Hub.
@@ -278,8 +290,9 @@ def load_model(name: str, task: str, device: str, *,
     Returns:
         Loaded model on device
     """
-    model = _resolve_checkpoint(name, task, device, eager,
-                                tokenizer=tokenizer, num_labels=num_labels)
+    model = _resolve_checkpoint(
+        name, task, device, eager, tokenizer=tokenizer, num_labels=num_labels
+    )
     if model is None:
         if is_ocr_task(task):
             model = _load_vlm(name, init, device, eager)
@@ -293,4 +306,3 @@ def load_model(name: str, task: str, device: str, *,
 
     _log_params(name, model)
     return model
-

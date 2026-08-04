@@ -11,10 +11,10 @@ import pytest
 
 from src.tasks.registry import (
     TASK_REGISTRY,
+    get_default_reward,
     get_num_labels,
     get_primary_metric,
     get_task_type,
-    get_default_reward,
     is_classification_task,
     is_ocr_task,
     is_translation_task,
@@ -27,6 +27,7 @@ REQUIRED_KEYS = {"num_labels", "type", "primary_metric"}
 # ===========================================================================
 # 1. Registry structure
 # ===========================================================================
+
 
 class TestRegistryStructure:
     """Every task has required keys and consistent types."""
@@ -48,6 +49,7 @@ class TestRegistryStructure:
 # ===========================================================================
 # 2. Type predicates are mutually exclusive
 # ===========================================================================
+
 
 class TestTypePredicates:
     """is_classification/translation/ocr are mutually exclusive for every task."""
@@ -81,6 +83,7 @@ class TestTypePredicates:
 # 3. Factory functions
 # ===========================================================================
 
+
 class TestFactoryFunctions:
     """Factory functions return correct values for known tasks, None for unknown."""
 
@@ -96,9 +99,15 @@ class TestFactoryFunctions:
     def test_get_primary_metric_matches_registry(self, task):
         assert get_primary_metric(task) == TASK_REGISTRY[task]["primary_metric"]
 
-    @pytest.mark.parametrize("func", [
-        get_num_labels, get_task_type, get_primary_metric, get_default_reward,
-    ])
+    @pytest.mark.parametrize(
+        "func",
+        [
+            get_num_labels,
+            get_task_type,
+            get_primary_metric,
+            get_default_reward,
+        ],
+    )
     def test_unknown_task_returns_none(self, func):
         assert func("nonexistent_task") is None
 

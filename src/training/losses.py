@@ -3,19 +3,19 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import torch
 import torch.nn.functional as F
 
 
 def _resolve_ce_kd_coefficients(
-    ce_loss_coeff: Optional[float] = None,
-    kd_loss_coeff: Optional[float] = None,
+    ce_loss_coeff: float | None = None,
+    kd_loss_coeff: float | None = None,
     *,
-    alpha_h: Optional[float] = None,
-    alpha_s: Optional[float] = None,
-) -> Tuple[float, float]:
+    alpha_h: float | None = None,
+    alpha_s: float | None = None,
+) -> tuple[float, float]:
     """Resolve CE vs KD weights from explicit coefficients or caller-facing ``alpha_h`` / ``alpha_s``.
 
     Precedence: if either ``ce_loss_coeff`` or ``kd_loss_coeff`` is set, infer the pair from those;
@@ -24,6 +24,15 @@ def _resolve_ce_kd_coefficients(
 
     Loss strategies store only ``ce_loss_coeff`` and ``kd_loss_coeff``; this helper is the single
     bridge from config/trainer naming.
+
+    Args:
+        ce_loss_coeff: Explicit hard-label weight, if given.
+        kd_loss_coeff: Explicit soft-label weight, if given.
+        alpha_h: Caller-facing hard-label weight (same meaning as ``ce_loss_coeff``).
+        alpha_s: Caller-facing soft-label weight (same meaning as ``kd_loss_coeff``).
+
+    Returns:
+        Tuple of ``(ce_loss_coeff, kd_loss_coeff)``.
     """
     if ce_loss_coeff is not None or kd_loss_coeff is not None:
         kd = float(kd_loss_coeff) if kd_loss_coeff is not None else 1.0 - float(ce_loss_coeff)
@@ -36,8 +45,16 @@ def _resolve_ce_kd_coefficients(
     return 0.5, 0.5
 
 
-def _merge_coeff_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
-    """If kwargs contain alpha_h/alpha_s or ce/kd coeffs, normalize to ce_loss_coeff/kd_loss_coeff."""
+def _merge_coeff_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """If kwargs contain alpha_h/alpha_s or ce/kd coeffs, normalize to ce_loss_coeff/kd_loss_coeff.
+
+    Args:
+        kwargs: Keyword arguments possibly containing ``alpha_h``/``alpha_s`` or
+            ``ce_loss_coeff``/``kd_loss_coeff``.
+
+    Returns:
+        Copy of ``kwargs`` with any coefficient keys normalized to ``ce_loss_coeff``/``kd_loss_coeff``.
+    """
     d = dict(kwargs)
     coeff_keys = ("alpha_h", "alpha_s", "ce_loss_coeff", "kd_loss_coeff")
     if not any(k in d for k in coeff_keys):
@@ -57,7 +74,7 @@ def compute_kl_divergence(
     teacher: torch.Tensor,
     temperature: float,
     input_is_probs: bool = False,
-    reverse: bool = False
+    reverse: bool = False,
 ) -> torch.Tensor:
     """
     Compute KL divergence with temperature scaling (Hinton 2015).
@@ -93,11 +110,7 @@ def compute_kl_divergence(
 
     input_log = F.log_softmax(input / temperature, dim=-1)
     target_soft = F.softmax(target / temperature, dim=-1)
-    kl = F.kl_div(
-        input_log,
-        target_soft,
-        reduction='batchmean'
-    ) * (temperature ** 2)
+    kl = F.kl_div(input_log, target_soft, reduction="batchmean") * (temperature**2)
 
     return kl.to(original_dtype)
 
@@ -107,6 +120,12 @@ def compute_entropy_of_output(logits: torch.Tensor) -> torch.Tensor:
 
     Interprets the last dimension of ``logits`` as classes, applies softmax, and computes
     H(p) = -E_p[log p] in nats, averaged over all leading dimensions (e.g., batch).
+
+    Args:
+        logits: Raw output logits, classes on the last dimension.
+
+    Returns:
+        Scalar entropy in nats, same dtype as the input.
     """
     original_dtype = logits.dtype
     logits_f = logits.float()
@@ -119,8 +138,9 @@ def compute_entropy_of_output(logits: torch.Tensor) -> torch.Tensor:
 @dataclass
 class LossOutput:
     """Container for loss computation results."""
+
     total_loss: torch.Tensor
-    components: Dict[str, torch.Tensor]
+    components: dict[str, torch.Tensor]
 
 
 class DistillationLossStrategy(ABC):
@@ -149,9 +169,9 @@ class DistillationLossStrategy(ABC):
         model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
-        labels: Optional[torch.Tensor] = None,
-        model_outputs: Optional[Any] = None,
-        teacher_outputs: Optional[Any] = None,
+        labels: torch.Tensor | None = None,
+        model_outputs: Any | None = None,
+        teacher_outputs: Any | None = None,
         **kwargs,
     ) -> LossOutput:
         """
@@ -195,6 +215,15 @@ class KLDistillationLoss(DistillationLossStrategy):
         kd_loss_coeff: float = 0.5,
         reverse: bool = False,
     ):
+        """
+        Initialize KL divergence loss.
+
+        Args:
+            temperature: Softmax temperature applied to both logits before KL
+            ce_loss_coeff: Weight on the hard-label (CE) term
+            kd_loss_coeff: Weight on the KL (distillation) term
+            reverse: If True, compute KL(model || teacher) instead of KL(teacher || model)
+        """
         self.temperature = temperature
         self.reverse = reverse
         self.ce_loss_coeff = float(ce_loss_coeff)
@@ -209,14 +238,19 @@ class KLDistillationLoss(DistillationLossStrategy):
         model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
-        labels: Optional[torch.Tensor] = None,
-        model_outputs: Optional[Any] = None,
-        teacher_outputs: Optional[Any] = None,
+        labels: torch.Tensor | None = None,
+        model_outputs: Any | None = None,
+        teacher_outputs: Any | None = None,
         **kwargs,
     ) -> LossOutput:
+        """Compute ``ce_loss_coeff * CE + kd_loss_coeff * T^2 * KL(teacher || model)``."""
         # Always compute KL divergence for monitoring (even when kd_loss_coeff=0)
         kl_raw = compute_kl_divergence(
-            model_logits, teacher_logits, self.temperature, input_is_probs=False, reverse=self.reverse
+            model_logits,
+            teacher_logits,
+            self.temperature,
+            input_is_probs=False,
+            reverse=self.reverse,
         )
 
         ce_weighted = self.ce_loss_coeff * ce_loss
@@ -235,7 +269,7 @@ class KLDistillationLoss(DistillationLossStrategy):
                 "kd_loss_coeff": torch.tensor(self.kd_loss_coeff),
                 "ce_raw": ce_loss,
                 raw_key: kl_raw,
-            }
+            },
         )
 
 
@@ -252,6 +286,14 @@ class MSEDistillationLoss(DistillationLossStrategy):
         kd_loss_coeff: float = 0.5,
         normalize: bool = True,
     ):
+        """
+        Initialize MSE loss.
+
+        Args:
+            ce_loss_coeff: Weight on the hard-label (CE) term
+            kd_loss_coeff: Weight on the MSE (distillation) term
+            normalize: Whether to z-normalize logits before comparing (scale-invariant MSE)
+        """
         self.normalize = normalize
         self.ce_loss_coeff = float(ce_loss_coeff)
         self.kd_loss_coeff = float(kd_loss_coeff)
@@ -265,11 +307,12 @@ class MSEDistillationLoss(DistillationLossStrategy):
         model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
-        labels: Optional[torch.Tensor] = None,
-        model_outputs: Optional[Any] = None,
-        teacher_outputs: Optional[Any] = None,
+        labels: torch.Tensor | None = None,
+        model_outputs: Any | None = None,
+        teacher_outputs: Any | None = None,
         **kwargs,
     ) -> LossOutput:
+        """Compute ``ce_loss_coeff * CE + kd_loss_coeff * MSE(model_logits, teacher_logits)``."""
         # Always compute MSE for monitoring (even when kd_loss_coeff=0)
         if self.normalize:
             model_norm = (model_logits - model_logits.mean()) / (model_logits.std() + 1e-8)
@@ -291,7 +334,7 @@ class MSEDistillationLoss(DistillationLossStrategy):
                 "kd_loss_coeff": torch.tensor(self.kd_loss_coeff),
                 "ce_raw": ce_loss,
                 "mse_raw": mse_raw,
-            }
+            },
         )
 
 
@@ -307,6 +350,13 @@ class CosineDistillationLoss(DistillationLossStrategy):
         ce_loss_coeff: float = 0.5,
         kd_loss_coeff: float = 0.5,
     ):
+        """
+        Initialize cosine similarity loss.
+
+        Args:
+            ce_loss_coeff: Weight on the hard-label (CE) term
+            kd_loss_coeff: Weight on the cosine (distillation) term
+        """
         self.ce_loss_coeff = float(ce_loss_coeff)
         self.kd_loss_coeff = float(kd_loss_coeff)
 
@@ -319,11 +369,12 @@ class CosineDistillationLoss(DistillationLossStrategy):
         model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
-        labels: Optional[torch.Tensor] = None,
-        model_outputs: Optional[Any] = None,
-        teacher_outputs: Optional[Any] = None,
+        labels: torch.Tensor | None = None,
+        model_outputs: Any | None = None,
+        teacher_outputs: Any | None = None,
         **kwargs,
     ) -> LossOutput:
+        """Compute ``ce_loss_coeff * CE + kd_loss_coeff * (1 - cosine_sim(model, teacher))``."""
         # Always compute cosine for monitoring (even when kd_loss_coeff=0)
         cosine_sim = F.cosine_similarity(model_logits, teacher_logits, dim=-1)
         cosine_raw = (1 - cosine_sim).mean()
@@ -341,7 +392,7 @@ class CosineDistillationLoss(DistillationLossStrategy):
                 "kd_loss_coeff": torch.tensor(self.kd_loss_coeff),
                 "ce_raw": ce_loss,
                 "cosine_raw": cosine_raw,
-            }
+            },
         )
 
 
@@ -358,6 +409,14 @@ class SoftTargetDistillationLoss(DistillationLossStrategy):
         ce_loss_coeff: float = 0.5,
         kd_loss_coeff: float = 0.5,
     ):
+        """
+        Initialize soft target cross-entropy loss.
+
+        Args:
+            temperature: Softmax temperature applied to teacher/model logits
+            ce_loss_coeff: Weight on the hard-label (CE) term
+            kd_loss_coeff: Weight on the soft-label (CE) term
+        """
         self.temperature = temperature
         self.ce_loss_coeff = float(ce_loss_coeff)
         self.kd_loss_coeff = float(kd_loss_coeff)
@@ -371,15 +430,20 @@ class SoftTargetDistillationLoss(DistillationLossStrategy):
         model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
-        labels: Optional[torch.Tensor] = None,
-        model_outputs: Optional[Any] = None,
-        teacher_outputs: Optional[Any] = None,
+        labels: torch.Tensor | None = None,
+        model_outputs: Any | None = None,
+        teacher_outputs: Any | None = None,
         **kwargs,
     ) -> LossOutput:
+        """Compute ``ce_loss_coeff * CE_hard + kd_loss_coeff * CE_soft``."""
         # Always compute soft CE for monitoring (even when kd_loss_coeff=0)
         soft_labels = F.softmax(teacher_logits / self.temperature, dim=-1)
-        ce_soft_raw = -(soft_labels * F.log_softmax(model_logits / self.temperature, dim=-1)).sum(dim=-1).mean()
-        ce_soft_raw = ce_soft_raw * (self.temperature ** 2)
+        ce_soft_raw = (
+            -(soft_labels * F.log_softmax(model_logits / self.temperature, dim=-1))
+            .sum(dim=-1)
+            .mean()
+        )
+        ce_soft_raw = ce_soft_raw * (self.temperature**2)
 
         ce_hard_weighted = self.ce_loss_coeff * ce_loss
         ce_soft_weighted = self.kd_loss_coeff * ce_soft_raw
@@ -394,7 +458,7 @@ class SoftTargetDistillationLoss(DistillationLossStrategy):
                 "kd_loss_coeff": torch.tensor(self.kd_loss_coeff),
                 "ce_hard_raw": ce_loss,
                 "ce_soft_raw": ce_soft_raw,
-            }
+            },
         )
 
 
@@ -413,16 +477,30 @@ class CombinedDistillationLoss(DistillationLossStrategy):
         self,
         strategies: list,
         weights: list,
-        ce_loss_coeff: Optional[float] = None,
-        kd_loss_coeff: Optional[float] = None,
-        alpha_h: Optional[float] = None,
-        alpha_s: Optional[float] = None,
+        ce_loss_coeff: float | None = None,
+        kd_loss_coeff: float | None = None,
+        alpha_h: float | None = None,
+        alpha_s: float | None = None,
     ):
+        """
+        Initialize combined loss over multiple sub-strategies.
+
+        Args:
+            strategies: Sub-strategies to combine (e.g. [FeatureLossStrategy, AttentionLossStrategy]).
+            weights: Per-strategy weights, same length as ``strategies``; normalized to sum to 1.
+            ce_loss_coeff: Outer weight on the hard-label (CE) term.
+            kd_loss_coeff: Outer weight on the combined distillation term.
+            alpha_h: Alternate name for ``ce_loss_coeff`` (student-facing naming).
+            alpha_s: Alternate name for ``kd_loss_coeff`` (student-facing naming).
+        """
         assert len(strategies) == len(weights), "Must have same number of strategies and weights"
         self.strategies = strategies
         self.weights = weights
         self.ce_loss_coeff, self.kd_loss_coeff = _resolve_ce_kd_coefficients(
-            ce_loss_coeff, kd_loss_coeff, alpha_h=alpha_h, alpha_s=alpha_s,
+            ce_loss_coeff,
+            kd_loss_coeff,
+            alpha_h=alpha_h,
+            alpha_s=alpha_s,
         )
         # Normalize weights
         total = sum(weights)
@@ -441,12 +519,12 @@ class CombinedDistillationLoss(DistillationLossStrategy):
         model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
-        labels: Optional[torch.Tensor] = None,
-        model_outputs: Optional[Any] = None,
-        teacher_outputs: Optional[Any] = None,
+        labels: torch.Tensor | None = None,
+        model_outputs: Any | None = None,
+        teacher_outputs: Any | None = None,
         **kwargs,
     ) -> LossOutput:
-        # Weighted CE contribution
+        """Compute ``ce_loss_coeff * CE + kd_loss_coeff * sum(weight_i * sub_strategy_i)``."""
         ce_weighted = self.ce_loss_coeff * ce_loss
         all_components = {
             "ce_weighted": ce_weighted,
@@ -458,11 +536,16 @@ class CombinedDistillationLoss(DistillationLossStrategy):
         }
         distill_loss = torch.tensor(0.0, device=model_logits.device)
 
-        skip_component_keys = frozenset({
-            "ce_raw", "ce_weighted", "ce_loss_coeff", "kd_loss_coeff",
-        })
+        skip_component_keys = frozenset(
+            {
+                "ce_raw",
+                "ce_weighted",
+                "ce_loss_coeff",
+                "kd_loss_coeff",
+            }
+        )
 
-        for strategy, weight in zip(self.strategies, self.weights):
+        for strategy, weight in zip(self.strategies, self.weights, strict=True):
             # Pass full outputs and kwargs to sub-strategies (needed for Feature/Attention)
             output = strategy.compute(
                 model_logits=model_logits,
@@ -483,10 +566,7 @@ class CombinedDistillationLoss(DistillationLossStrategy):
 
         total_loss = ce_weighted + self.kd_loss_coeff * distill_loss
 
-        return LossOutput(
-            total_loss=total_loss,
-            components=all_components
-        )
+        return LossOutput(total_loss=total_loss, components=all_components)
 
 
 class FeatureLossStrategy(DistillationLossStrategy):
@@ -508,8 +588,8 @@ class FeatureLossStrategy(DistillationLossStrategy):
         self,
         ce_loss_coeff: float = 0.5,
         kd_loss_coeff: float = 0.5,
-        layer_mapping: Optional[List[Tuple[int, int]]] = None,
-        projector: Optional[Any] = None,
+        layer_mapping: list[tuple[int, int]] | None = None,
+        projector: Any | None = None,
         normalize: bool = True,
     ):
         """
@@ -537,16 +617,15 @@ class FeatureLossStrategy(DistillationLossStrategy):
         model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
-        labels: Optional[torch.Tensor] = None,
-        model_outputs: Optional[Any] = None,
-        teacher_outputs: Optional[Any] = None,
+        labels: torch.Tensor | None = None,
+        model_outputs: Any | None = None,
+        teacher_outputs: Any | None = None,
         **kwargs,
     ) -> LossOutput:
-        # Get layer mapping from kwargs if not set in init
+        """Compute ``ce_loss_coeff * CE + kd_loss_coeff * mean(MSE(proj(model_hidden), teacher_hidden))``."""
         layer_mapping = kwargs.get("layer_mapping", self.layer_mapping)
         projector = kwargs.get("projector", self.projector)
 
-        # Extract hidden states
         model_hidden = getattr(model_outputs, "hidden_states", None)
         teacher_hidden = getattr(teacher_outputs, "hidden_states", None)
 
@@ -585,7 +664,6 @@ class FeatureLossStrategy(DistillationLossStrategy):
         else:
             feature_raw = torch.tensor(0.0, device=model_logits.device)
 
-        # Weighted contributions
         ce_weighted = self.ce_loss_coeff * ce_loss
         feature_weighted = self.kd_loss_coeff * feature_raw
         total_loss = ce_weighted + feature_weighted
@@ -600,7 +678,7 @@ class FeatureLossStrategy(DistillationLossStrategy):
                 "ce_raw": ce_loss,
                 "feature_raw": feature_raw,
                 "num_layers_matched": torch.tensor(len(layer_mapping)),
-            }
+            },
         )
 
 
@@ -624,9 +702,18 @@ class CosineFeatureLoss(DistillationLossStrategy):
         self,
         ce_loss_coeff: float = 0.5,
         kd_loss_coeff: float = 0.5,
-        layer_mapping: Optional[List[Tuple[int, int]]] = None,
-        projector: Optional[Any] = None,
+        layer_mapping: list[tuple[int, int]] | None = None,
+        projector: Any | None = None,
     ):
+        """
+        Initialize cosine feature distillation loss.
+
+        Args:
+            ce_loss_coeff: Weight on the hard-label (CE) term
+            kd_loss_coeff: Weight on the feature matching (distillation) term
+            layer_mapping: List of (teacher_idx, model_idx) pairs
+            projector: Optional projection module for dimension alignment
+        """
         self.ce_loss_coeff = float(ce_loss_coeff)
         self.kd_loss_coeff = float(kd_loss_coeff)
         self.layer_mapping = layer_mapping or []
@@ -641,11 +728,12 @@ class CosineFeatureLoss(DistillationLossStrategy):
         model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
-        labels: Optional[torch.Tensor] = None,
-        model_outputs: Optional[Any] = None,
-        teacher_outputs: Optional[Any] = None,
+        labels: torch.Tensor | None = None,
+        model_outputs: Any | None = None,
+        teacher_outputs: Any | None = None,
         **kwargs,
     ) -> LossOutput:
+        """Compute ``ce_loss_coeff * CE + kd_loss_coeff * mean(1 - cosine_sim(model_hidden, teacher_hidden))``."""
         layer_mapping = kwargs.get("layer_mapping", self.layer_mapping)
         projector = kwargs.get("projector", self.projector)
 
@@ -694,7 +782,7 @@ class CosineFeatureLoss(DistillationLossStrategy):
                 "ce_raw": ce_loss,
                 "feature_cosine_raw": feature_raw,
                 "num_layers_matched": torch.tensor(len(layer_mapping)),
-            }
+            },
         )
 
 
@@ -717,7 +805,7 @@ class AttentionLossStrategy(DistillationLossStrategy):
         self,
         ce_loss_coeff: float = 0.5,
         kd_loss_coeff: float = 0.5,
-        layer_mapping: Optional[List[Tuple[int, int]]] = None,
+        layer_mapping: list[tuple[int, int]] | None = None,
         temperature: float = 1.0,
     ):
         """
@@ -743,22 +831,20 @@ class AttentionLossStrategy(DistillationLossStrategy):
         model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
-        labels: Optional[torch.Tensor] = None,
-        model_outputs: Optional[Any] = None,
-        teacher_outputs: Optional[Any] = None,
+        labels: torch.Tensor | None = None,
+        model_outputs: Any | None = None,
+        teacher_outputs: Any | None = None,
         **kwargs,
     ) -> LossOutput:
-        # Get layer mapping from kwargs if not set in init
+        """Compute ``ce_loss_coeff * CE + kd_loss_coeff * mean(KL(model_attn || teacher_attn))``."""
         layer_mapping = kwargs.get("layer_mapping", self.layer_mapping)
 
-        # Extract attention weights
         model_attns = getattr(model_outputs, "attentions", None)
         teacher_attns = getattr(teacher_outputs, "attentions", None)
 
         if model_attns is None or teacher_attns is None:
             raise ValueError(
-                "Attention loss requires attentions. "
-                "Ensure output_attentions=True in model config."
+                "Attention loss requires attentions. Ensure output_attentions=True in model config."
             )
 
         # Compute attention KL for each mapped layer pair
@@ -767,10 +853,8 @@ class AttentionLossStrategy(DistillationLossStrategy):
             t_attn = teacher_attns[teacher_idx]  # (batch, heads, seq, seq)
             m_attn = model_attns[model_idx]
 
-            # Handle different number of attention heads by averaging
+            # Handle different number of attention heads by averaging both to a single head
             if t_attn.shape[1] != m_attn.shape[1]:
-                # Average teacher heads to match model head count
-                # or expand model heads - for now, average both to single
                 t_attn = t_attn.mean(dim=1, keepdim=True)
                 m_attn = m_attn.mean(dim=1, keepdim=True)
 
@@ -779,9 +863,7 @@ class AttentionLossStrategy(DistillationLossStrategy):
             t_flat = t_attn.view(-1, t_attn.size(-1))
 
             # Compute KL divergence (attention weights are probabilities)
-            kl_loss = compute_kl_divergence(
-                m_flat, t_flat, self.temperature, input_is_probs=True
-            )
+            kl_loss = compute_kl_divergence(m_flat, t_flat, self.temperature, input_is_probs=True)
             attention_losses.append(kl_loss)
 
         # Average across all layer pairs
@@ -790,7 +872,6 @@ class AttentionLossStrategy(DistillationLossStrategy):
         else:
             attention_raw = torch.tensor(0.0, device=model_logits.device)
 
-        # Weighted contributions
         ce_weighted = self.ce_loss_coeff * ce_loss
         attention_weighted = self.kd_loss_coeff * attention_raw
         total_loss = ce_weighted + attention_weighted
@@ -805,7 +886,7 @@ class AttentionLossStrategy(DistillationLossStrategy):
                 "ce_raw": ce_loss,
                 "attention_raw": attention_raw,
                 "num_layers_matched": torch.tensor(len(layer_mapping)),
-            }
+            },
         )
 
 
@@ -827,12 +908,12 @@ class StagedDistillationLoss(DistillationLossStrategy):
 
     def __init__(
         self,
-        stages: List[Dict[str, Any]],
+        stages: list[dict[str, Any]],
         temperature: float = 2.0,
-        ce_loss_coeff: Optional[float] = None,
-        kd_loss_coeff: Optional[float] = None,
-        alpha_h: Optional[float] = None,
-        alpha_s: Optional[float] = None,
+        ce_loss_coeff: float | None = None,
+        kd_loss_coeff: float | None = None,
+        alpha_h: float | None = None,
+        alpha_s: float | None = None,
     ):
         """
         Initialize staged distillation loss.
@@ -848,7 +929,10 @@ class StagedDistillationLoss(DistillationLossStrategy):
         """
         self.stages = []
         self.ce_loss_coeff, self.kd_loss_coeff = _resolve_ce_kd_coefficients(
-            ce_loss_coeff, kd_loss_coeff, alpha_h=alpha_h, alpha_s=alpha_s,
+            ce_loss_coeff,
+            kd_loss_coeff,
+            alpha_h=alpha_h,
+            alpha_s=alpha_s,
         )
         self.temperature = temperature
 
@@ -878,21 +962,19 @@ class StagedDistillationLoss(DistillationLossStrategy):
             else:
                 strategy = strategy_name  # Already an instance
 
-            self.stages.append({
-                "strategy": strategy,
-                "until_progress": until_progress,
-            })
+            self.stages.append(
+                {
+                    "strategy": strategy,
+                    "until_progress": until_progress,
+                }
+            )
 
         # Sort stages by progress threshold
         self.stages.sort(key=lambda s: s["until_progress"])
 
         # Aggregate requirement flags from all sub-strategies
-        self.requires_hidden_states = any(
-            s["strategy"].requires_hidden_states for s in self.stages
-        )
-        self.requires_attentions = any(
-            s["strategy"].requires_attentions for s in self.stages
-        )
+        self.requires_hidden_states = any(s["strategy"].requires_hidden_states for s in self.stages)
+        self.requires_attentions = any(s["strategy"].requires_attentions for s in self.stages)
 
     @property
     def name(self) -> str:
@@ -912,11 +994,12 @@ class StagedDistillationLoss(DistillationLossStrategy):
         model_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
         ce_loss: torch.Tensor,
-        labels: Optional[torch.Tensor] = None,
-        model_outputs: Optional[Any] = None,
-        teacher_outputs: Optional[Any] = None,
+        labels: torch.Tensor | None = None,
+        model_outputs: Any | None = None,
+        teacher_outputs: Any | None = None,
         **kwargs,
     ) -> LossOutput:
+        """Delegate to whichever stage's strategy is active at the current training progress."""
         # Get training progress from kwargs (passed by trainer)
         progress = kwargs.get("training_progress", 0.0)
 
@@ -936,9 +1019,7 @@ class StagedDistillationLoss(DistillationLossStrategy):
 
         # Add stage info to components for logging
         output.components["active_stage"] = torch.tensor(
-            self.stages.index(
-                next(s for s in self.stages if s["strategy"] == active_strategy)
-            )
+            self.stages.index(next(s for s in self.stages if s["strategy"] == active_strategy))
         )
         output.components["training_progress"] = torch.tensor(progress)
 
@@ -946,12 +1027,23 @@ class StagedDistillationLoss(DistillationLossStrategy):
 
 
 def build_distill_topology_strategy(
-    distill_config: Dict[str, Any],
+    distill_config: dict[str, Any],
     alpha_h: float,
     alpha_s: float,
     temperature: float = 2.0,
 ) -> DistillationLossStrategy:
-    """Build student-side loss topology (single, combined, or staged) with α coefficients."""
+    """Build student-side loss topology (single, combined, or staged) with α coefficients.
+
+    Args:
+        distill_config: The ``distillation`` section of the training config; may contain
+            ``stages``, ``loss_strategies``, or a single ``loss_type``.
+        alpha_h: Student hard-label (CE) weight.
+        alpha_s: Student soft-label (KD) weight.
+        temperature: Default softmax temperature for strategies that use one.
+
+    Returns:
+        The configured loss strategy (single, combined, or staged).
+    """
     stages_config = distill_config.get("stages")
     if stages_config:
         return StagedDistillationLoss(
@@ -968,7 +1060,9 @@ def build_distill_topology_strategy(
             strat_weight = strat_config.get("weight", 1.0)
             if strat_type.startswith("feature_"):
                 strategy = get_loss_strategy(
-                    strat_type, alpha_h=alpha_h, alpha_s=alpha_s,
+                    strat_type,
+                    alpha_h=alpha_h,
+                    alpha_s=alpha_s,
                 )
             elif strat_type.startswith("attention_"):
                 strategy = get_loss_strategy(
@@ -1010,8 +1104,15 @@ def build_distill_topology_strategy(
     )
 
 
-def infer_teacher_response_loss_name(distill_config: Dict[str, Any]) -> str:
-    """Pick a response (logit-level) strategy for teacher CTCD v1 (peer = detached student logits)."""
+def infer_teacher_response_loss_name(distill_config: dict[str, Any]) -> str:
+    """Pick a response (logit-level) strategy for teacher CTCD v1 (peer = detached student logits).
+
+    Args:
+        distill_config: The ``distillation`` section of the training config.
+
+    Returns:
+        Name of a response-level loss strategy (never a ``feature_*``/``attention_*`` name).
+    """
     if distill_config.get("loss_strategies"):
         for item in distill_config["loss_strategies"]:
             t = item["type"]
@@ -1021,19 +1122,33 @@ def infer_teacher_response_loss_name(distill_config: Dict[str, Any]) -> str:
     if distill_config.get("stages"):
         for st in distill_config["stages"]:
             sn = st["strategy"]
-            if isinstance(sn, str) and not sn.startswith("feature_") and not sn.startswith("attention_"):
+            if (
+                isinstance(sn, str)
+                and not sn.startswith("feature_")
+                and not sn.startswith("attention_")
+            ):
                 return sn
         return "kl_divergence"
     return distill_config.get("loss_type", "kl_divergence")
 
 
 def build_teacher_response_only_strategy(
-    distill_config: Dict[str, Any],
+    distill_config: dict[str, Any],
     beta_h: float,
     beta_s: float,
     temperature: float = 2.0,
 ) -> DistillationLossStrategy:
-    """Teacher co-training branch: one response strategy with β coefficients (no F/A peer in v1)."""
+    """Teacher co-training branch: one response strategy with β coefficients (no F/A peer in v1).
+
+    Args:
+        distill_config: The ``distillation`` section of the training config.
+        beta_h: Teacher hard-label (CE) weight.
+        beta_s: Teacher soft-label (KD, from the student) weight.
+        temperature: Softmax temperature for the response loss.
+
+    Returns:
+        A response-level loss strategy configured with the teacher's β coefficients.
+    """
     name = infer_teacher_response_loss_name(distill_config)
     if name.startswith("feature_") or name.startswith("attention_"):
         name = "kl_divergence"
@@ -1046,27 +1161,43 @@ def build_teacher_response_only_strategy(
 
 
 def build_layer_mapping_and_projector(
-    distill_config: Dict[str, Any],
+    distill_config: dict[str, Any],
     loss_strategy: DistillationLossStrategy,
     model: Any,
     teacher_model: Any,
     device: str,
-) -> Tuple[Optional[List[Tuple[int, int]]], Optional[torch.nn.Module]]:
-    """Layer mapping and optional projector from distill config (matches forge semantics)."""
+) -> tuple[list[tuple[int, int]] | None, torch.nn.Module | None]:
+    """Layer mapping and optional projector from distill config (matches forge semantics).
+
+    Args:
+        distill_config: The ``distillation`` section of the training config.
+        loss_strategy: The resolved loss strategy; its ``requires_hidden_states`` /
+            ``requires_attentions`` flags decide whether mapping/projection are needed at all.
+        model: The student model (used to read its hidden size / layer count).
+        teacher_model: The teacher model (used to read its hidden size / layer count).
+        device: Device to move a newly created projector onto.
+
+    Returns:
+        ``(layer_mapping, projector)``, where either element is ``None`` if the active
+        loss strategy doesn't need it (e.g. a response-only loss needs neither).
+    """
     from .layer_mapping import get_layer_mapping
     from .projections import create_projection_if_needed
 
     layer_mapping = None
     layer_mapping_config = distill_config.get("layer_mapping", {})
-    if layer_mapping_config or loss_strategy.requires_hidden_states or loss_strategy.requires_attentions:
+    if (
+        layer_mapping_config
+        or loss_strategy.requires_hidden_states
+        or loss_strategy.requires_attentions
+    ):
         mapping_type = layer_mapping_config.get("type", "uniform")
         teacher_layers = getattr(teacher_model.config, "num_hidden_layers", 12)
         model_layers = getattr(model.config, "num_hidden_layers", 6)
 
         if mapping_type == "custom" and "mapping" in layer_mapping_config:
             layer_mapping = [
-                (pair["teacher"], pair["model"])
-                for pair in layer_mapping_config["mapping"]
+                (pair["teacher"], pair["model"]) for pair in layer_mapping_config["mapping"]
             ]
         else:
             mapper = get_layer_mapping(mapping_type)
@@ -1085,7 +1216,7 @@ def build_layer_mapping_and_projector(
 
         if teacher_dim != model_dim or projection_config.get("force", False):
             proj_type = projection_config.get("type", "linear")
-            proj_kwargs: Dict[str, Any] = {}
+            proj_kwargs: dict[str, Any] = {}
             if projection_config.get("hidden_dim") is not None:
                 proj_kwargs["hidden_dim"] = projection_config["hidden_dim"]
             if "activation" in projection_config:
@@ -1113,17 +1244,13 @@ LOSS_REGISTRY = {
     "response_mse": MSEDistillationLoss,
     "response_cosine": CosineDistillationLoss,
     "response_ce": SoftTargetDistillationLoss,
-
     # Feature-based (hidden states)
     "feature_mse": FeatureLossStrategy,
     "feature_cosine": CosineFeatureLoss,
-
     # Attention-based (attention weights)
     "attention_kl": AttentionLossStrategy,
-
     # Meta/compound strategies
     "staged": StagedDistillationLoss,
-
     # Backward compatibility aliases (deprecated)
     "kl_divergence": KLDistillationLoss,
     "mse_logits": MSEDistillationLoss,
@@ -1162,7 +1289,13 @@ def get_loss_strategy(name: str, **kwargs) -> DistillationLossStrategy:
         MSEDistillationLoss: {"ce_loss_coeff", "kd_loss_coeff", "normalize"},
         CosineDistillationLoss: {"ce_loss_coeff", "kd_loss_coeff"},
         SoftTargetDistillationLoss: {"temperature", "ce_loss_coeff", "kd_loss_coeff"},
-        FeatureLossStrategy: {"ce_loss_coeff", "kd_loss_coeff", "layer_mapping", "projector", "normalize"},
+        FeatureLossStrategy: {
+            "ce_loss_coeff",
+            "kd_loss_coeff",
+            "layer_mapping",
+            "projector",
+            "normalize",
+        },
         CosineFeatureLoss: {"ce_loss_coeff", "kd_loss_coeff", "layer_mapping", "projector"},
         AttentionLossStrategy: {"ce_loss_coeff", "kd_loss_coeff", "layer_mapping", "temperature"},
         StagedDistillationLoss: {"stages", "temperature", "ce_loss_coeff", "kd_loss_coeff"},

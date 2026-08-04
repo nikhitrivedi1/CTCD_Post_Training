@@ -89,8 +89,7 @@ def count_formatting(text: str) -> dict[str, int]:
     return counts
 
 
-def fuzzy_set_match(pred_spans: set[str], gt_spans: set[str],
-                    threshold: float = 0.5) -> dict:
+def fuzzy_set_match(pred_spans: set[str], gt_spans: set[str], threshold: float = 0.5) -> dict:
     """Compute precision, recall, and F1 between two sets of text spans.
 
     Uses fuzzy Levenshtein matching: each GT span is matched to the most
@@ -153,7 +152,9 @@ def _strip_all_formatting(text: str) -> str:
 
 
 def _classify_unmatched_spans(
-    pred_spans: set[str], gt_spans: set[str], gt_plain: str,
+    pred_spans: set[str],
+    gt_spans: set[str],
+    gt_plain: str,
     threshold: float = 0.5,
 ) -> dict:
     """Classify unmatched predicted spans as over-formatting or hallucination.
@@ -174,8 +175,10 @@ def _classify_unmatched_spans(
     """
     if not pred_spans:
         return {
-            "total_pred": 0, "matched": 0,
-            "over_formatted": 0, "hallucinated": 0,
+            "total_pred": 0,
+            "matched": 0,
+            "over_formatted": 0,
+            "hallucinated": 0,
             "hallucination_rate": 0.0,
         }
 
@@ -259,7 +262,9 @@ def score_formatting(pred_md: str, gt_md: str) -> dict:
     # Hallucination breakdown: classify unmatched predicted spans
     gt_plain = _strip_all_formatting(gt_md)
     result["hallucination"] = _classify_unmatched_spans(
-        all_pred, all_gt, gt_plain,
+        all_pred,
+        all_gt,
+        gt_plain,
     )
 
     return result
@@ -276,8 +281,8 @@ def compute_aggregate(results: list[dict]) -> dict:
     """
     metrics = ["bold", "italic", "strikethrough", "overall"]
     stat_keys = ["precision", "recall", "f1"]
-    sums = {m: {s: 0.0 for s in stat_keys} for m in metrics}
-    counts = {m: 0 for m in metrics}
+    sums = {m: dict.fromkeys(stat_keys, 0.0) for m in metrics}
+    counts = dict.fromkeys(metrics, 0)
 
     total_gt = {"bold": 0, "italic": 0, "strikethrough": 0}
     total_pred = {"bold": 0, "italic": 0, "strikethrough": 0}
@@ -285,7 +290,7 @@ def compute_aggregate(results: list[dict]) -> dict:
 
     # Hallucination aggregation
     hall_keys = ["total_pred", "matched", "over_formatted", "hallucinated"]
-    hall_totals = {k: 0 for k in hall_keys}
+    hall_totals = dict.fromkeys(hall_keys, 0)
 
     for r in results:
         for m in metrics:

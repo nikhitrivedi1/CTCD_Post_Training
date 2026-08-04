@@ -12,10 +12,10 @@ import torch
 import torch.nn as nn
 
 from src.training.projections import (
+    PROJECTION_REGISTRY,
     IdentityProjection,
     LinearProjection,
     MLPProjection,
-    PROJECTION_REGISTRY,
     create_projection_if_needed,
     get_projection,
 )
@@ -27,11 +27,13 @@ from src.training.projections import (
 INPUT_DIM, OUTPUT_DIM = 64, 32
 
 
-@pytest.fixture(params=[
-    pytest.param("identity", id="identity"),
-    pytest.param("linear", id="linear"),
-    pytest.param("mlp", id="mlp"),
-])
+@pytest.fixture(
+    params=[
+        pytest.param("identity", id="identity"),
+        pytest.param("linear", id="linear"),
+        pytest.param("mlp", id="mlp"),
+    ]
+)
 def projection(request):
     """Create a projection of each type with consistent dims."""
     name = request.param
@@ -43,10 +45,12 @@ def projection(request):
         return MLPProjection(INPUT_DIM, OUTPUT_DIM)
 
 
-@pytest.fixture(params=[
-    pytest.param("linear", id="linear"),
-    pytest.param("mlp", id="mlp"),
-])
+@pytest.fixture(
+    params=[
+        pytest.param("linear", id="linear"),
+        pytest.param("mlp", id="mlp"),
+    ]
+)
 def trainable_projection(request):
     """Non-identity projections that have learnable parameters."""
     if request.param == "linear":
@@ -57,6 +61,7 @@ def trainable_projection(request):
 # ---------------------------------------------------------------------------
 # Cross-projection property tests
 # ---------------------------------------------------------------------------
+
 
 class TestOutputShape:
     """Output shape must match expected dimensions for all projections."""
@@ -94,6 +99,7 @@ class TestGradientFlow:
 # Identity-specific
 # ---------------------------------------------------------------------------
 
+
 class TestIdentity:
     def test_returns_same_tensor_object(self):
         proj = IdentityProjection()
@@ -110,6 +116,7 @@ class TestIdentity:
 # MLP-specific
 # ---------------------------------------------------------------------------
 
+
 class TestMLP:
     def test_default_hidden_dim_is_average(self):
         proj = MLPProjection(input_dim=100, output_dim=50)
@@ -119,11 +126,14 @@ class TestMLP:
         proj = MLPProjection(input_dim=64, output_dim=32, hidden_dim=16)
         assert proj.proj[0].out_features == 16
 
-    @pytest.mark.parametrize("act,cls", [
-        ("relu", nn.ReLU),
-        ("gelu", nn.GELU),
-        ("tanh", nn.Tanh),
-    ])
+    @pytest.mark.parametrize(
+        "act,cls",
+        [
+            ("relu", nn.ReLU),
+            ("gelu", nn.GELU),
+            ("tanh", nn.Tanh),
+        ],
+    )
     def test_activation_selection(self, act, cls):
         proj = MLPProjection(input_dim=64, output_dim=32, activation=act)
         assert isinstance(proj.proj[1], cls)
@@ -137,6 +147,7 @@ class TestMLP:
 # create_projection_if_needed
 # ---------------------------------------------------------------------------
 
+
 class TestCreateProjectionIfNeeded:
     def test_same_dims_returns_identity(self):
         proj = create_projection_if_needed(768, 768)
@@ -146,10 +157,13 @@ class TestCreateProjectionIfNeeded:
         proj = create_projection_if_needed(1024, 768)
         assert isinstance(proj, LinearProjection)
 
-    @pytest.mark.parametrize("proj_type,cls", [
-        ("linear", LinearProjection),
-        ("mlp", MLPProjection),
-    ])
+    @pytest.mark.parametrize(
+        "proj_type,cls",
+        [
+            ("linear", LinearProjection),
+            ("mlp", MLPProjection),
+        ],
+    )
     def test_respects_projection_type(self, proj_type, cls):
         proj = create_projection_if_needed(1024, 768, projection_type=proj_type)
         assert isinstance(proj, cls)
@@ -164,12 +178,16 @@ class TestCreateProjectionIfNeeded:
 # Factory
 # ---------------------------------------------------------------------------
 
+
 class TestGetProjection:
-    @pytest.mark.parametrize("name,cls", [
-        ("identity", IdentityProjection),
-        ("linear", LinearProjection),
-        ("mlp", MLPProjection),
-    ])
+    @pytest.mark.parametrize(
+        "name,cls",
+        [
+            ("identity", IdentityProjection),
+            ("linear", LinearProjection),
+            ("mlp", MLPProjection),
+        ],
+    )
     def test_returns_correct_type(self, name, cls):
         kwargs = {"input_dim": 64, "output_dim": 32} if name != "identity" else {}
         assert isinstance(get_projection(name, **kwargs), cls)

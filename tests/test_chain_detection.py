@@ -19,7 +19,6 @@ import tempfile
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers that mirror the chain's inline Python logic
 # ---------------------------------------------------------------------------
@@ -86,6 +85,7 @@ def build_guard_key(step_env):
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def ij_dir():
     """Temp directory for .incomplete_jobs files."""
@@ -105,25 +105,32 @@ def write_ij(ij_dir, jobs):
 # Tests: find_incomplete_job matching
 # ---------------------------------------------------------------------------
 
+
 class TestFindIncompleteJobTraining:
     """Training jobs match by resume_path."""
 
     def test_matches_training_job_by_resume_path(self, ij_dir):
-        path = write_ij(ij_dir, {
-            "12345": {
-                "resume_path": "fmt_grpo_qwen35-9b",
-                "output_dir": "outputs/fmt_grpo_qwen35-9b",
-            }
-        })
+        path = write_ij(
+            ij_dir,
+            {
+                "12345": {
+                    "resume_path": "fmt_grpo_qwen35-9b",
+                    "output_dir": "outputs/fmt_grpo_qwen35-9b",
+                }
+            },
+        )
         assert find_incomplete_job(path, "fmt_grpo_qwen35-9b") == "12345"
 
     def test_no_match_for_different_run_name(self, ij_dir):
-        path = write_ij(ij_dir, {
-            "12345": {
-                "resume_path": "fmt_grpo_qwen35-9b",
-                "output_dir": "outputs/fmt_grpo_qwen35-9b",
-            }
-        })
+        path = write_ij(
+            ij_dir,
+            {
+                "12345": {
+                    "resume_path": "fmt_grpo_qwen35-9b",
+                    "output_dir": "outputs/fmt_grpo_qwen35-9b",
+                }
+            },
+        )
         assert find_incomplete_job(path, "ocr_lora_qwen35-9b") is None
 
 
@@ -131,12 +138,15 @@ class TestFindIncompleteJobBenchByRunName:
     """Bench jobs where run_name happens to match output_dir suffix."""
 
     def test_matches_bench_by_output_dir_suffix(self, ij_dir):
-        path = write_ij(ij_dir, {
-            "12345": {
-                "type": "formatting",
-                "output_dir": "outputs/bench/formatting/fmt_lora_qwen35-9b",
-            }
-        })
+        path = write_ij(
+            ij_dir,
+            {
+                "12345": {
+                    "type": "formatting",
+                    "output_dir": "outputs/bench/formatting/fmt_lora_qwen35-9b",
+                }
+            },
+        )
         # This works when run_name matches the last path component
         assert find_incomplete_job(path, "fmt_lora_qwen35-9b") == "12345"
 
@@ -150,93 +160,116 @@ class TestFindIncompleteJobBenchByGuardKey:
 
     def test_no_match_without_guard_key(self, ij_dir):
         """Without guard_key, bench step with mismatched run_name is not found."""
-        path = write_ij(ij_dir, {
-            "5084578": {
-                "type": "olmocr",
-                "output_dir": "outputs/bench/olmocr/fmt_lora_qwen35-9b",
-                "shard": "1/3",
-                "guard_key": "outputs/bench/olmocr/fmt_lora_qwen35-9b:1/3",
-            }
-        })
+        path = write_ij(
+            ij_dir,
+            {
+                "5084578": {
+                    "type": "olmocr",
+                    "output_dir": "outputs/bench/olmocr/fmt_lora_qwen35-9b",
+                    "shard": "1/3",
+                    "guard_key": "outputs/bench/olmocr/fmt_lora_qwen35-9b:1/3",
+                }
+            },
+        )
         # run_name doesn't match output_dir suffix
-        assert find_incomplete_job(
-            path, "fmt_lora_qwen35-9b_bench-olmocr_s0"
-        ) is None
+        assert find_incomplete_job(path, "fmt_lora_qwen35-9b_bench-olmocr_s0") is None
 
     def test_matches_with_guard_key(self, ij_dir):
         """With guard_key from step env, the resubmitted job is found."""
-        path = write_ij(ij_dir, {
-            "5084578": {
-                "type": "olmocr",
-                "output_dir": "outputs/bench/olmocr/fmt_lora_qwen35-9b",
-                "shard": "1/3",
-                "guard_key": "outputs/bench/olmocr/fmt_lora_qwen35-9b:1/3",
-            }
-        })
-        assert find_incomplete_job(
-            path,
-            "fmt_lora_qwen35-9b_bench-olmocr_s0",
-            guard_key="outputs/bench/olmocr/fmt_lora_qwen35-9b:1/3",
-        ) == "5084578"
+        path = write_ij(
+            ij_dir,
+            {
+                "5084578": {
+                    "type": "olmocr",
+                    "output_dir": "outputs/bench/olmocr/fmt_lora_qwen35-9b",
+                    "shard": "1/3",
+                    "guard_key": "outputs/bench/olmocr/fmt_lora_qwen35-9b:1/3",
+                }
+            },
+        )
+        assert (
+            find_incomplete_job(
+                path,
+                "fmt_lora_qwen35-9b_bench-olmocr_s0",
+                guard_key="outputs/bench/olmocr/fmt_lora_qwen35-9b:1/3",
+            )
+            == "5084578"
+        )
 
     def test_guard_key_no_shard(self, ij_dir):
         """Formatting bench has no shard, guard_key is just output_dir."""
-        path = write_ij(ij_dir, {
-            "5084416": {
-                "type": "formatting",
-                "output_dir": "outputs/bench/formatting/fmt_grpo_qwen35-9b",
-                "shard": "",
-                "guard_key": "outputs/bench/formatting/fmt_grpo_qwen35-9b",
-            }
-        })
-        assert find_incomplete_job(
-            path,
-            "fmt_grpo_qwen35-9b_bench-formatting",
-            guard_key="outputs/bench/formatting/fmt_grpo_qwen35-9b",
-        ) == "5084416"
+        path = write_ij(
+            ij_dir,
+            {
+                "5084416": {
+                    "type": "formatting",
+                    "output_dir": "outputs/bench/formatting/fmt_grpo_qwen35-9b",
+                    "shard": "",
+                    "guard_key": "outputs/bench/formatting/fmt_grpo_qwen35-9b",
+                }
+            },
+        )
+        assert (
+            find_incomplete_job(
+                path,
+                "fmt_grpo_qwen35-9b_bench-formatting",
+                guard_key="outputs/bench/formatting/fmt_grpo_qwen35-9b",
+            )
+            == "5084416"
+        )
 
     def test_guard_key_wrong_shard_no_match(self, ij_dir):
         """Guard key with different shard should not match."""
-        path = write_ij(ij_dir, {
-            "5084578": {
-                "type": "olmocr",
-                "output_dir": "outputs/bench/olmocr/fmt_lora_qwen35-9b",
-                "shard": "1/3",
-                "guard_key": "outputs/bench/olmocr/fmt_lora_qwen35-9b:1/3",
-            }
-        })
+        path = write_ij(
+            ij_dir,
+            {
+                "5084578": {
+                    "type": "olmocr",
+                    "output_dir": "outputs/bench/olmocr/fmt_lora_qwen35-9b",
+                    "shard": "1/3",
+                    "guard_key": "outputs/bench/olmocr/fmt_lora_qwen35-9b:1/3",
+                }
+            },
+        )
         # Shard 2/3 should not match shard 1/3
-        assert find_incomplete_job(
-            path,
-            "fmt_lora_qwen35-9b_bench-olmocr_s1",
-            guard_key="outputs/bench/olmocr/fmt_lora_qwen35-9b:2/3",
-        ) is None
+        assert (
+            find_incomplete_job(
+                path,
+                "fmt_lora_qwen35-9b_bench-olmocr_s1",
+                guard_key="outputs/bench/olmocr/fmt_lora_qwen35-9b:2/3",
+            )
+            is None
+        )
 
     def test_multiple_shards_correct_match(self, ij_dir):
         """With multiple shards in IJ, guard_key picks the right one."""
-        path = write_ij(ij_dir, {
-            "100": {
-                "type": "olmocr",
-                "output_dir": "outputs/bench/olmocr/fmt_lora",
-                "shard": "1/3",
-                "guard_key": "outputs/bench/olmocr/fmt_lora:1/3",
+        path = write_ij(
+            ij_dir,
+            {
+                "100": {
+                    "type": "olmocr",
+                    "output_dir": "outputs/bench/olmocr/fmt_lora",
+                    "shard": "1/3",
+                    "guard_key": "outputs/bench/olmocr/fmt_lora:1/3",
+                },
+                "200": {
+                    "type": "olmocr",
+                    "output_dir": "outputs/bench/olmocr/fmt_lora",
+                    "shard": "2/3",
+                    "guard_key": "outputs/bench/olmocr/fmt_lora:2/3",
+                },
+                "300": {
+                    "type": "olmocr",
+                    "output_dir": "outputs/bench/olmocr/fmt_lora",
+                    "shard": "3/3",
+                    "guard_key": "outputs/bench/olmocr/fmt_lora:3/3",
+                },
             },
-            "200": {
-                "type": "olmocr",
-                "output_dir": "outputs/bench/olmocr/fmt_lora",
-                "shard": "2/3",
-                "guard_key": "outputs/bench/olmocr/fmt_lora:2/3",
-            },
-            "300": {
-                "type": "olmocr",
-                "output_dir": "outputs/bench/olmocr/fmt_lora",
-                "shard": "3/3",
-                "guard_key": "outputs/bench/olmocr/fmt_lora:3/3",
-            },
-        })
-        assert find_incomplete_job(
-            path, "x_bench_s1", guard_key="outputs/bench/olmocr/fmt_lora:2/3"
-        ) == "200"
+        )
+        assert (
+            find_incomplete_job(path, "x_bench_s1", guard_key="outputs/bench/olmocr/fmt_lora:2/3")
+            == "200"
+        )
 
 
 class TestFindIncompleteJobEdgeCases:
@@ -260,6 +293,7 @@ class TestFindIncompleteJobEdgeCases:
 # ---------------------------------------------------------------------------
 # Tests: build_guard_key
 # ---------------------------------------------------------------------------
+
 
 class TestBuildGuardKey:
     """Guard key construction from chain step env vars."""
@@ -285,6 +319,7 @@ class TestBuildGuardKey:
 # Tests: the actual bug scenario end-to-end
 # ---------------------------------------------------------------------------
 
+
 class TestResubmitDetection:
     """End-to-end: chain should detect resubmitted bench jobs, not mark complete.
 
@@ -297,14 +332,17 @@ class TestResubmitDetection:
 
     def test_resubmitted_bench_found_with_guard_key(self, ij_dir):
         """The fix: guard_key lets us find the resubmitted job."""
-        path = write_ij(ij_dir, {
-            "5084578": {
-                "type": "olmocr",
-                "output_dir": "outputs/bench/olmocr/fmt_lora_qwen35-9b",
-                "shard": "1/3",
-                "guard_key": "outputs/bench/olmocr/fmt_lora_qwen35-9b:1/3",
-            }
-        })
+        path = write_ij(
+            ij_dir,
+            {
+                "5084578": {
+                    "type": "olmocr",
+                    "output_dir": "outputs/bench/olmocr/fmt_lora_qwen35-9b",
+                    "shard": "1/3",
+                    "guard_key": "outputs/bench/olmocr/fmt_lora_qwen35-9b:1/3",
+                }
+            },
+        )
         step_env = {
             "CHECKPOINT": "outputs/fmt_lora_qwen35-9b",
             "OUTPUT": "outputs/bench/olmocr/fmt_lora_qwen35-9b",
@@ -336,14 +374,17 @@ class TestResubmitDetection:
 
     def test_score_job_resubmit_detected(self, ij_dir):
         """Score jobs also use guard_key (output_dir only, no shard)."""
-        path = write_ij(ij_dir, {
-            "9999": {
-                "type": "olmocr",
-                "output_dir": "outputs/bench/olmocr/fmt_lora_qwen35-9b",
-                "shard": "",
-                "guard_key": "outputs/bench/olmocr/fmt_lora_qwen35-9b",
-            }
-        })
+        path = write_ij(
+            ij_dir,
+            {
+                "9999": {
+                    "type": "olmocr",
+                    "output_dir": "outputs/bench/olmocr/fmt_lora_qwen35-9b",
+                    "shard": "",
+                    "guard_key": "outputs/bench/olmocr/fmt_lora_qwen35-9b",
+                }
+            },
+        )
         step_env = {"OUTPUT": "outputs/bench/olmocr/fmt_lora_qwen35-9b"}
         guard_key = build_guard_key(step_env)
         job_id = find_incomplete_job(
@@ -374,8 +415,15 @@ COMPLETE = "complete"
 FAILED = "failed"
 
 
-def check_step_status(ij_path, run_name, tracked_job_id, guard_key="",
-                      in_squeue=False, sacct_exit_0=False, slurm_complete=False):
+def check_step_status(
+    ij_path,
+    run_name,
+    tracked_job_id,
+    guard_key="",
+    in_squeue=False,
+    sacct_exit_0=False,
+    slurm_complete=False,
+):
     """Simulate the chain's check_step_status decision flow.
 
     Args:

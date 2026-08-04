@@ -3,10 +3,10 @@
 import pytest
 
 from src.evaluation.formatting_metrics import (
+    compute_aggregate,
     extract_formatting_spans,
     fuzzy_set_match,
     score_formatting,
-    compute_aggregate,
 )
 
 
@@ -186,9 +186,14 @@ class TestComputeAggregate:
 
     def test_backward_compat_float(self):
         """Old format with float scores should still aggregate."""
-        old_page = {"bold": 0.8, "italic": None, "strikethrough": None,
-                    "overall": 0.8, "gt_counts": {"bold": 1, "italic": 0, "strikethrough": 0},
-                    "pred_counts": {"bold": 1, "italic": 0, "strikethrough": 0}}
+        old_page = {
+            "bold": 0.8,
+            "italic": None,
+            "strikethrough": None,
+            "overall": 0.8,
+            "gt_counts": {"bold": 1, "italic": 0, "strikethrough": 0},
+            "pred_counts": {"bold": 1, "italic": 0, "strikethrough": 0},
+        }
         agg = compute_aggregate([old_page])
         assert agg["scores"]["bold"]["f1"] == pytest.approx(0.8)
         # precision/recall unknown from old format, should be 0

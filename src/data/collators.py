@@ -45,9 +45,7 @@ class VLMDataCollator:
         # In Qwen VL chat format, the assistant turn starts at the last <|im_start|>
         im_start_id = self.tokenizer.convert_tokens_to_ids("<|im_start|>")
         # Tokens for "assistant\n" (right after <|im_start|> for assistant turn)
-        assistant_prefix_ids = self.tokenizer.encode(
-            "assistant\n", add_special_tokens=False
-        )
+        assistant_prefix_ids = self.tokenizer.encode("assistant\n", add_special_tokens=False)
         prefix_len = len(assistant_prefix_ids)
         pad_id = self.tokenizer.pad_token_id
 

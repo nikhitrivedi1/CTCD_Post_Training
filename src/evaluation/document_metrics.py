@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # Edit distance utilities
 # ---------------------------------------------------------------------------
 
+
 def normalized_edit_distance(pred: str, gt: str) -> float:
     """Compute normalized edit distance (error rate) in [0, 1].
 
@@ -61,6 +62,7 @@ def edit_similarity(pred: str, gt: str) -> float:
 # ---------------------------------------------------------------------------
 # Block extraction
 # ---------------------------------------------------------------------------
+
 
 def extract_text_blocks(text: str, min_length: int = 10) -> list[str]:
     """Split markdown into text blocks (paragraphs separated by blank lines).
@@ -134,6 +136,7 @@ def _clean_latex(latex: str) -> str:
 # Markdown table -> HTML conversion
 # ---------------------------------------------------------------------------
 
+
 def markdown_table_to_html(md_table: str) -> str:
     """Convert a markdown table string to HTML.
 
@@ -169,6 +172,7 @@ def markdown_table_to_html(md_table: str) -> str:
 # TEDS (Tree Edit Distance-based Similarity)
 # ---------------------------------------------------------------------------
 
+
 def _check_teds_deps():
     """Check if TEDS dependencies are available.
 
@@ -178,6 +182,7 @@ def _check_teds_deps():
     try:
         import apted  # noqa: F401
         from lxml import html  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -253,9 +258,9 @@ def _html_to_tree(html_str: str) -> "_TableTree | None":
     from lxml import html
 
     try:
-        doc = html.fromstring(html_str, parser=html.HTMLParser(
-            remove_comments=True, encoding="utf-8"
-        ))
+        doc = html.fromstring(
+            html_str, parser=html.HTMLParser(remove_comments=True, encoding="utf-8")
+        )
     except Exception:
         return None
 
@@ -339,8 +344,10 @@ def teds_score(pred_html: str, gt_html: str, structure_only: bool = False) -> fl
 # Hungarian matching
 # ---------------------------------------------------------------------------
 
-def hungarian_match(pred_items: list[str], gt_items: list[str],
-                    similarity_fn=None) -> list[tuple[int, int, float]]:
+
+def hungarian_match(
+    pred_items: list[str], gt_items: list[str], similarity_fn=None
+) -> list[tuple[int, int, float]]:
     """Match predicted items to GT items using the Hungarian algorithm.
 
     Finds the optimal 1-to-1 matching that maximizes total similarity.
@@ -378,7 +385,7 @@ def hungarian_match(pred_items: list[str], gt_items: list[str],
     pred_indices, gt_indices = linear_sum_assignment(cost_matrix)
 
     matches = []
-    for pi, gi in zip(pred_indices, gt_indices):
+    for pi, gi in zip(pred_indices, gt_indices, strict=True):
         matches.append((pi, gi, sim_matrix[pi, gi]))
 
     return matches
@@ -387,6 +394,7 @@ def hungarian_match(pred_items: list[str], gt_items: list[str],
 # ---------------------------------------------------------------------------
 # Per-page scoring functions
 # ---------------------------------------------------------------------------
+
 
 def score_text(pred: str, gt: str) -> float:
     """Score text extraction quality via normalized edit distance.
@@ -542,10 +550,8 @@ def score_reading_order(pred: str, gt: str) -> float | None:
     if not order:
         return 0.0
 
-    # Compare predicted order to natural GT order using edit distance
-    # Convert index sequences to strings for edit distance
-    gt_order = list(range(len(gt_blocks)))
-    # Only compare indices that were matched
+    # Compare predicted order to natural GT order using edit distance.
+    # Only compare indices that were matched.
     gt_matched_order = sorted(order)
 
     # Normalize: edit distance between the predicted ordering and sorted ordering
@@ -588,8 +594,8 @@ def compute_aggregate(results: list[tuple[str, dict]]) -> dict:
         Dict with per-metric averages, overall score, and counts.
     """
     metrics = ["text", "table", "formula", "reading_order"]
-    sums = {m: 0.0 for m in metrics}
-    counts = {m: 0 for m in metrics}
+    sums = dict.fromkeys(metrics, 0.0)
+    counts = dict.fromkeys(metrics, 0)
 
     for _, scores in results:
         for m in metrics:

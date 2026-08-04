@@ -23,21 +23,21 @@ import pytest
 import torch
 
 from src.models.loader import (
-    _detect_attn_implementation,
-    needs_attention_outputs,
-    load_model,
-    _load_classifier,
-    _load_causal_lm,
-    _load_vlm,
     _apply_lora,
-    _resolve_checkpoint,
+    _detect_attn_implementation,
+    _load_causal_lm,
+    _load_classifier,
+    _load_vlm,
     _log_params,
+    _resolve_checkpoint,
+    load_model,
+    needs_attention_outputs,
 )
-
 
 # ===========================================================================
 # Helpers
 # ===========================================================================
+
 
 def _fake_model(**kwargs):
     """Minimal mock model for routing tests."""
@@ -53,6 +53,7 @@ def _fake_model(**kwargs):
 # ===========================================================================
 # needs_attention_outputs
 # ===========================================================================
+
 
 class TestNeedsAttentionOutputs:
     """Config parsing for attention/feature output requirements."""
@@ -81,47 +82,64 @@ class TestNeedsAttentionOutputs:
     # --- components ---
 
     def test_components_with_attention(self):
-        config = {"distillation": {"components": [
-            {"type": "response_kl", "weight": 0.5},
-            {"type": "attention_kl", "weight": 0.5},
-        ]}}
+        config = {
+            "distillation": {
+                "components": [
+                    {"type": "response_kl", "weight": 0.5},
+                    {"type": "attention_kl", "weight": 0.5},
+                ]
+            }
+        }
         assert needs_attention_outputs(config) is True
 
     def test_components_without_attention(self):
-        config = {"distillation": {"components": [
-            {"type": "response_kl", "weight": 0.5},
-            {"type": "feature_mse", "weight": 0.5},
-        ]}}
+        config = {
+            "distillation": {
+                "components": [
+                    {"type": "response_kl", "weight": 0.5},
+                    {"type": "feature_mse", "weight": 0.5},
+                ]
+            }
+        }
         assert needs_attention_outputs(config) is False
 
     def test_components_empty_list(self):
-        config = {"distillation": {"components": []}}
+        config: dict = {"distillation": {"components": []}}
         assert needs_attention_outputs(config) is False
 
     # --- stages ---
 
     def test_stages_with_attention(self):
-        config = {"distillation": {"stages": [
-            {"strategy": "feature_mse", "until": 0.5},
-            {"strategy": "attention_kl", "until": 1.0},
-        ]}}
+        config = {
+            "distillation": {
+                "stages": [
+                    {"strategy": "feature_mse", "until": 0.5},
+                    {"strategy": "attention_kl", "until": 1.0},
+                ]
+            }
+        }
         assert needs_attention_outputs(config) is True
 
     def test_stages_without_attention(self):
-        config = {"distillation": {"stages": [
-            {"strategy": "feature_mse", "until": 0.5},
-            {"strategy": "response_kl", "until": 1.0},
-        ]}}
+        config = {
+            "distillation": {
+                "stages": [
+                    {"strategy": "feature_mse", "until": 0.5},
+                    {"strategy": "response_kl", "until": 1.0},
+                ]
+            }
+        }
         assert needs_attention_outputs(config) is False
 
     def test_stages_empty_list(self):
-        config = {"distillation": {"stages": []}}
+        config: dict = {"distillation": {"stages": []}}
         assert needs_attention_outputs(config) is False
 
 
 # ===========================================================================
 # _detect_attn_implementation
 # ===========================================================================
+
 
 class TestDetectAttnImplementation:
     """Attention implementation selection based on (eager, device) combos."""
@@ -142,6 +160,7 @@ class TestDetectAttnImplementation:
 # _load_classifier
 # ===========================================================================
 
+
 class TestLoadClassifier:
     """Pretrained and fresh paths for sequence classification models."""
 
@@ -149,10 +168,8 @@ class TestLoadClassifier:
     def test_pretrained_calls_from_pretrained(self, mock_auto):
         model = _fake_model()
         mock_auto.from_pretrained.return_value = model
-        result = _load_classifier("bert-base-uncased", "pretrained", 3, "cpu")
-        mock_auto.from_pretrained.assert_called_once_with(
-            "bert-base-uncased", num_labels=3
-        )
+        _load_classifier("bert-base-uncased", "pretrained", 3, "cpu")
+        mock_auto.from_pretrained.assert_called_once_with("bert-base-uncased", num_labels=3)
         model.to.assert_called_once_with("cpu")
 
     @patch("src.models.loader.AutoConfig")
@@ -162,7 +179,7 @@ class TestLoadClassifier:
         mock_config_cls.from_pretrained.return_value = mock_config
         model = _fake_model()
         mock_auto.from_config.return_value = model
-        result = _load_classifier("bert-base-uncased", "fresh", 3, "cpu")
+        _load_classifier("bert-base-uncased", "fresh", 3, "cpu")
         mock_config_cls.from_pretrained.assert_called_once_with("bert-base-uncased")
         assert mock_config.num_labels == 3
         mock_auto.from_config.assert_called_once_with(mock_config)
@@ -175,24 +192,25 @@ class TestLoadClassifier:
         with patch(
             "src.models.loader.DistilBertForSequenceClassification",
             create=True,
-        ) as mock_distil:
+        ):
             # Patch the import inside the function
             with patch.dict("sys.modules", {}):
                 import transformers
+
                 with patch.object(
-                    transformers, "DistilBertForSequenceClassification",
+                    transformers,
+                    "DistilBertForSequenceClassification",
                     create=True,
                 ) as mock_distil_cls:
                     mock_distil_cls.return_value = model
-                    result = _load_classifier(
-                        "distilbert-base-uncased", "fresh", 2, "cpu"
-                    )
+                    _load_classifier("distilbert-base-uncased", "fresh", 2, "cpu")
                     mock_distil_cls.assert_called_once_with(mock_config)
 
 
 # ===========================================================================
 # _load_causal_lm
 # ===========================================================================
+
 
 class TestLoadCausalLM:
     """Causal LM loading: dtype selection and embedding resize."""
@@ -266,6 +284,7 @@ class TestLoadCausalLM:
 # _load_vlm
 # ===========================================================================
 
+
 class TestLoadVLM:
     """VLM loading: dtype selection and fresh init warning."""
 
@@ -281,7 +300,7 @@ class TestLoadVLM:
                 mock_auto_cls,
                 create=True,
             ):
-                result = _load_vlm("Qwen/Qwen3-VL-2B", "pretrained", "cuda")
+                _load_vlm("Qwen/Qwen3-VL-2B", "pretrained", "cuda")
                 call_kwargs = mock_auto_cls.from_pretrained.call_args
                 assert call_kwargs.kwargs["dtype"] == torch.bfloat16
 
@@ -296,7 +315,7 @@ class TestLoadVLM:
                 mock_auto_cls,
                 create=True,
             ):
-                result = _load_vlm("Qwen/Qwen3-VL-2B", "pretrained", "cpu")
+                _load_vlm("Qwen/Qwen3-VL-2B", "pretrained", "cpu")
                 call_kwargs = mock_auto_cls.from_pretrained.call_args
                 assert call_kwargs.kwargs["dtype"] == torch.float32
 
@@ -312,14 +331,16 @@ class TestLoadVLM:
                 create=True,
             ):
                 import logging
+
                 with caplog.at_level(logging.WARNING, logger="src.models.loader"):
-                    result = _load_vlm("Qwen/Qwen3-VL-2B", "fresh", "cpu")
+                    _load_vlm("Qwen/Qwen3-VL-2B", "fresh", "cpu")
                 assert "Fresh init not recommended" in caplog.text
 
 
 # ===========================================================================
 # _apply_lora
 # ===========================================================================
+
 
 class TestApplyLora:
     """LoRA adapter wrapping."""
@@ -353,12 +374,14 @@ class TestApplyLora:
 # _log_params
 # ===========================================================================
 
+
 class TestLogParams:
     """Parameter logging doesn't crash."""
 
     def test_all_trainable(self, caplog):
         """When all params are trainable, logs single count."""
         import logging
+
         model = MagicMock()
         p = MagicMock()
         p.numel.return_value = 1000000
@@ -371,6 +394,7 @@ class TestLogParams:
     def test_partial_trainable(self, caplog):
         """When some params frozen, logs trainable/total."""
         import logging
+
         model = MagicMock()
         p1 = MagicMock()
         p1.numel.return_value = 500000
@@ -389,19 +413,16 @@ class TestLogParams:
 # _resolve_checkpoint
 # ===========================================================================
 
+
 class TestResolveCheckpoint:
     """Local checkpoint detection for merged and adapter-only cases."""
 
     def test_nonexistent_dir_returns_none(self):
-        result = _resolve_checkpoint(
-            "/nonexistent/path", "mnli", "cpu", num_labels=3
-        )
+        result = _resolve_checkpoint("/nonexistent/path", "mnli", "cpu", num_labels=3)
         assert result is None
 
     def test_dir_without_weights_returns_none(self, tmp_path):
-        result = _resolve_checkpoint(
-            str(tmp_path), "mnli", "cpu", num_labels=3
-        )
+        result = _resolve_checkpoint(str(tmp_path), "mnli", "cpu", num_labels=3)
         assert result is None
 
     @patch("src.models.loader._load_classifier")
@@ -409,9 +430,7 @@ class TestResolveCheckpoint:
         (tmp_path / "model.safetensors").write_text("fake")
         model = _fake_model()
         mock_load.return_value = model
-        result = _resolve_checkpoint(
-            str(tmp_path), "mnli", "cpu", num_labels=3
-        )
+        result = _resolve_checkpoint(str(tmp_path), "mnli", "cpu", num_labels=3)
         assert result is model
         mock_load.assert_called_once_with(str(tmp_path), "pretrained", 3, "cpu")
 
@@ -420,9 +439,7 @@ class TestResolveCheckpoint:
         (tmp_path / "pytorch_model.bin").write_text("fake")
         model = _fake_model()
         mock_load.return_value = model
-        result = _resolve_checkpoint(
-            str(tmp_path), "mnli", "cpu", num_labels=3
-        )
+        result = _resolve_checkpoint(str(tmp_path), "mnli", "cpu", num_labels=3)
         assert result is model
 
     @patch("src.models.loader._load_vlm")
@@ -430,9 +447,7 @@ class TestResolveCheckpoint:
         (tmp_path / "model.safetensors").write_text("fake")
         model = _fake_model()
         mock_load.return_value = model
-        result = _resolve_checkpoint(
-            str(tmp_path), "ocr", "cpu"
-        )
+        result = _resolve_checkpoint(str(tmp_path), "ocr", "cpu")
         assert result is model
         mock_load.assert_called_once()
 
@@ -442,15 +457,14 @@ class TestResolveCheckpoint:
         model = _fake_model()
         mock_load.return_value = model
         tokenizer = MagicMock()
-        result = _resolve_checkpoint(
-            str(tmp_path), "europarl", "cpu", tokenizer=tokenizer
-        )
+        result = _resolve_checkpoint(str(tmp_path), "europarl", "cpu", tokenizer=tokenizer)
         assert result is model
         mock_load.assert_called_once()
 
     @patch("src.models.loader._load_classifier")
     def test_adapter_only_merges(self, mock_load, tmp_path):
         import json
+
         (tmp_path / "adapter_config.json").write_text(
             json.dumps({"base_model_name_or_path": "bert-base"})
         )
@@ -463,15 +477,14 @@ class TestResolveCheckpoint:
         with patch("src.inference.engine._resolve_base_model", return_value=("bert-base", None)):
             with patch("peft.PeftModel") as mock_peft_cls:
                 mock_peft_cls.from_pretrained.return_value = peft_model
-                result = _resolve_checkpoint(
-                    str(tmp_path), "mnli", "cpu", num_labels=3
-                )
+                result = _resolve_checkpoint(str(tmp_path), "mnli", "cpu", num_labels=3)
         assert result is merged_model
 
 
 # ===========================================================================
 # load_model full flow
 # ===========================================================================
+
 
 class TestLoadModelRouting:
     """Verify load_model routes to the correct internal loader by task type."""
@@ -511,7 +524,7 @@ class TestLoadModelRouting:
         mock_load.return_value = base_model
         mock_lora.return_value = lora_model
         lora_cfg = {"r": 8, "alpha": 16, "target_modules": ["q_proj"], "dropout": 0.1}
-        result = load_model("bert-base", "mnli", "cpu", num_labels=3, lora_config=lora_cfg)
+        load_model("bert-base", "mnli", "cpu", num_labels=3, lora_config=lora_cfg)
         mock_lora.assert_called_once_with(base_model, lora_cfg)
         # _log_params is called on the final model (after LoRA)
         mock_log.assert_called_once()

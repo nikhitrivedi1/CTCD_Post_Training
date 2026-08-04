@@ -58,7 +58,7 @@ import signal
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from src.utils.jobs import get_job_key, guard_duplicate_job, locked_incomplete_jobs
@@ -106,7 +106,7 @@ signal.signal(signal.SIGUSR1, _handle_shutdown_signal)
 # ---------------------------------------------------------------------------
 # Model name / output directory
 # ---------------------------------------------------------------------------
-def model_name_from_args(model_id: str = None, checkpoint_path: str = None) -> str:
+def model_name_from_args(model_id: str | None = None, checkpoint_path: str | None = None) -> str:
     """Extract a short model name from CLI args.
 
     Args:
@@ -126,7 +126,9 @@ def model_name_from_args(model_id: str = None, checkpoint_path: str = None) -> s
 
 
 def derive_output_dir(
-    base_dir: str, model_id: str = None, checkpoint_path: str = None,
+    base_dir: str,
+    model_id: str | None = None,
+    checkpoint_path: str | None = None,
 ) -> str:
     """Build default output directory: {base_dir}/{model_name}/{timestamp}.
 
@@ -138,7 +140,7 @@ def derive_output_dir(
     Returns:
         Output directory path.
     """
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%MZ")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%MZ")
     name = model_name_from_args(model_id, checkpoint_path)
     return os.path.join(base_dir, name, timestamp)
 
@@ -205,14 +207,14 @@ def apply_shard(items: list, shard_spec: str) -> list:
     shard_size = total // num_shards
     start = (shard_idx - 1) * shard_size
     end = total if shard_idx == num_shards else shard_idx * shard_size
-    logger.info(f"Shard {shard_idx}/{num_shards}: items {start+1}-{end} of {total}")
+    logger.info(f"Shard {shard_idx}/{num_shards}: items {start + 1}-{end} of {total}")
     return items[start:end]
 
 
 # ---------------------------------------------------------------------------
 # Job registration
 # ---------------------------------------------------------------------------
-def register_bench_job(output_dir: str, bench_type: str, shard: str = None):
+def register_bench_job(output_dir: str, bench_type: str, shard: str | None = None):
     """Register current bench job in the incomplete jobs registry.
 
     Args:
@@ -252,7 +254,10 @@ def remove_bench_job():
 # Metadata
 # ---------------------------------------------------------------------------
 def build_metadata(
-    args, engine, bench_name: str, generation_params: dict = None,
+    args,
+    engine,
+    bench_name: str,
+    generation_params: dict | None = None,
 ) -> dict:
     """Build or load metadata for a bench run.
 
@@ -288,11 +293,13 @@ def build_metadata(
     slurm_job_id = os.environ.get("SLURM_JOB_ID")
     if slurm_job_id:
         jobs = metadata.setdefault("slurm_jobs", [])
-        jobs.append({
-            "job_id": slurm_job_id,
-            "node": os.environ.get("SLURM_NODELIST", "unknown"),
-            "started": datetime.now(timezone.utc).isoformat(),
-        })
+        jobs.append(
+            {
+                "job_id": slurm_job_id,
+                "node": os.environ.get("SLURM_NODELIST", "unknown"),
+                "started": datetime.now(UTC).isoformat(),
+            }
+        )
 
     return metadata
 
@@ -308,7 +315,7 @@ def save_metadata(output_dir: str, metadata: dict):
         json.dump(metadata, f, indent=2)
 
 
-def save_bench_output(output_dir: str, results: dict, metadata: dict = None):
+def save_bench_output(output_dir: str, results: dict, metadata: dict | None = None):
     """Write results.json (and optionally metadata.json) to output directory.
 
     Args:
@@ -341,13 +348,17 @@ def add_common_bench_args(parser, max_new_tokens: int = 2048):
     group.add_argument("--model", type=str, help="HuggingFace model ID")
     group.add_argument("--checkpoint", type=str, help="Path to LoRA checkpoint")
 
-    parser.add_argument("--output", type=str, default=None,
-                        help="Output directory. If it exists with metadata.json, resumes automatically.")
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Output directory. If it exists with metadata.json, resumes automatically.",
+    )
     parser.add_argument("--shard", type=str, default=None, help="Shard spec N/M (e.g. 1/4)")
     parser.add_argument("--max_new_tokens", type=int, default=max_new_tokens)
-    parser.add_argument("--score_only", action="store_true",
-                        help="Skip generation, only score existing markdowns")
-
+    parser.add_argument(
+        "--score_only", action="store_true", help="Skip generation, only score existing markdowns"
+    )
 
 
 def validate_bench_args(args, parser, default_output_base: str) -> tuple[str, str]:
@@ -396,8 +407,9 @@ def cleanup_temp_files(markdowns_dir: str):
         os.remove(tmp_file)
 
 
-def generate_markdowns(engine, work_items, prompt, max_new_tokens,
-                       markdowns_dir, image_fn, label_fn=None):
+def generate_markdowns(
+    engine, work_items, prompt, max_new_tokens, markdowns_dir, image_fn, label_fn=None
+):
     """Shared generation loop with prefetch and atomic writes.
 
     Each bench script builds its own work_items list and provides an image_fn
@@ -422,7 +434,9 @@ def generate_markdowns(engine, work_items, prompt, max_new_tokens,
     from tqdm import tqdm
 
     if label_fn is None:
-        label_fn = lambda item: os.path.basename(item["md_path"])
+
+        def label_fn(item):
+            return os.path.basename(item["md_path"])
 
     # Build pending list (skip already done)
     pending = []
@@ -433,23 +447,20 @@ def generate_markdowns(engine, work_items, prompt, max_new_tokens,
         else:
             pending.append(item)
 
-    logger.info(f"Starting generation ({skipped} already done, "
-                f"{len(pending)} remaining)...")
+    logger.info(f"Starting generation ({skipped} already done, {len(pending)} remaining)...")
 
     generated = 0
     errors = 0
     first_generate = True
 
-    pbar = tqdm(total=len(work_items), desc="Generating", unit="pg",
-                initial=skipped)
+    pbar = tqdm(total=len(work_items), desc="Generating", unit="pg", initial=skipped)
 
     prefetch_pool = ThreadPoolExecutor(max_workers=1)
     prefetch_future = None
 
     for idx, item in enumerate(pending):
         if is_shutdown_requested():
-            logger.info(f"Shutting down gracefully. Generated {generated} "
-                        f"this session.")
+            logger.info(f"Shutting down gracefully. Generated {generated} this session.")
             break
 
         try:
@@ -461,15 +472,13 @@ def generate_markdowns(engine, work_items, prompt, max_new_tokens,
 
             # Prefetch next image
             if idx + 1 < len(pending):
-                prefetch_future = prefetch_pool.submit(
-                    image_fn, pending[idx + 1])
+                prefetch_future = prefetch_pool.submit(image_fn, pending[idx + 1])
             else:
                 prefetch_future = None
 
             if first_generate:
                 pbar.clear()
-            results = engine.generate(
-                [(image, prompt)], max_new_tokens=max_new_tokens)
+            results = engine.generate([(image, prompt)], max_new_tokens=max_new_tokens)
             if first_generate:
                 first_generate = False
                 pbar.refresh()
@@ -484,8 +493,7 @@ def generate_markdowns(engine, work_items, prompt, max_new_tokens,
 
         except Exception as e:
             if is_shutdown_requested():
-                logger.info(f"Interrupted on {label_fn(item)} - will retry "
-                            f"on resume")
+                logger.info(f"Interrupted on {label_fn(item)} - will retry on resume")
                 break
             logger.error(f"Failed on {label_fn(item)}: {e}")
             errors += 1
@@ -497,8 +505,7 @@ def generate_markdowns(engine, work_items, prompt, max_new_tokens,
     prefetch_pool.shutdown(wait=False)
     pbar.close()
 
-    logger.info(f"Generation complete: {generated} generated, "
-                f"{skipped} skipped, {errors} errors")
+    logger.info(f"Generation complete: {generated} generated, {skipped} skipped, {errors} errors")
 
     cleanup_temp_files(markdowns_dir)
 

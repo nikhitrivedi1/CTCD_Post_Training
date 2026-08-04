@@ -7,32 +7,36 @@ Run:
     python -m pytest tests/unit/test_environment.py -v
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.utils.environment import (
     detect_environment,
     get_device,
-    load_env,
-    get_num_workers,
     get_gpu_info,
+    get_num_workers,
+    load_env,
 )
-
 
 # ===========================================================================
 # 1. detect_environment()
 # ===========================================================================
 
+
 class TestDetectEnvironment:
     """Returns 'slurm' when SLURM_JOB_ID set, 'colab' when COLAB_GPU set, 'local' otherwise."""
 
-    @pytest.mark.parametrize("slurm,colab,expected", [
-        ("12345", None, "slurm"),
-        (None, "1", "colab"),
-        (None, None, "local"),
-        ("99", "1", "slurm"),        # SLURM > Colab precedence
-    ], ids=["slurm", "colab", "local", "slurm-over-colab"])
+    @pytest.mark.parametrize(
+        "slurm,colab,expected",
+        [
+            ("12345", None, "slurm"),
+            (None, "1", "colab"),
+            (None, None, "local"),
+            ("99", "1", "slurm"),  # SLURM > Colab precedence
+        ],
+        ids=["slurm", "colab", "local", "slurm-over-colab"],
+    )
     def test_detection(self, monkeypatch, slurm, colab, expected):
         monkeypatch.delenv("SLURM_JOB_ID", raising=False)
         monkeypatch.delenv("COLAB_GPU", raising=False)
@@ -47,15 +51,20 @@ class TestDetectEnvironment:
 # 2. get_device()
 # ===========================================================================
 
+
 class TestGetDevice:
     """Returns 'cuda', 'mps', or 'cpu' based on availability."""
 
-    @pytest.mark.parametrize("cuda,mps,expected", [
-        (True, False, "cuda"),
-        (False, True, "mps"),
-        (False, False, "cpu"),
-        (True, True, "cuda"),         # CUDA > MPS precedence
-    ], ids=["cuda", "mps", "cpu", "cuda-over-mps"])
+    @pytest.mark.parametrize(
+        "cuda,mps,expected",
+        [
+            (True, False, "cuda"),
+            (False, True, "mps"),
+            (False, False, "cpu"),
+            (True, True, "cuda"),  # CUDA > MPS precedence
+        ],
+        ids=["cuda", "mps", "cpu", "cuda-over-mps"],
+    )
     def test_device_selection(self, cuda, mps, expected):
         mock_torch = MagicMock()
         mock_torch.cuda.is_available.return_value = cuda
@@ -71,6 +80,7 @@ class TestGetDevice:
 # ===========================================================================
 # 3. load_env()
 # ===========================================================================
+
 
 class TestLoadEnv:
     """load_env() returns True when .env exists, False otherwise."""
@@ -103,6 +113,7 @@ class TestLoadEnv:
 # 4. get_num_workers()
 # ===========================================================================
 
+
 class TestGetNumWorkers:
     """Worker count respects SLURM CPU allocation."""
 
@@ -123,6 +134,7 @@ class TestGetNumWorkers:
 # ===========================================================================
 # 5. get_gpu_info()
 # ===========================================================================
+
 
 class TestGetGpuInfo:
     """GPU info detection for different environments."""

@@ -38,7 +38,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.data.handlers import get_handler
-from src.utils.environment import get_num_workers
 from src.evaluation.bench_utils import (
     add_common_bench_args,
     apply_shard,
@@ -53,10 +52,11 @@ from src.evaluation.bench_utils import (
     validate_bench_args,
 )
 from src.evaluation.document_metrics import (
-    score_page,
     compute_aggregate,
+    score_page,
 )
 from src.inference import InferenceEngine
+from src.utils.environment import get_num_workers
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -72,6 +72,7 @@ OCR_PROMPT = (
     "and output it in clean markdown format, preserving the document's "
     "structure (headings, lists, tables, etc.)."
 )
+
 
 # ---------------------------------------------------------------------------
 # Data loading
@@ -117,7 +118,13 @@ def _score_page_worker(args):
         return stem, scores
     except Exception as e:
         logger.error(f"Error scoring {stem}: {e}")
-        return stem, {"text": 0.0, "table": None, "formula": None, "reading_order": None, "error": str(e)}
+        return stem, {
+            "text": 0.0,
+            "table": None,
+            "formula": None,
+            "reading_order": None,
+            "error": str(e),
+        }
 
 
 def score_all(pages, markdowns_dir: str, num_workers: int = 1):
@@ -193,18 +200,24 @@ def print_results(aggregates: dict, num_scored: int, num_total: int):
         val = aggregates.get(key)
         count = aggregates.get("counts", {}).get(key, 0)
         if val is not None:
-            logger.info(f"  {name:<30} {val*100:>6.2f}%  (n={count})")
+            logger.info(f"  {name:<30} {val * 100:>6.2f}%  (n={count})")
         else:
             logger.info(f"  {name:<30}    N/A")
 
     logger.info("-" * 60)
     overall = aggregates.get("overall", 0.0)
-    logger.info(f"  {'Overall':<30} {overall*100:>6.2f}%")
+    logger.info(f"  {'Overall':<30} {overall * 100:>6.2f}%")
     logger.info("=" * 60)
 
 
-def save_bench_results(output_dir: str, aggregates: dict, page_results: list,
-                      metadata: dict, num_scored: int, num_total: int):
+def save_bench_results(
+    output_dir: str,
+    aggregates: dict,
+    page_results: list,
+    metadata: dict,
+    num_scored: int,
+    num_total: int,
+):
     """Save results, metadata, and per-page scores to output directory.
 
     Args:
@@ -234,8 +247,9 @@ def save_bench_results(output_dir: str, aggregates: dict, page_results: list,
 def main():
     parser = argparse.ArgumentParser(description="Evaluate VLM on OmniDocBench formatting")
     add_common_bench_args(parser, max_new_tokens=DEFAULT_MAX_NEW_TOKENS)
-    parser.add_argument("--data_dir", type=str, default=DEFAULT_DATA_DIR,
-                        help="Path to OmniDocBench data root")
+    parser.add_argument(
+        "--data_dir", type=str, default=DEFAULT_DATA_DIR, help="Path to OmniDocBench data root"
+    )
     args = parser.parse_args()
 
     output_dir, markdowns_dir = validate_bench_args(args, parser, DEFAULT_OUTPUT_BASE)
@@ -254,22 +268,32 @@ def main():
         register_bench_job(output_dir, "omnidoc", args.shard)
         device = "cuda" if torch.cuda.is_available() else "cpu"
         engine = InferenceEngine.load(
-            model_id=args.model, checkpoint_path=args.checkpoint,
-            model_type="vlm", device=device, task="ocr",
+            model_id=args.model,
+            checkpoint_path=args.checkpoint,
+            model_type="vlm",
+            device=device,
+            task="ocr",
         )
 
-        metadata = build_metadata(args, engine, "omnidoc", {
-            "max_new_tokens": args.max_new_tokens,
-            "do_sample": False,
-            "prompt": OCR_PROMPT,
-        })
+        metadata = build_metadata(
+            args,
+            engine,
+            "omnidoc",
+            {
+                "max_new_tokens": args.max_new_tokens,
+                "do_sample": False,
+                "prompt": OCR_PROMPT,
+            },
+        )
         save_metadata(output_dir, metadata)
 
         # Build work items
         work_items = [
-            {"md_path": os.path.join(markdowns_dir, p["stem"] + ".md"),
-             "image_path": p["image_path"],
-             "stem": p["stem"]}
+            {
+                "md_path": os.path.join(markdowns_dir, p["stem"] + ".md"),
+                "image_path": p["image_path"],
+                "stem": p["stem"],
+            }
             for p in pages
         ]
 
@@ -280,8 +304,12 @@ def main():
             return image
 
         generate_markdowns(
-            engine, work_items, OCR_PROMPT, args.max_new_tokens,
-            markdowns_dir, image_fn=_load_image,
+            engine,
+            work_items,
+            OCR_PROMPT,
+            args.max_new_tokens,
+            markdowns_dir,
+            image_fn=_load_image,
             label_fn=lambda item: item["stem"],
         )
         save_metadata(output_dir, metadata)
@@ -300,7 +328,9 @@ def main():
     # Scoring phase (skip for sharded runs)
     if args.shard and not args.score_only:
         remove_bench_job()
-        logger.info(f"Shard {args.shard} complete - run with --score_only to score after all shards finish")
+        logger.info(
+            f"Shard {args.shard} complete - run with --score_only to score after all shards finish"
+        )
         return
 
     # Reload all pages for scoring (not just this shard)
@@ -310,10 +340,11 @@ def main():
         return
 
     available = sum(
-        1 for p in all_pages
-        if os.path.exists(os.path.join(markdowns_dir, p["stem"] + ".md"))
+        1 for p in all_pages if os.path.exists(os.path.join(markdowns_dir, p["stem"] + ".md"))
     )
-    logger.info(f"Scoring {available}/{len(all_pages)} pages ({available/len(all_pages)*100:.1f}% available)")
+    logger.info(
+        f"Scoring {available}/{len(all_pages)} pages ({available / len(all_pages) * 100:.1f}% available)"
+    )
 
     num_workers = get_num_workers()
 

@@ -3,7 +3,6 @@
 import logging
 import os
 import signal
-from typing import List, Optional
 
 from transformers import TrainerCallback
 
@@ -120,6 +119,7 @@ class StudentTeacherGradNormCallback(TrainerCallback):
         self._trainer = trainer
 
     def on_pre_optimizer_step(self, args, state, control, **kwargs):
+        """No-op unless co-training (frozen teacher has no gradients to measure)."""
         t = self._trainer
         if not isinstance(t, DistillationTrainer) or t.freeze_teacher:
             return control
@@ -197,7 +197,7 @@ class StepMetricsCallback(TrainerCallback):
             if key in skip or not isinstance(logs[key], (int, float)):
                 continue
             if key.startswith(self._REWARD_PREFIX):
-                short_key = key[len(self._REWARD_PREFIX):]
+                short_key = key[len(self._REWARD_PREFIX) :]
                 reward_parts.append(f"{short_key}={self._fmt(logs[key])}")
             else:
                 parts.append(f"{key}={self._fmt(logs[key])}")
@@ -219,7 +219,7 @@ class TeacherEvalCallback(TrainerCallback):
     PeakMetricsCallback (add this callback *before* PeakMetricsCallback).
     """
 
-    def __init__(self, trainer, teacher_label_map: Optional[List[int]] = None):
+    def __init__(self, trainer, teacher_label_map: list[int] | None = None):
         """
         Initialize teacher evaluation callback.
 
@@ -243,7 +243,7 @@ class TeacherEvalCallback(TrainerCallback):
         if metrics is None:
             return
 
-        from src.evaluation.evaluate import evaluate_model, _remap_compute_metrics
+        from src.evaluation.evaluate import _remap_compute_metrics, evaluate_model
 
         compute_fn = self.trainer.compute_metrics
         if self.teacher_label_map is not None:
@@ -329,6 +329,7 @@ class TranslationMetricsCallback(TrainerCallback):
         # Load metrics
         try:
             import evaluate
+
             self.bleu_metric = evaluate.load("sacrebleu")
             self.comet_metric = evaluate.load("comet")
             logger.info(f"Translation metrics callback initialized ({self.num_samples} samples)")
@@ -358,18 +359,18 @@ class TranslationMetricsCallback(TrainerCallback):
         logger.info(f"Computing translation metrics (epoch {state.epoch})...")
         logger.info("=" * 60)
 
-        # Get subset of eval dataset
-        eval_subset = self.eval_dataset.select(range(self.num_samples))
-
         # Extract source texts and references
         sources = []
         references = []
 
         # Load raw dataset to get original text
         from datasets import load_dataset
-        dataset = load_dataset("Helsinki-NLP/europarl", f"{self.source_lang}-{self.target_lang}", split="train")
 
-        # Use same split logic as load_europarl
+        dataset = load_dataset(
+            "Helsinki-NLP/europarl", f"{self.source_lang}-{self.target_lang}", split="train"
+        )
+
+        # Use same split logic as EuroparlHandler.load()
         splits = dataset.train_test_split(test_size=0.3, seed=42)
         temp_splits = splits["test"].train_test_split(test_size=0.333, seed=42)
         val_data = temp_splits["train"]
@@ -386,9 +387,7 @@ class TranslationMetricsCallback(TrainerCallback):
         try:
             bleu_result = self.bleu_metric.compute(predictions=predictions, references=references)
             comet_result = self.comet_metric.compute(
-                predictions=predictions,
-                references=references,
-                sources=sources
+                predictions=predictions, references=references, sources=sources
             )
 
             bleu_score = bleu_result["score"]
@@ -401,11 +400,14 @@ class TranslationMetricsCallback(TrainerCallback):
             if args.report_to and "wandb" in args.report_to:
                 try:
                     import wandb
-                    wandb.log({
-                        "eval/bleu": bleu_score,
-                        "eval/comet": comet_score,
-                        "epoch": state.epoch,
-                    })
+
+                    wandb.log(
+                        {
+                            "eval/bleu": bleu_score,
+                            "eval/comet": comet_score,
+                            "epoch": state.epoch,
+                        }
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to log to W&B: {e}")
 
@@ -433,8 +435,14 @@ class TranslationMetricsCallback(TrainerCallback):
 
         # Language names for prompt
         lang_names = {
-            "en": "English", "fr": "French", "de": "German", "es": "Spanish",
-            "it": "Italian", "pt": "Portuguese", "nl": "Dutch", "da": "Danish",
+            "en": "English",
+            "fr": "French",
+            "de": "German",
+            "es": "Spanish",
+            "it": "Italian",
+            "pt": "Portuguese",
+            "nl": "Dutch",
+            "da": "Danish",
         }
         source_lang_name = lang_names.get(self.source_lang, self.source_lang.upper())
         target_lang_name = lang_names.get(self.target_lang, self.target_lang.upper())
@@ -442,16 +450,18 @@ class TranslationMetricsCallback(TrainerCallback):
         system_message = f"You are a professional translator. Translate the provided text from {source_lang_name} to {target_lang_name}, remaining true to the source text. Do not add any additional commentary or conversational elements to your response."
 
         # Format prompts with chat template
-        if hasattr(self.tokenizer, 'chat_template') and self.tokenizer.chat_template:
+        if hasattr(self.tokenizer, "chat_template") and self.tokenizer.chat_template:
             prompts = []
             for source in sources:
                 messages = [
                     {"role": "system", "content": system_message},
-                    {"role": "user", "content": source}
+                    {"role": "user", "content": source},
                 ]
-                prompts.append(self.tokenizer.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=True
-                ))
+                prompts.append(
+                    self.tokenizer.apply_chat_template(
+                        messages, tokenize=False, add_generation_prompt=True
+                    )
+                )
         else:
             prompts = [f"{system_message}\n\n{source}\n\n" for source in sources]
 
@@ -468,7 +478,7 @@ class PeakMetricsCallback(TrainerCallback):
     step/epoch where it occurred. Logs to W&B at end of training.
     """
 
-    def __init__(self, metrics_to_track: list[str] = None):
+    def __init__(self, metrics_to_track: list[str] | None = None):
         """
         Initialize peak metrics tracker.
 
@@ -477,7 +487,9 @@ class PeakMetricsCallback(TrainerCallback):
                               If None, tracks all eval metrics.
         """
         self.metrics_to_track = metrics_to_track
-        self.peaks = {}  # metric_name -> {"value": float, "step": int, "epoch": float}
+        self.peaks: dict[
+            str, dict
+        ] = {}  # metric_name -> {"value": float, "step": int, "epoch": float}
 
     def on_evaluate(self, args, state, control, metrics=None, **kwargs):
         """
@@ -493,7 +505,12 @@ class PeakMetricsCallback(TrainerCallback):
             return
 
         # Metrics that aren't model quality (runtime stats, not "peaks")
-        skip_metrics = {"runtime", "samples_per_second", "steps_per_second", "model_preparation_time"}
+        skip_metrics = {
+            "runtime",
+            "samples_per_second",
+            "steps_per_second",
+            "model_preparation_time",
+        }
 
         for key, value in metrics.items():
             # Skip non-eval metrics and loss (lower is better for loss)
@@ -525,6 +542,7 @@ class PeakMetricsCallback(TrainerCallback):
                 # Update W&B summary immediately
                 try:
                     import wandb
+
                     if wandb.run is not None:
                         wandb.run.summary[f"peak/{metric_name}"] = value
                         wandb.run.summary[f"peak/{metric_name}_step"] = state.global_step

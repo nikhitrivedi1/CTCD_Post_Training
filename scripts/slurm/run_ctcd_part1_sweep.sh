@@ -51,7 +51,7 @@ slurm_print_header
 export WANDB_INIT_TIMEOUT=300
 
 CONFIG_ROOT="configs/CTCD_Experiments"
-TASKS=(sst2 clinc150)
+TASKS=(mnli qqp qnli cola mrpc rte)
 NUM_TASKS=${#TASKS[@]}
 # shellcheck disable=SC2034
 LRS=(1e-5 2e-5 3e-5 5e-5)

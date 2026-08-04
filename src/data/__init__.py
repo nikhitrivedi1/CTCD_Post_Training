@@ -1,7 +1,7 @@
 """Data loading modules: handlers, formatters, and collators."""
 
 from .collators import VLMDataCollator
-from .formatters import format_for_sft, format_for_rl
+from .formatters import format_for_rl, format_for_sft
 from .handlers import DATASET_REGISTRY, get_handler
 
 __all__ = [

@@ -77,8 +77,14 @@ CATEGORIES = {
             "The periodic table organizes chemical elements by atomic number and electron configuration. Elements in the same column share similar chemical properties due to their outer electron arrangements.",
         ],
         "headings": [
-            "Introduction", "Overview", "Background", "Discussion",
-            "Summary", "Analysis", "Key Points", "Conclusion",
+            "Introduction",
+            "Overview",
+            "Background",
+            "Discussion",
+            "Summary",
+            "Analysis",
+            "Key Points",
+            "Conclusion",
         ],
         "css_templates": ["academic", "textbook", "modern"],
         "bold_density": (0.25, 0.45),
@@ -96,8 +102,12 @@ CATEGORIES = {
             "Performance comparison across different hardware configurations. All measurements averaged over three independent runs with standard deviation reported.",
         ],
         "headings": [
-            "Results", "Performance Summary", "Comparison",
-            "Benchmark Results", "Data Summary", "Metrics Overview",
+            "Results",
+            "Performance Summary",
+            "Comparison",
+            "Benchmark Results",
+            "Data Summary",
+            "Metrics Overview",
         ],
         "css_templates": ["technical", "financial", "compact"],
         "bold_density": (0.3, 0.5),
@@ -120,9 +130,17 @@ CATEGORIES = {
             "The Navier-Stokes equations describe the motion of viscous fluid substances. These partial differential equations arise from applying Newton's second law to fluid motion.",
         ],
         "headings": [
-            "Abstract", "Introduction", "Related Work", "Methods",
-            "Experimental Setup", "Results", "Discussion", "Conclusion",
-            "Literature Review", "Theoretical Framework", "Appendix",
+            "Abstract",
+            "Introduction",
+            "Related Work",
+            "Methods",
+            "Experimental Setup",
+            "Results",
+            "Discussion",
+            "Conclusion",
+            "Literature Review",
+            "Theoretical Framework",
+            "Appendix",
         ],
         "css_templates": ["academic", "textbook"],
         "bold_density": (0.2, 0.4),
@@ -142,9 +160,15 @@ CATEGORIES = {
             "Provision for credit losses increased to $45 million from $32 million in the prior year, reflecting a more conservative approach to risk management amid evolving market conditions.",
         ],
         "headings": [
-            "Financial Summary", "Quarterly Results", "Market Analysis",
-            "Risk Assessment", "Balance Sheet", "Income Statement",
-            "Cash Flow Analysis", "Shareholder Information", "Outlook",
+            "Financial Summary",
+            "Quarterly Results",
+            "Market Analysis",
+            "Risk Assessment",
+            "Balance Sheet",
+            "Income Statement",
+            "Cash Flow Analysis",
+            "Shareholder Information",
+            "Outlook",
         ],
         "css_templates": ["financial", "compact"],
         "bold_density": (0.35, 0.55),
@@ -164,9 +188,15 @@ CATEGORIES = {
             "This agreement shall be governed by and construed in accordance with the laws of the State of Delaware, without regard to its conflict of laws provisions.",
         ],
         "headings": [
-            "Terms and Conditions", "Definitions", "Obligations",
-            "Liability", "Confidentiality", "Dispute Resolution",
-            "Intellectual Property", "General Provisions", "Amendments",
+            "Terms and Conditions",
+            "Definitions",
+            "Obligations",
+            "Liability",
+            "Confidentiality",
+            "Dispute Resolution",
+            "Intellectual Property",
+            "General Provisions",
+            "Amendments",
         ],
         "css_templates": ["academic", "compact", "financial"],
         "bold_density": (0.3, 0.5),
@@ -186,9 +216,15 @@ CATEGORIES = {
             "Logging follows a structured JSON format with severity levels, timestamps, correlation IDs, and service identifiers. Logs are shipped to a centralized aggregation service.",
         ],
         "headings": [
-            "System Architecture", "API Reference", "Configuration",
-            "Deployment Guide", "Troubleshooting", "Migration Notes",
-            "Security", "Performance Tuning", "Deprecated Features",
+            "System Architecture",
+            "API Reference",
+            "Configuration",
+            "Deployment Guide",
+            "Troubleshooting",
+            "Migration Notes",
+            "Security",
+            "Performance Tuning",
+            "Deprecated Features",
         ],
         "css_templates": ["technical", "modern", "compact"],
         "bold_density": (0.3, 0.5),
@@ -210,10 +246,19 @@ CATEGORIES = {
             "Cognitive dissonance theory, proposed by Leon Festinger, describes the discomfort people feel when holding contradictory beliefs. Individuals are motivated to reduce this tension by changing their attitudes or behaviors.",
         ],
         "headings": [
-            "Chapter One", "Chapter Two", "Chapter Three",
-            "Prologue", "Epilogue", "Part I", "Part II",
-            "The Beginning", "A New Era", "Foundations",
-            "Origins", "Consequences", "Reflections",
+            "Chapter One",
+            "Chapter Two",
+            "Chapter Three",
+            "Prologue",
+            "Epilogue",
+            "Part I",
+            "Part II",
+            "The Beginning",
+            "A New Era",
+            "Foundations",
+            "Origins",
+            "Consequences",
+            "Reflections",
         ],
         "css_templates": ["textbook", "academic", "book"],
         "bold_density": (0.2, 0.4),
@@ -235,10 +280,18 @@ CATEGORIES = {
             "Technical debt reduction program delivered a 40% improvement in build times and reduced critical bug count from 47 to 12 over the past two sprints.",
         ],
         "headings": [
-            "Key Highlights", "Q4 Results", "Strategic Priorities",
-            "Product Roadmap", "Market Opportunity", "Team Update",
-            "Financial Overview", "Next Steps", "Action Items",
-            "Agenda", "Executive Summary", "Takeaways",
+            "Key Highlights",
+            "Q4 Results",
+            "Strategic Priorities",
+            "Product Roadmap",
+            "Market Opportunity",
+            "Team Update",
+            "Financial Overview",
+            "Next Steps",
+            "Action Items",
+            "Agenda",
+            "Executive Summary",
+            "Takeaways",
         ],
         "css_templates": ["slides", "modern"],
         "bold_density": (0.4, 0.6),
@@ -263,9 +316,18 @@ CATEGORIES = {
             "Police arrested twelve suspects in a coordinated operation spanning four countries, dismantling a network responsible for an estimated $500 million in financial fraud.",
         ],
         "headings": [
-            "Breaking News", "World", "Business", "Technology",
-            "Science", "Health", "Politics", "Economy",
-            "Local News", "Analysis", "Opinion", "Editorial",
+            "Breaking News",
+            "World",
+            "Business",
+            "Technology",
+            "Science",
+            "Health",
+            "Politics",
+            "Economy",
+            "Local News",
+            "Analysis",
+            "Opinion",
+            "Editorial",
         ],
         "css_templates": ["news", "compact", "modern"],
         "bold_density": (0.3, 0.5),
@@ -288,12 +350,18 @@ CATEGORIES = {
             "Rate your overall satisfaction with the service on a scale of 1 to 10, where 1 indicates very dissatisfied and 10 indicates very satisfied.",
         ],
         "headings": [
-            "Application Form", "Section A: Personal Information",
-            "Section B: Employment History", "Section C: Education",
-            "Part 1: Instructions", "Part 2: Questions",
-            "Patient Intake Form", "Registration",
-            "Exam: Final Assessment", "Survey Questions",
-            "Order Form", "Evaluation Criteria",
+            "Application Form",
+            "Section A: Personal Information",
+            "Section B: Employment History",
+            "Section C: Education",
+            "Part 1: Instructions",
+            "Part 2: Questions",
+            "Patient Intake Form",
+            "Registration",
+            "Exam: Final Assessment",
+            "Survey Questions",
+            "Order Form",
+            "Evaluation Criteria",
         ],
         "css_templates": ["compact", "technical", "forms"],
         "bold_density": (0.35, 0.55),
@@ -307,24 +375,72 @@ CATEGORIES = {
 
 # Shared formatting candidates (used across all categories)
 BOLD_CANDIDATES = [
-    "important", "critical", "key", "significant", "primary", "essential",
-    "Note", "Warning", "Required", "Mandatory", "Definition", "Theorem",
-    "Result", "Conclusion", "Summary", "Total", "Net Income", "Revenue",
-    "machine learning", "neural network", "gradient descent", "attention",
-    "Section", "Chapter", "Figure", "Table", "Algorithm", "Equation",
+    "important",
+    "critical",
+    "key",
+    "significant",
+    "primary",
+    "essential",
+    "Note",
+    "Warning",
+    "Required",
+    "Mandatory",
+    "Definition",
+    "Theorem",
+    "Result",
+    "Conclusion",
+    "Summary",
+    "Total",
+    "Net Income",
+    "Revenue",
+    "machine learning",
+    "neural network",
+    "gradient descent",
+    "attention",
+    "Section",
+    "Chapter",
+    "Figure",
+    "Table",
+    "Algorithm",
+    "Equation",
 ]
 
 ITALIC_CANDIDATES = [
-    "et al.", "in vivo", "in vitro", "de novo", "ad hoc", "per se",
-    "emphasis", "see also", "note", "i.e.", "e.g.", "cf.", "ibid.",
-    "The Art of War", "Origin of Species", "Principia Mathematica",
-    "approximately", "typically", "generally", "specifically",
+    "et al.",
+    "in vivo",
+    "in vitro",
+    "de novo",
+    "ad hoc",
+    "per se",
+    "emphasis",
+    "see also",
+    "note",
+    "i.e.",
+    "e.g.",
+    "cf.",
+    "ibid.",
+    "The Art of War",
+    "Origin of Species",
+    "Principia Mathematica",
+    "approximately",
+    "typically",
+    "generally",
+    "specifically",
 ]
 
 STRIKETHROUGH_CANDIDATES = [
-    "deprecated", "removed", "obsolete", "outdated", "replaced",
-    "old value", "previous version", "former approach", "draft text",
-    "incorrect assumption", "initial estimate", "preliminary data",
+    "deprecated",
+    "removed",
+    "obsolete",
+    "outdated",
+    "replaced",
+    "old value",
+    "previous version",
+    "former approach",
+    "draft text",
+    "incorrect assumption",
+    "initial estimate",
+    "preliminary data",
 ]
 
 
@@ -434,6 +550,7 @@ CSS_TEMPLATES = {
 # Markdown generation
 # ---------------------------------------------------------------------------
 
+
 def _wrap_formatted(span_text: str, bold: bool, italic: bool, strike: bool) -> str:
     """Wrap text with the appropriate markdown formatting markers.
 
@@ -462,10 +579,13 @@ def _wrap_formatted(span_text: str, bold: bool, italic: bool, strike: bool) -> s
     return result
 
 
-def inject_formatting(text: str, rng: random.Random,
-                      bold_density: float = 0.4,
-                      italic_density: float = 0.3,
-                      strike_density: float = 0.15) -> str:
+def inject_formatting(
+    text: str,
+    rng: random.Random,
+    bold_density: float = 0.4,
+    italic_density: float = 0.3,
+    strike_density: float = 0.15,
+) -> str:
     """Inject bold, italic, and strikethrough formatting in a single pass.
 
     Uses a span-based approach: identifies word-boundary positions, assigns
@@ -566,15 +686,39 @@ def _random_formatted_phrase(rng: random.Random, fmt: str = "bold") -> str:
     Returns:
         A formatted phrase.
     """
-    bold_phrases = ["the key concept", "this result", "total revenue", "the main finding",
-                    "neural networks", "the algorithm", "our approach", "the model",
-                    "critical threshold", "the primary factor", "observed behavior"]
-    italic_phrases = ["see note below", "as described above", "in this context",
-                      "for reference", "emphasis added", "per the specification",
-                      "the underlying assumption", "this distinction"]
-    strike_phrases = ["previously reported", "initial estimate", "old calculation",
-                      "former value", "draft version", "original assumption",
-                      "earlier finding", "prior methodology"]
+    bold_phrases = [
+        "the key concept",
+        "this result",
+        "total revenue",
+        "the main finding",
+        "neural networks",
+        "the algorithm",
+        "our approach",
+        "the model",
+        "critical threshold",
+        "the primary factor",
+        "observed behavior",
+    ]
+    italic_phrases = [
+        "see note below",
+        "as described above",
+        "in this context",
+        "for reference",
+        "emphasis added",
+        "per the specification",
+        "the underlying assumption",
+        "this distinction",
+    ]
+    strike_phrases = [
+        "previously reported",
+        "initial estimate",
+        "old calculation",
+        "former value",
+        "draft version",
+        "original assumption",
+        "earlier finding",
+        "prior methodology",
+    ]
 
     if fmt == "bold":
         return f"**{rng.choice(bold_phrases)}**"
@@ -608,9 +752,12 @@ TABLE_DATA_TEMPLATES = [
 ]
 
 
-def generate_table_markdown(rng: random.Random, bold_density: float = 0.3,
-                            italic_density: float = 0.2,
-                            strike_density: float = 0.1) -> str:
+def generate_table_markdown(
+    rng: random.Random,
+    bold_density: float = 0.3,
+    italic_density: float = 0.2,
+    strike_density: float = 0.1,
+) -> str:
     """Generate a markdown table with formatted cells.
 
     Args:
@@ -642,9 +789,24 @@ def generate_table_markdown(rng: random.Random, bold_density: float = 0.3,
         for j in range(len(headers)):
             if j == 0:
                 # First column: label
-                cell = rng.choice(["Alpha", "Beta", "Gamma", "Delta", "Model A",
-                                   "Model B", "Config 1", "Config 2", "Baseline",
-                                   "Proposed", "v2.0", "v3.1", "Test 1", "Test 2"])
+                cell = rng.choice(
+                    [
+                        "Alpha",
+                        "Beta",
+                        "Gamma",
+                        "Delta",
+                        "Model A",
+                        "Model B",
+                        "Config 1",
+                        "Config 2",
+                        "Baseline",
+                        "Proposed",
+                        "v2.0",
+                        "v3.1",
+                        "Test 1",
+                        "Test 2",
+                    ]
+                )
             else:
                 cell = gen(rng)
 
@@ -690,8 +852,9 @@ BYLINE_POOL = [
 ]
 
 
-def _generate_list(rng: random.Random, paragraphs: list[str],
-                   numbered: bool = False, num_items: int = 0) -> str:
+def _generate_list(
+    rng: random.Random, paragraphs: list[str], numbered: bool = False, num_items: int = 0
+) -> str:
     """Generate a formatted bullet or numbered list.
 
     Args:
@@ -778,7 +941,8 @@ def generate_page_markdown(rng: random.Random, page_id: int, category: dict) -> 
                 para = sentences[0] + "."
 
             para = inject_formatting(
-                para, rng,
+                para,
+                rng,
                 bold_density=rng.uniform(*bold_range),
                 italic_density=rng.uniform(*italic_range),
                 strike_density=rng.uniform(*strike_range),
@@ -825,6 +989,7 @@ def generate_page_markdown(rng: random.Random, page_id: int, category: dict) -> 
 # HTML rendering
 # ---------------------------------------------------------------------------
 
+
 def markdown_to_html(md_text: str, css: str) -> str:
     """Convert markdown text to styled HTML for rendering.
 
@@ -868,19 +1033,30 @@ def markdown_to_html(md_text: str, css: str) -> str:
                 continue
 
             if not in_table:
-                html_parts.append('<table style="border-collapse: collapse; width: 100%; '
-                                  'margin: 12px 0;">')
+                html_parts.append(
+                    '<table style="border-collapse: collapse; width: 100%; margin: 12px 0;">'
+                )
                 in_table = True
-                html_parts.append("<tr>" + "".join(
-                    f'<th style="border: 1px solid #ccc; padding: 6px 10px; '
-                    f'background: #f5f5f5; text-align: left;">'
-                    f'{_inline_format(c)}</th>' for c in cells
-                ) + "</tr>")
+                html_parts.append(
+                    "<tr>"
+                    + "".join(
+                        f'<th style="border: 1px solid #ccc; padding: 6px 10px; '
+                        f'background: #f5f5f5; text-align: left;">'
+                        f"{_inline_format(c)}</th>"
+                        for c in cells
+                    )
+                    + "</tr>"
+                )
             else:
-                html_parts.append("<tr>" + "".join(
-                    f'<td style="border: 1px solid #ccc; padding: 6px 10px;">'
-                    f'{_inline_format(c)}</td>' for c in cells
-                ) + "</tr>")
+                html_parts.append(
+                    "<tr>"
+                    + "".join(
+                        f'<td style="border: 1px solid #ccc; padding: 6px 10px;">'
+                        f"{_inline_format(c)}</td>"
+                        for c in cells
+                    )
+                    + "</tr>"
+                )
             continue
 
         if in_table:
@@ -961,6 +1137,7 @@ def _inline_format(text: str) -> str:
 # Rendering via Playwright
 # ---------------------------------------------------------------------------
 
+
 def render_batch(pages: list[tuple[str, str, str]], width: int = 800, height: int = 1100):
     """Render multiple HTML pages to images using a single browser instance.
 
@@ -976,9 +1153,7 @@ def render_batch(pages: list[tuple[str, str, str]], width: int = 800, height: in
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": width, "height": height})
 
-        for i, (html, output_path, page_id) in enumerate(
-            tqdm(pages, desc="Rendering", unit="pg")
-        ):
+        for i, (html, output_path, page_id) in enumerate(tqdm(pages, desc="Rendering", unit="pg")):
             try:
                 page.set_content(html, wait_until="networkidle")
                 page.screenshot(path=output_path, full_page=True)
@@ -996,6 +1171,7 @@ def render_batch(pages: list[tuple[str, str, str]], width: int = 800, height: in
 # Image augmentation (scan simulation)
 # ---------------------------------------------------------------------------
 
+
 def augment_image(image, rng: random.Random):
     """Apply scan-like augmentations to a rendered image.
 
@@ -1006,8 +1182,8 @@ def augment_image(image, rng: random.Random):
     Returns:
         Augmented PIL Image.
     """
-    from PIL import Image, ImageEnhance, ImageFilter
     import numpy as np
+    from PIL import Image, ImageEnhance, ImageFilter
 
     img = image.copy()
 
@@ -1034,6 +1210,7 @@ def augment_image(image, rng: random.Random):
 
     if rng.random() < 0.3:
         import io
+
         quality = rng.randint(60, 85)
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=quality)
@@ -1050,6 +1227,7 @@ def augment_image(image, rng: random.Random):
 # Content sources
 # ---------------------------------------------------------------------------
 
+
 def load_wikitext_paragraphs(max_paragraphs: int = 500) -> list[str]:
     """Load paragraphs from wikitext dataset.
 
@@ -1061,8 +1239,8 @@ def load_wikitext_paragraphs(max_paragraphs: int = 500) -> list[str]:
     """
     try:
         import datasets
-        ds = datasets.load_dataset("wikitext", "wikitext-103-raw-v1",
-                                   split="train", streaming=True)
+
+        ds = datasets.load_dataset("wikitext", "wikitext-103-raw-v1", split="train", streaming=True)
         paragraphs = []
         for sample in ds:
             text = sample["text"].strip()
@@ -1080,6 +1258,7 @@ def load_wikitext_paragraphs(max_paragraphs: int = 500) -> list[str]:
 # ---------------------------------------------------------------------------
 # Formatting stats
 # ---------------------------------------------------------------------------
+
 
 def count_formatting_stats(markdown_dir: str) -> dict:
     """Count formatting spans across all markdown files in a directory.
@@ -1111,10 +1290,19 @@ def count_formatting_stats(markdown_dir: str) -> dict:
 # Main generation pipeline
 # ---------------------------------------------------------------------------
 
-def generate_category(output_dir: str, cat_name: str, cat_config: dict,
-                      num_pages: int, eval_frac: float, augment: bool,
-                      content_source: str, seed: int,
-                      width: int = 800, height: int = 1100) -> dict:
+
+def generate_category(
+    output_dir: str,
+    cat_name: str,
+    cat_config: dict,
+    num_pages: int,
+    eval_frac: float,
+    augment: bool,
+    content_source: str,
+    seed: int,
+    width: int = 800,
+    height: int = 1100,
+) -> dict:
     """Generate data for a single category with train/eval split.
 
     Args:
@@ -1175,9 +1363,11 @@ def generate_category(output_dir: str, cat_name: str, cat_config: dict,
 
         if augment and render_queue:
             from tqdm import tqdm
+
             aug_rng = random.Random(seed + hash(split))
-            for _, img_path, _ in tqdm(render_queue, desc=f"Augmenting {cat_name}/{split}",
-                                       unit="pg"):
+            for _, img_path, _ in tqdm(
+                render_queue, desc=f"Augmenting {cat_name}/{split}", unit="pg"
+            ):
                 if os.path.exists(img_path):
                     img = Image.open(img_path).convert("RGB")
                     img = augment_image(img, aug_rng)
@@ -1186,17 +1376,26 @@ def generate_category(output_dir: str, cat_name: str, cat_config: dict,
         cat_stats[split] = count
         stats = count_formatting_stats(markdown_dir)
         cat_stats["formatting"][split] = stats
-        logger.info(f"  {cat_name}/{split}: {count} pages, "
-                    f"bold={stats['bold']}, italic={stats['italic']}, "
-                    f"strike={stats['strikethrough']}")
+        logger.info(
+            f"  {cat_name}/{split}: {count} pages, "
+            f"bold={stats['bold']}, italic={stats['italic']}, "
+            f"strike={stats['strikethrough']}"
+        )
 
     return cat_stats
 
 
-def generate_dataset(output_dir: str, num_pages: int, categories: list[str] | None = None,
-                     eval_frac: float = 0.05, augment: bool = False,
-                     content_source: str = "builtin", seed: int = 42,
-                     width: int = 800, height: int = 1100):
+def generate_dataset(
+    output_dir: str,
+    num_pages: int,
+    categories: list[str] | None = None,
+    eval_frac: float = 0.05,
+    augment: bool = False,
+    content_source: str = "builtin",
+    seed: int = 42,
+    width: int = 800,
+    height: int = 1100,
+):
     """Generate a full synthetic formatting dataset with category subsets.
 
     Args:
@@ -1214,8 +1413,10 @@ def generate_dataset(output_dir: str, num_pages: int, categories: list[str] | No
     all_stats = {}
     total_pages = 0
 
-    logger.info(f"Generating {num_pages} pages x {len(cats_to_gen)} categories "
-                f"= {num_pages * len(cats_to_gen)} total")
+    logger.info(
+        f"Generating {num_pages} pages x {len(cats_to_gen)} categories "
+        f"= {num_pages * len(cats_to_gen)} total"
+    )
     logger.info(f"Categories: {', '.join(cats_to_gen)}")
     logger.info(f"Eval fraction: {eval_frac}, Augment: {augment}")
 
@@ -1229,10 +1430,16 @@ def generate_dataset(output_dir: str, num_pages: int, categories: list[str] | No
 
         cat_seed = seed + hash(cat_name) % (2**31)
         stats = generate_category(
-            output_dir, cat_name, cat_config,
-            num_pages=num_pages, eval_frac=eval_frac,
-            augment=augment, content_source=content_source,
-            seed=cat_seed, width=width, height=height,
+            output_dir,
+            cat_name,
+            cat_config,
+            num_pages=num_pages,
+            eval_frac=eval_frac,
+            augment=augment,
+            content_source=content_source,
+            seed=cat_seed,
+            width=width,
+            height=height,
         )
         all_stats[cat_name] = stats
         total_pages += stats["train"] + stats["eval"]
@@ -1241,8 +1448,9 @@ def generate_dataset(output_dir: str, num_pages: int, categories: list[str] | No
     metadata = {
         "total_pages": total_pages,
         "pages_per_category": num_pages,
-        "categories": {name: CATEGORIES[name]["description"] for name in cats_to_gen
-                       if name in CATEGORIES},
+        "categories": {
+            name: CATEGORIES[name]["description"] for name in cats_to_gen if name in CATEGORIES
+        },
         "eval_frac": eval_frac,
         "augmented": augment,
         "content_source": content_source,
@@ -1254,31 +1462,39 @@ def generate_dataset(output_dir: str, num_pages: int, categories: list[str] | No
     with open(os.path.join(output_dir, "metadata.json"), "w") as f:
         json.dump(metadata, f, indent=2)
 
-    logger.info(f"Done. {total_pages} total pages across {len(cats_to_gen)} categories in {output_dir}")
+    logger.info(
+        f"Done. {total_pages} total pages across {len(cats_to_gen)} categories in {output_dir}"
+    )
 
 
 def main():
     parser = argparse.ArgumentParser(description="Generate synthetic formatting training data")
-    parser.add_argument("--output_dir", type=str, required=True,
-                        help="Root output directory")
-    parser.add_argument("--num_pages", type=int, default=200,
-                        help="Pages per category")
-    parser.add_argument("--categories", type=str, nargs="*", default=None,
-                        help="Categories to generate (default: all). "
-                        f"Options: {', '.join(CATEGORIES.keys())}")
-    parser.add_argument("--eval_frac", type=float, default=0.05,
-                        help="Fraction of pages for eval split (default: 0.05)")
-    parser.add_argument("--augment", action="store_true",
-                        help="Apply scan-like augmentations")
-    parser.add_argument("--content_source", type=str, default="builtin",
-                        choices=["builtin", "wikitext"],
-                        help="Content source for paragraphs")
-    parser.add_argument("--seed", type=int, default=42,
-                        help="Random seed")
-    parser.add_argument("--width", type=int, default=800,
-                        help="Rendered page width in pixels")
-    parser.add_argument("--height", type=int, default=1100,
-                        help="Rendered page height in pixels")
+    parser.add_argument("--output_dir", type=str, required=True, help="Root output directory")
+    parser.add_argument("--num_pages", type=int, default=200, help="Pages per category")
+    parser.add_argument(
+        "--categories",
+        type=str,
+        nargs="*",
+        default=None,
+        help=f"Categories to generate (default: all). Options: {', '.join(CATEGORIES.keys())}",
+    )
+    parser.add_argument(
+        "--eval_frac",
+        type=float,
+        default=0.05,
+        help="Fraction of pages for eval split (default: 0.05)",
+    )
+    parser.add_argument("--augment", action="store_true", help="Apply scan-like augmentations")
+    parser.add_argument(
+        "--content_source",
+        type=str,
+        default="builtin",
+        choices=["builtin", "wikitext"],
+        help="Content source for paragraphs",
+    )
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--width", type=int, default=800, help="Rendered page width in pixels")
+    parser.add_argument("--height", type=int, default=1100, help="Rendered page height in pixels")
     args = parser.parse_args()
 
     generate_dataset(

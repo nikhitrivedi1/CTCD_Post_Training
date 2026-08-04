@@ -56,7 +56,11 @@ def _resolve_base_model(checkpoint_path: Path) -> tuple:
     Returns:
         (model_path, revision) tuple. revision is None for local paths.
     """
-    run_dir = checkpoint_path.parent if checkpoint_path.name.startswith("checkpoint-") else checkpoint_path
+    run_dir = (
+        checkpoint_path.parent
+        if checkpoint_path.name.startswith("checkpoint-")
+        else checkpoint_path
+    )
     base_dir = run_dir / "base"
 
     # Full weights in base/ (custom model, e.g., merged from --adapter)
@@ -103,9 +107,17 @@ class InferenceEngine:
     - "causal_lm": Causal Language Models (Llama) - text -> text
     """
 
-    def __init__(self, model=None, tokenizer=None, processor=None,
-                 model_type="vlm", device="cuda", model_name="unknown",
-                 commit_hash="unknown", chat_template_kwargs=None):
+    def __init__(
+        self,
+        model=None,
+        tokenizer=None,
+        processor=None,
+        model_type="vlm",
+        device="cuda",
+        model_name="unknown",
+        commit_hash="unknown",
+        chat_template_kwargs=None,
+    ):
         self._model = model
         self._tokenizer = tokenizer
         self._processor = processor
@@ -120,8 +132,15 @@ class InferenceEngine:
     # ------------------------------------------------------------------
 
     @classmethod
-    def load(cls, model_id=None, checkpoint_path=None, model_type="vlm",
-             device="cuda", chat_template_kwargs=None, task=None):
+    def load(
+        cls,
+        model_id=None,
+        checkpoint_path=None,
+        model_type="vlm",
+        device="cuda",
+        chat_template_kwargs=None,
+        task=None,
+    ):
         """Load a model for inference with optimal attention settings.
 
         Uses SDPA on CUDA for best performance. Supports LoRA checkpoint
@@ -145,8 +164,7 @@ class InferenceEngine:
 
         if model_type not in _VALID_MODEL_TYPES:
             raise ValueError(
-                f"Unsupported model_type '{model_type}'. "
-                f"Expected one of: {_VALID_MODEL_TYPES}"
+                f"Unsupported model_type '{model_type}'. Expected one of: {_VALID_MODEL_TYPES}"
             )
         if model_id is None and checkpoint_path is None:
             raise ValueError("Must provide either 'model_id' or 'checkpoint_path'.")
@@ -156,18 +174,14 @@ class InferenceEngine:
             profile_name = model_id
         else:
             profile_name = str(checkpoint_path)
-        resolved_kwargs = get_chat_template_kwargs(profile_name,
-                                                   chat_template_kwargs,
-                                                   task=task)
+        resolved_kwargs = get_chat_template_kwargs(profile_name, chat_template_kwargs, task=task)
         if resolved_kwargs:
             logger.info(f"Chat template kwargs: {resolved_kwargs}")
 
         if model_type == "vlm":
-            return cls._load_hf_vlm(model_id, checkpoint_path, device,
-                                    resolved_kwargs)
+            return cls._load_hf_vlm(model_id, checkpoint_path, device, resolved_kwargs)
         else:
-            return cls._load_hf_causal(model_id, checkpoint_path, device,
-                                       resolved_kwargs)
+            return cls._load_hf_causal(model_id, checkpoint_path, device, resolved_kwargs)
 
     @classmethod
     def from_model(cls, model, tokenizer=None, processor=None):
@@ -250,11 +264,10 @@ class InferenceEngine:
     # ------------------------------------------------------------------
 
     @classmethod
-    def _load_hf_vlm(cls, model_id, checkpoint_path, device,
-                     chat_template_kwargs=None):
+    def _load_hf_vlm(cls, model_id, checkpoint_path, device, chat_template_kwargs=None):
         """Load HF VLM with auto SDPA and optional LoRA merge."""
-        from transformers import AutoModelForImageTextToText, AutoProcessor
         from peft import PeftModel
+        from transformers import AutoModelForImageTextToText, AutoProcessor
 
         is_cuda = _is_cuda(device)
         dtype = torch.bfloat16 if is_cuda else (torch.float16 if device == "mps" else torch.float32)
@@ -290,9 +303,7 @@ class InferenceEngine:
                     base_kwargs["revision"] = revision
 
                 logger.info(f"Loading base model: {base_model_id}")
-                model = AutoModelForImageTextToText.from_pretrained(
-                    base_model_id, **base_kwargs
-                )
+                model = AutoModelForImageTextToText.from_pretrained(base_model_id, **base_kwargs)
                 logger.info(f"Loading LoRA adapter: {checkpoint_path}")
                 model = PeftModel.from_pretrained(model, str(checkpoint_path))
                 model = model.merge_and_unload()
@@ -306,9 +317,7 @@ class InferenceEngine:
             commit_hash = f"local:{checkpoint_path}"
         else:
             logger.info(f"Loading model: {model_id}")
-            model = AutoModelForImageTextToText.from_pretrained(
-                model_id, **load_kwargs
-            )
+            model = AutoModelForImageTextToText.from_pretrained(model_id, **load_kwargs)
             processor = AutoProcessor.from_pretrained(model_id)
             model_name = model_id.split("/")[-1]
             commit_hash = getattr(model.config, "_commit_hash", "unknown")
@@ -320,14 +329,17 @@ class InferenceEngine:
         logger.info(f"Model loaded: {model_name} ({param_count:.0f}M params)")
 
         return cls(
-            model=model, processor=processor, model_type="vlm",
-            device=device, model_name=model_name, commit_hash=commit_hash,
+            model=model,
+            processor=processor,
+            model_type="vlm",
+            device=device,
+            model_name=model_name,
+            commit_hash=commit_hash,
             chat_template_kwargs=chat_template_kwargs,
         )
 
     @classmethod
-    def _load_hf_causal(cls, model_id, checkpoint_path, device,
-                        chat_template_kwargs=None):
+    def _load_hf_causal(cls, model_id, checkpoint_path, device, chat_template_kwargs=None):
         """Load HF causal LM with auto SDPA."""
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -348,9 +360,7 @@ class InferenceEngine:
             if _has_merged_model(checkpoint_path):
                 # Direct load: merged model at run root
                 logger.info(f"Loading merged model: {checkpoint_path}")
-                model = AutoModelForCausalLM.from_pretrained(
-                    str(checkpoint_path), **load_kwargs
-                )
+                model = AutoModelForCausalLM.from_pretrained(str(checkpoint_path), **load_kwargs)
                 tokenizer = AutoTokenizer.from_pretrained(str(checkpoint_path))
             else:
                 # Adapter-only: load base + adapter and merge
@@ -365,10 +375,9 @@ class InferenceEngine:
                     base_kwargs["revision"] = revision
 
                 from peft import PeftModel
+
                 logger.info(f"Loading base model: {base_model_id}")
-                model = AutoModelForCausalLM.from_pretrained(
-                    base_model_id, **base_kwargs
-                )
+                model = AutoModelForCausalLM.from_pretrained(base_model_id, **base_kwargs)
                 logger.info(f"Loading LoRA adapter: {checkpoint_path}")
                 model = PeftModel.from_pretrained(model, str(checkpoint_path))
                 model = model.merge_and_unload()
@@ -382,9 +391,7 @@ class InferenceEngine:
             commit_hash = f"local:{checkpoint_path}"
         else:
             logger.info(f"Loading model: {model_id}")
-            model = AutoModelForCausalLM.from_pretrained(
-                model_id, **load_kwargs
-            )
+            model = AutoModelForCausalLM.from_pretrained(model_id, **load_kwargs)
             tokenizer = AutoTokenizer.from_pretrained(model_id)
             model_name = model_id.split("/")[-1]
             commit_hash = getattr(model.config, "_commit_hash", "unknown")
@@ -399,8 +406,12 @@ class InferenceEngine:
         logger.info(f"Model loaded: {model_name} ({param_count:.0f}M params)")
 
         return cls(
-            model=model, tokenizer=tokenizer, model_type="causal_lm",
-            device=device, model_name=model_name, commit_hash=commit_hash,
+            model=model,
+            tokenizer=tokenizer,
+            model_type="causal_lm",
+            device=device,
+            model_name=model_name,
+            commit_hash=commit_hash,
             chat_template_kwargs=chat_template_kwargs,
         )
 
@@ -420,17 +431,24 @@ class InferenceEngine:
         """
         results = []
         for image, prompt in inputs:
-            messages = [{"role": "user", "content": [
-                {"type": "image", "image": image},
-                {"type": "text", "text": prompt},
-            ]}]
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": image},
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ]
             text = self._processor.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True,
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
                 **self._chat_template_kwargs,
             )
-            model_inputs = self._processor(
-                text=[text], images=[image], return_tensors="pt"
-            ).to(self._device)
+            model_inputs = self._processor(text=[text], images=[image], return_tensors="pt").to(
+                self._device
+            )
 
             with torch.no_grad():
                 output_ids = self._model.generate(
@@ -440,10 +458,8 @@ class InferenceEngine:
                     pad_token_id=self._processor.tokenizer.pad_token_id,
                 )
 
-            generated_ids = output_ids[0, model_inputs["input_ids"].shape[1]:]
-            text = self._processor.tokenizer.decode(
-                generated_ids, skip_special_tokens=True
-            ).strip()
+            generated_ids = output_ids[0, model_inputs["input_ids"].shape[1] :]
+            text = self._processor.tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
             results.append(text)
 
         return results
@@ -461,7 +477,7 @@ class InferenceEngine:
         """
         results = []
         for i in range(0, len(prompts), batch_size):
-            batch = prompts[i:i + batch_size]
+            batch = prompts[i : i + batch_size]
 
             inputs = self._tokenizer(
                 batch,

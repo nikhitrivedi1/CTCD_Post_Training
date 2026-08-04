@@ -42,7 +42,9 @@ class TestCLINC150HandlerValidate:
         assert result["ok"] is True
 
     def test_validate_fails_gracefully_on_error(self):
-        with patch("src.data.handlers.clinc150.load_dataset", side_effect=RuntimeError("network down")):
+        with patch(
+            "src.data.handlers.clinc150.load_dataset", side_effect=RuntimeError("network down")
+        ):
             result = CLINC150Handler().validate("unused")
         assert result["ok"] is False
         assert "network down" in result["details"]
@@ -50,13 +52,17 @@ class TestCLINC150HandlerValidate:
 
 class TestCLINC150HandlerLoad:
     def test_load_uses_train_and_validation_splits(self):
-        with patch("src.data.handlers.clinc150.load_dataset", return_value=_fake_dataset_dict(10, 5)):
+        with patch(
+            "src.data.handlers.clinc150.load_dataset", return_value=_fake_dataset_dict(10, 5)
+        ):
             train, eval_ = CLINC150Handler().load()
         assert len(train) == 10
         assert len(eval_) == 5
 
     def test_load_renames_label_to_labels(self):
-        with patch("src.data.handlers.clinc150.load_dataset", return_value=_fake_dataset_dict(10, 5)):
+        with patch(
+            "src.data.handlers.clinc150.load_dataset", return_value=_fake_dataset_dict(10, 5)
+        ):
             train, eval_ = CLINC150Handler().load()
         assert "labels" in train.column_names
         assert "label" not in train.column_names
@@ -64,17 +70,24 @@ class TestCLINC150HandlerLoad:
         assert "label" not in eval_.column_names
 
     def test_load_max_train_samples_caps_dataset(self):
-        with patch("src.data.handlers.clinc150.load_dataset", return_value=_fake_dataset_dict(10, 5)):
+        with patch(
+            "src.data.handlers.clinc150.load_dataset", return_value=_fake_dataset_dict(10, 5)
+        ):
             train, _ = CLINC150Handler().load(max_train_samples=3)
         assert len(train) == 3
 
     def test_load_no_cap_when_under_limit(self):
-        with patch("src.data.handlers.clinc150.load_dataset", return_value=_fake_dataset_dict(10, 5)):
+        with patch(
+            "src.data.handlers.clinc150.load_dataset", return_value=_fake_dataset_dict(10, 5)
+        ):
             train, _ = CLINC150Handler().load(max_train_samples=1000)
         assert len(train) == 10
 
     def test_load_filters_out_of_scope_none_labels(self):
-        with patch("src.data.handlers.clinc150.load_dataset", return_value=_fake_dataset_dict(10, 5, num_oos=3)):
+        with patch(
+            "src.data.handlers.clinc150.load_dataset",
+            return_value=_fake_dataset_dict(10, 5, num_oos=3),
+        ):
             train, eval_ = CLINC150Handler().load()
         assert len(train) == 10
         assert len(eval_) == 5

@@ -2,25 +2,27 @@
 
 from src.evaluation.formatting_metrics import (
     extract_formatting_spans as _extract_formatting_spans,
+)
+from src.evaluation.formatting_metrics import (
     fuzzy_set_match as _fuzzy_set_match,
 )
 from src.training.rewards import (
-    _score_ocr,
-    _score_format,
-    _score_table_cell_f1,
-    _score_formula_cdm,
-    _score_reading_order,
-    _score_inline_formatting,
+    ParallelRewardGroup,
     _extract_text_blocks,
     _match_block_order,
+    _score_format,
+    _score_formula_cdm,
+    _score_inline_formatting,
+    _score_ocr,
     _score_parallel,
-    ocr_reward,
+    _score_reading_order,
+    _score_table_cell_f1,
     format_reward,
-    table_cell_f1_reward,
     formula_cdm_reward,
-    reading_order_reward,
     inline_formatting_reward,
-    ParallelRewardGroup,
+    ocr_reward,
+    reading_order_reward,
+    table_cell_f1_reward,
 )
 
 
@@ -205,7 +207,9 @@ class TestScoreParallel:
         assert results[1] < 1.0
 
     def test_without_references(self):
-        results = _score_parallel(_score_format, ["# Heading\n\nLong text that passes the threshold."])
+        results = _score_parallel(
+            _score_format, ["# Heading\n\nLong text that passes the threshold."]
+        )
         assert len(results) == 1
         assert results[0] > 0.0
 

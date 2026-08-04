@@ -40,7 +40,7 @@ def pull_model(repo_id, output_dir="outputs", name=None, force=False, dry_run=Fa
 
     # Verify repo exists
     try:
-        repo_info = api.repo_info(repo_id)
+        api.repo_info(repo_id)
     except Exception as e:
         print(f"Error: Could not find repo '{repo_id}': {e}")
         sys.exit(1)

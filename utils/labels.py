@@ -8,7 +8,6 @@ See docs/mnli-model-label-mapping.md for detailed documentation.
 """
 
 import logging
-from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ logger = logging.getLogger(__name__)
 # To get GLUE order [E,N,C], we need: new[0]=old[1], new[1]=old[2], new[2]=old[0]
 # So the mapping is [1, 2, 0]
 
-LABEL_MAP_REGISTRY: Dict[str, List[int]] = {
+LABEL_MAP_REGISTRY: dict[str, list[int]] = {
     # TextAttack models use [contradiction, entailment, neutral] internally
     "textattack/bert-base-uncased-MNLI": [1, 2, 0],
     "textattack/distilbert-base-uncased-MNLI": [1, 2, 0],
@@ -40,7 +39,7 @@ LABEL_MAP_REGISTRY: Dict[str, List[int]] = {
 }
 
 # GLUE standard label names per task
-GLUE_LABEL_ORDER: Dict[str, List[str]] = {
+GLUE_LABEL_ORDER: dict[str, list[str]] = {
     "mnli": ["entailment", "neutral", "contradiction"],
     "qqp": ["not_duplicate", "duplicate"],
     "sst2": ["negative", "positive"],
@@ -48,7 +47,7 @@ GLUE_LABEL_ORDER: Dict[str, List[str]] = {
 }
 
 # Class labels for display (index -> name)
-CLASS_LABELS: Dict[str, Dict[int, str]] = {
+CLASS_LABELS: dict[str, dict[int, str]] = {
     "mnli": {0: "entailment", 1: "neutral", 2: "contradiction"},
     "qqp": {0: "not_duplicate", 1: "duplicate"},
     "sst2": {0: "negative", 1: "positive"},
@@ -56,7 +55,7 @@ CLASS_LABELS: Dict[str, Dict[int, str]] = {
 }
 
 
-def get_label_map(model_id: str, task: str, config=None) -> Optional[List[int]]:
+def get_label_map(model_id: str, task: str, config=None) -> list[int] | None:
     """
     Get label mapping for a model to convert to GLUE standard order.
 

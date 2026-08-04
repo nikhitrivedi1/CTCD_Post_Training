@@ -24,19 +24,21 @@ from src.training.losses import (
 )
 from src.training.trainer import DistillationTrainer
 
-
 # ===========================================================================
 # Helpers
 # ===========================================================================
 
+
 def _make_dataset(n=8, seq_len=16, vocab=1000, num_labels=3):
     """Synthetic classification dataset for trainer tests."""
     torch.manual_seed(42)
-    return Dataset.from_dict({
-        "input_ids": torch.randint(1, vocab, (n, seq_len)).tolist(),
-        "attention_mask": torch.ones(n, seq_len, dtype=torch.long).tolist(),
-        "labels": torch.randint(0, num_labels, (n,)).tolist(),
-    })
+    return Dataset.from_dict(
+        {
+            "input_ids": torch.randint(1, vocab, (n, seq_len)).tolist(),
+            "attention_mask": torch.ones(n, seq_len, dtype=torch.long).tolist(),
+            "labels": torch.randint(0, num_labels, (n,)).tolist(),
+        }
+    )
 
 
 def _make_batch(batch_size=2, seq_len=16, vocab=1000, num_labels=3):
@@ -49,12 +51,24 @@ def _make_batch(batch_size=2, seq_len=16, vocab=1000, num_labels=3):
     }
 
 
-def _make_trainer(teacher, model, freeze_teacher=True, alpha_h=1.0, alpha_s=1.0,
-                  beta_h=None, beta_s=None,
-                  loss_type=None, loss_strategy=None, teacher_label_map=None,
-                  tmp_path=None, max_steps=1, train_dataset=None):
+def _make_trainer(
+    teacher,
+    model,
+    freeze_teacher=True,
+    alpha_h=1.0,
+    alpha_s=1.0,
+    beta_h=None,
+    beta_s=None,
+    loss_type=None,
+    loss_strategy=None,
+    teacher_label_map=None,
+    tmp_path=None,
+    max_steps=1,
+    train_dataset=None,
+):
     """Build a DistillationTrainer with minimal TrainingArguments."""
     import tempfile
+
     output_dir = str(tmp_path) if tmp_path else tempfile.mkdtemp()
     args = TrainingArguments(
         output_dir=output_dir,
@@ -64,16 +78,16 @@ def _make_trainer(teacher, model, freeze_teacher=True, alpha_h=1.0, alpha_s=1.0,
         logging_steps=1000,
         report_to="none",
     )
-    kwargs = dict(
-        teacher_model=teacher,
-        model=model,
-        args=args,
-        train_dataset=train_dataset,
-        freeze_teacher=freeze_teacher,
-        alpha_h=alpha_h,
-        alpha_s=alpha_s,
-        temperature=2.0,
-    )
+    kwargs = {
+        "teacher_model": teacher,
+        "model": model,
+        "args": args,
+        "train_dataset": train_dataset,
+        "freeze_teacher": freeze_teacher,
+        "alpha_h": alpha_h,
+        "alpha_s": alpha_s,
+        "temperature": 2.0,
+    }
     if beta_h is not None:
         kwargs["beta_h"] = beta_h
     if beta_s is not None:
@@ -91,10 +105,13 @@ def _make_trainer(teacher, model, freeze_teacher=True, alpha_h=1.0, alpha_s=1.0,
 # 1. Distillation Trainer Basics
 # ===========================================================================
 
+
 class TestDistillationTrainerBasics:
     """Core initialization and single-step behavior."""
 
-    def test_one_step_produces_finite_scalar_loss(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+    def test_one_step_produces_finite_scalar_loss(
+        self, tiny_bert_model, tiny_bert_teacher, tmp_path
+    ):
         """A single training step must produce a finite scalar loss."""
         trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model, tmp_path=tmp_path)
         tiny_bert_model.train()
@@ -106,57 +123,65 @@ class TestDistillationTrainerBasics:
     def test_model_params_change_after_step(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
         """Model parameters must actually change after a training step."""
         ds = _make_dataset()
-        trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
-                                tmp_path=tmp_path, train_dataset=ds)
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, tmp_path=tmp_path, train_dataset=ds
+        )
 
         params_before = {n: p.clone() for n, p in tiny_bert_model.named_parameters()}
         trainer.train()
         params_after = {n: p.clone() for n, p in tiny_bert_model.named_parameters()}
 
-        changed = any(
-            not torch.equal(params_before[n], params_after[n])
-            for n in params_before
-        )
+        changed = any(not torch.equal(params_before[n], params_after[n]) for n in params_before)
         assert changed, "Model parameters must change after a training step"
 
-    def test_teacher_frozen_when_freeze_teacher_true(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+    def test_teacher_frozen_when_freeze_teacher_true(
+        self, tiny_bert_model, tiny_bert_teacher, tmp_path
+    ):
         """Frozen teacher: all params requires_grad=False, eval mode."""
-        trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
-                                freeze_teacher=True, tmp_path=tmp_path)
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, freeze_teacher=True, tmp_path=tmp_path
+        )
         for p in trainer.teacher.parameters():
             assert not p.requires_grad
         assert not trainer.teacher.training
 
-    def test_teacher_trainable_when_freeze_teacher_false(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+    def test_teacher_trainable_when_freeze_teacher_false(
+        self, tiny_bert_model, tiny_bert_teacher, tmp_path
+    ):
         """Co-training: teacher params require grad and model is in train mode."""
-        trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
-                                freeze_teacher=False, tmp_path=tmp_path)
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, freeze_teacher=False, tmp_path=tmp_path
+        )
         assert any(p.requires_grad for p in trainer.teacher.parameters())
         assert trainer.teacher.training
 
-    def test_co_training_optimizer_includes_teacher(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+    def test_co_training_optimizer_includes_teacher(
+        self, tiny_bert_model, tiny_bert_teacher, tmp_path
+    ):
         """create_optimizer() must add teacher param group in co-training."""
-        trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
-                                freeze_teacher=False, tmp_path=tmp_path)
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, freeze_teacher=False, tmp_path=tmp_path
+        )
         optimizer = trainer.create_optimizer()
 
-        assert len(optimizer.param_groups) >= 2, \
+        assert len(optimizer.param_groups) >= 2, (
             "Co-training optimizer must have at least 2 param groups"
+        )
 
         teacher_ids = {id(p) for p in tiny_bert_teacher.parameters()}
         opt_ids = {id(p) for g in optimizer.param_groups for p in g["params"]}
         assert teacher_ids & opt_ids, "Teacher params must be in optimizer"
 
-    def test_co_training_logs_student_and_teacher_grad_norms(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+    def test_co_training_logs_student_and_teacher_grad_norms(
+        self, tiny_bert_model, tiny_bert_teacher, tmp_path
+    ):
         """Co-training: training logs include separate student vs teacher grad L2 norms."""
         captured = []
 
         class CaptureCallback(TrainerCallback):
             def on_log(self, args, state, control, logs=None, **kwargs):
                 if logs:
-                    captured.append(
-                        {k: v for k, v in logs.items() if isinstance(v, (int, float))}
-                    )
+                    captured.append({k: v for k, v in logs.items() if isinstance(v, (int, float))})
 
         ds = _make_dataset()
         args = TrainingArguments(
@@ -188,15 +213,16 @@ class TestDistillationTrainerBasics:
             assert row["student_grad_norm"] >= 0.0
             assert row["teacher_grad_norm"] >= 0.0
 
-    def test_detach_output_intermediates_preserves_logits(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+    def test_detach_output_intermediates_preserves_logits(
+        self, tiny_bert_model, tiny_bert_teacher, tmp_path
+    ):
         """_detach_output_intermediates detaches hidden_states/attentions but not logits."""
-        trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
-                                freeze_teacher=False, tmp_path=tmp_path)
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, freeze_teacher=False, tmp_path=tmp_path
+        )
         batch = _make_batch()
         tiny_bert_teacher.train()
-        outputs = tiny_bert_teacher(
-            **batch, output_hidden_states=True, output_attentions=True
-        )
+        outputs = tiny_bert_teacher(**batch, output_hidden_states=True, output_attentions=True)
 
         detached = trainer._detach_output_intermediates(outputs)
 
@@ -209,7 +235,9 @@ class TestDistillationTrainerBasics:
         # Logits must still be in the graph (not detached)
         assert detached.logits.requires_grad, "Logits must remain attached to graph"
 
-    def test_split_student_coefficients_are_resolved(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+    def test_split_student_coefficients_are_resolved(
+        self, tiny_bert_model, tiny_bert_teacher, tmp_path
+    ):
         """alpha_h/alpha_s should be used as the student hard/soft weights."""
         trainer = _make_trainer(
             tiny_bert_teacher, tiny_bert_model, tmp_path=tmp_path, alpha_h=0.3, alpha_s=0.7
@@ -217,7 +245,9 @@ class TestDistillationTrainerBasics:
         assert trainer.alpha_h == 0.3
         assert trainer.alpha_s == 0.7
 
-    def test_cotrain_teacher_defaults_to_ce_only(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+    def test_cotrain_teacher_defaults_to_ce_only(
+        self, tiny_bert_model, tiny_bert_teacher, tmp_path
+    ):
         """When beta_h/beta_s are omitted in co-training, teacher defaults to CE-only (beta_h=1, beta_s=0)."""
         trainer = _make_trainer(
             tiny_bert_teacher, tiny_bert_model, freeze_teacher=False, tmp_path=tmp_path
@@ -229,6 +259,7 @@ class TestDistillationTrainerBasics:
 # ===========================================================================
 # 2. P0 Gradient Flow
 # ===========================================================================
+
 
 class TestGradientFlow:
     """P0 gradient flow invariants -- the most valuable tests in the suite.
@@ -251,20 +282,25 @@ class TestGradientFlow:
         def fresh_pair():
             torch.manual_seed(42)
             cfg = BertConfig(
-                hidden_size=64, num_hidden_layers=2, num_attention_heads=2,
-                intermediate_size=128, num_labels=3, vocab_size=1000,
+                hidden_size=64,
+                num_hidden_layers=2,
+                num_attention_heads=2,
+                intermediate_size=128,
+                num_labels=3,
+                vocab_size=1000,
                 attn_implementation="eager",
             )
             return BertForSequenceClassification(cfg), BertForSequenceClassification(cfg)
 
         # KD path: high alpha_s to ensure teacher soft labels dominate and produce a clear gradient diff
         teacher_kd, model_kd = fresh_pair()
-        trainer_kd = _make_trainer(teacher_kd, model_kd, alpha_h=0.5, alpha_s=15.0, tmp_path=tmp_path)
+        trainer_kd = _make_trainer(
+            teacher_kd, model_kd, alpha_h=0.5, alpha_s=15.0, tmp_path=tmp_path
+        )
         model_kd.train()
         loss_kd = trainer_kd.compute_loss(model_kd, batch)
         loss_kd.backward()
-        kd_grads = {n: p.grad.clone() for n, p in model_kd.named_parameters()
-                    if p.grad is not None}
+        kd_grads = {n: p.grad.clone() for n, p in model_kd.named_parameters() if p.grad is not None}
 
         # CE-only path
         ce_dir = tmp_path / "ce"
@@ -274,15 +310,14 @@ class TestGradientFlow:
         model_ce.train()
         loss_ce = trainer_ce.compute_loss(model_ce, batch)
         loss_ce.backward()
-        ce_grads = {n: p.grad.clone() for n, p in model_ce.named_parameters()
-                    if p.grad is not None}
+        ce_grads = {n: p.grad.clone() for n, p in model_ce.named_parameters() if p.grad is not None}
 
         diffs = [
             not torch.allclose(kd_grads[n], ce_grads[n], atol=1e-6)
-            for n in kd_grads if n in ce_grads
+            for n in kd_grads
+            if n in ce_grads
         ]
-        assert any(diffs), \
-            "KD gradients must differ from CE-only -- teacher signal has no effect"
+        assert any(diffs), "KD gradients must differ from CE-only -- teacher signal has no effect"
 
     def test_co_training_teacher_gets_ce_only(self, tmp_path):
         """Teacher gradients must come from CE loss only, not KL.
@@ -300,8 +335,12 @@ class TestGradientFlow:
         def fresh_pair():
             torch.manual_seed(42)
             cfg = BertConfig(
-                hidden_size=64, num_hidden_layers=2, num_attention_heads=2,
-                intermediate_size=128, num_labels=3, vocab_size=1000,
+                hidden_size=64,
+                num_hidden_layers=2,
+                num_attention_heads=2,
+                intermediate_size=128,
+                num_labels=3,
+                vocab_size=1000,
                 attn_implementation="eager",
             )
             return BertForSequenceClassification(cfg), BertForSequenceClassification(cfg)
@@ -309,32 +348,45 @@ class TestGradientFlow:
         # alpha_s=1.0, pure co-training (no codistillation to teacher)
         teacher_a, model_a = fresh_pair()
         model_a.train()
-        trainer_a = _make_trainer(teacher_a, model_a, freeze_teacher=False,
-                                  alpha_h=1.0, alpha_s=1.0,
-                                  beta_h=1.0, beta_s=0.0, tmp_path=tmp_path)
+        trainer_a = _make_trainer(
+            teacher_a,
+            model_a,
+            freeze_teacher=False,
+            alpha_h=1.0,
+            alpha_s=1.0,
+            beta_h=1.0,
+            beta_s=0.0,
+            tmp_path=tmp_path,
+        )
         loss_a = trainer_a.compute_loss(model_a, batch)
         loss_a.backward()
-        grads_a = {n: p.grad.clone() for n, p in teacher_a.named_parameters()
-                   if p.grad is not None}
+        grads_a = {n: p.grad.clone() for n, p in teacher_a.named_parameters() if p.grad is not None}
 
         # alpha_s=15.0, same pure co-training setup — large value to ensure any leakage would show up
         dir_b = tmp_path / "b"
         dir_b.mkdir()
         teacher_b, model_b = fresh_pair()
         model_b.train()
-        trainer_b = _make_trainer(teacher_b, model_b, freeze_teacher=False,
-                                  alpha_h=1.0, alpha_s=15.0,
-                                  beta_h=1.0, beta_s=0.0, tmp_path=dir_b)
+        trainer_b = _make_trainer(
+            teacher_b,
+            model_b,
+            freeze_teacher=False,
+            alpha_h=1.0,
+            alpha_s=15.0,
+            beta_h=1.0,
+            beta_s=0.0,
+            tmp_path=dir_b,
+        )
         loss_b = trainer_b.compute_loss(model_b, batch)
         loss_b.backward()
-        grads_b = {n: p.grad.clone() for n, p in teacher_b.named_parameters()
-                   if p.grad is not None}
+        grads_b = {n: p.grad.clone() for n, p in teacher_b.named_parameters() if p.grad is not None}
 
         assert len(grads_a) > 0, "Co-trained teacher must receive gradients"
         for name in grads_a:
-            assert torch.allclose(grads_a[name], grads_b[name], atol=1e-6), \
-                f"Teacher grad for {name} changed with alpha_s -- " \
+            assert torch.allclose(grads_a[name], grads_b[name], atol=1e-6), (
+                f"Teacher grad for {name} changed with alpha_s -- "
                 f"KL/distillation gradients are leaking into teacher"
+            )
 
     def test_feature_loss_not_self_comparison(self, tmp_path):
         """Feature loss must use teacher hidden states, not model's own.
@@ -352,8 +404,12 @@ class TestGradientFlow:
         def fresh_pair():
             torch.manual_seed(42)
             cfg = BertConfig(
-                hidden_size=64, num_hidden_layers=2, num_attention_heads=2,
-                intermediate_size=128, num_labels=3, vocab_size=1000,
+                hidden_size=64,
+                num_hidden_layers=2,
+                num_attention_heads=2,
+                intermediate_size=128,
+                num_labels=3,
+                vocab_size=1000,
                 attn_implementation="eager",
             )
             return BertForSequenceClassification(cfg), BertForSequenceClassification(cfg)
@@ -361,18 +417,20 @@ class TestGradientFlow:
         def run_with_weights(kl_w, feat_w, output_dir):
             teacher, model = fresh_pair()
             kl = KLDistillationLoss(temperature=2.0, ce_loss_coeff=0.5, kd_loss_coeff=0.5)
-            feat = FeatureLossStrategy(ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=layer_mapping)
+            feat = FeatureLossStrategy(
+                ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=layer_mapping
+            )
             strategy = CombinedDistillationLoss(
                 strategies=[kl, feat], weights=[kl_w, feat_w], alpha_h=0.5, alpha_s=0.5
             )
-            trainer = _make_trainer(teacher, model, freeze_teacher=False,
-                                    loss_strategy=strategy, tmp_path=output_dir)
+            trainer = _make_trainer(
+                teacher, model, freeze_teacher=False, loss_strategy=strategy, tmp_path=output_dir
+            )
             trainer.layer_mapping = layer_mapping
             model.train()
             loss = trainer.compute_loss(model, batch)
             loss.backward()
-            return {n: p.grad.clone() for n, p in teacher.named_parameters()
-                    if p.grad is not None}
+            return {n: p.grad.clone() for n, p in teacher.named_parameters() if p.grad is not None}
 
         grads_1 = run_with_weights(0.5, 0.5, tmp_path)
         dir2 = tmp_path / "feat2"
@@ -381,9 +439,10 @@ class TestGradientFlow:
 
         assert len(grads_1) > 0, "Teacher must have gradients"
         for name in grads_1:
-            assert torch.allclose(grads_1[name], grads_2[name], atol=1e-6), \
-                f"Teacher grad for {name} changed with feature weight -- " \
+            assert torch.allclose(grads_1[name], grads_2[name], atol=1e-6), (
+                f"Teacher grad for {name} changed with feature weight -- "
                 f"feature loss gradients are leaking into teacher"
+            )
 
     def test_codistillation_student_kl_does_not_backprop_into_teacher(self, tmp_path):
         """Student KL must not backprop into teacher (teacher_logits.detach() check).
@@ -397,17 +456,25 @@ class TestGradientFlow:
 
         torch.manual_seed(42)
         cfg = BertConfig(
-            hidden_size=64, num_hidden_layers=2, num_attention_heads=2,
-            intermediate_size=128, num_labels=3, vocab_size=1000,
+            hidden_size=64,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            intermediate_size=128,
+            num_labels=3,
+            vocab_size=1000,
             attn_implementation="eager",
         )
         teacher = BertForSequenceClassification(cfg)
         model = BertForSequenceClassification(cfg)
 
         trainer = _make_trainer(
-            teacher, model, freeze_teacher=False,
-            alpha_h=1.0, alpha_s=15.0,
-            beta_h=0.0, beta_s=0.0,
+            teacher,
+            model,
+            freeze_teacher=False,
+            alpha_h=1.0,
+            alpha_s=15.0,
+            beta_h=0.0,
+            beta_s=0.0,
             tmp_path=tmp_path,
         )
         model.train()
@@ -435,8 +502,12 @@ class TestGradientFlow:
         def fresh_pair():
             torch.manual_seed(42)
             cfg = BertConfig(
-                hidden_size=64, num_hidden_layers=2, num_attention_heads=2,
-                intermediate_size=128, num_labels=3, vocab_size=1000,
+                hidden_size=64,
+                num_hidden_layers=2,
+                num_attention_heads=2,
+                intermediate_size=128,
+                num_labels=3,
+                vocab_size=1000,
                 attn_implementation="eager",
             )
             return BertForSequenceClassification(cfg), BertForSequenceClassification(cfg)
@@ -444,31 +515,54 @@ class TestGradientFlow:
         # beta_s=1.0
         teacher_a, model_a = fresh_pair()
         model_a.train()
-        trainer_a = _make_trainer(teacher_a, model_a, freeze_teacher=False,
-                                  alpha_h=1.0, alpha_s=1.0,
-                                  beta_h=1.0, beta_s=1.0, tmp_path=tmp_path)
+        trainer_a = _make_trainer(
+            teacher_a,
+            model_a,
+            freeze_teacher=False,
+            alpha_h=1.0,
+            alpha_s=1.0,
+            beta_h=1.0,
+            beta_s=1.0,
+            tmp_path=tmp_path,
+        )
         loss_a = trainer_a.compute_loss(model_a, batch)
         loss_a.backward()
-        teacher_grads_a = {n: p.grad.clone() for n, p in teacher_a.named_parameters() if p.grad is not None}
-        student_grads_a = {n: p.grad.clone() for n, p in model_a.named_parameters() if p.grad is not None}
+        teacher_grads_a = {
+            n: p.grad.clone() for n, p in teacher_a.named_parameters() if p.grad is not None
+        }
+        student_grads_a = {
+            n: p.grad.clone() for n, p in model_a.named_parameters() if p.grad is not None
+        }
 
         # beta_s=15.0
         dir_b = tmp_path / "b"
         dir_b.mkdir()
         teacher_b, model_b = fresh_pair()
         model_b.train()
-        trainer_b = _make_trainer(teacher_b, model_b, freeze_teacher=False,
-                                  alpha_h=1.0, alpha_s=1.0,
-                                  beta_h=1.0, beta_s=15.0, tmp_path=dir_b)
+        trainer_b = _make_trainer(
+            teacher_b,
+            model_b,
+            freeze_teacher=False,
+            alpha_h=1.0,
+            alpha_s=1.0,
+            beta_h=1.0,
+            beta_s=15.0,
+            tmp_path=dir_b,
+        )
         loss_b = trainer_b.compute_loss(model_b, batch)
         loss_b.backward()
-        teacher_grads_b = {n: p.grad.clone() for n, p in teacher_b.named_parameters() if p.grad is not None}
-        student_grads_b = {n: p.grad.clone() for n, p in model_b.named_parameters() if p.grad is not None}
+        teacher_grads_b = {
+            n: p.grad.clone() for n, p in teacher_b.named_parameters() if p.grad is not None
+        }
+        student_grads_b = {
+            n: p.grad.clone() for n, p in model_b.named_parameters() if p.grad is not None
+        }
 
         # Teacher grads must differ: soft signal is reaching the teacher
         teacher_diffs = [
             not torch.allclose(teacher_grads_a[n], teacher_grads_b[n], atol=1e-6)
-            for n in teacher_grads_a if n in teacher_grads_b
+            for n in teacher_grads_a
+            if n in teacher_grads_b
         ]
         assert any(teacher_diffs), (
             "Teacher gradients are identical despite different beta_s -- "
@@ -487,18 +581,22 @@ class TestGradientFlow:
 # 3. Eval Behavior
 # ===========================================================================
 
+
 class TestEvalBehavior:
     """Eval-time behavior: OOM prevention and correctness."""
 
-    def test_prediction_step_disables_intermediate_outputs(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+    def test_prediction_step_disables_intermediate_outputs(
+        self, tiny_bert_model, tiny_bert_teacher, tmp_path
+    ):
         """prediction_step must disable hidden_states/attentions (OOM prevention).
 
         During eval, accumulated hidden states across the full dataset cause OOM.
         The flags must be False during the step and restored afterward.
         """
         strategy = FeatureLossStrategy(ce_loss_coeff=1.0, kd_loss_coeff=1.0, layer_mapping=[])
-        trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
-                                loss_strategy=strategy, tmp_path=tmp_path)
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, loss_strategy=strategy, tmp_path=tmp_path
+        )
 
         # Starts True because FeatureLossStrategy requires hidden states
         assert trainer.output_hidden_states is True
@@ -512,8 +610,7 @@ class TestEvalBehavior:
             return (None, None, None)
 
         with patch.object(transformers.Trainer, "prediction_step", spy_prediction_step):
-            trainer.prediction_step(tiny_bert_model, _make_batch(),
-                                    prediction_loss_only=True)
+            trainer.prediction_step(tiny_bert_model, _make_batch(), prediction_loss_only=True)
 
         # During the step, flags must be False
         assert captured["hidden"] is False, "output_hidden_states must be False during eval"
@@ -523,13 +620,18 @@ class TestEvalBehavior:
         assert trainer.output_hidden_states is True, "output_hidden_states must be restored"
         assert trainer.output_attentions is False, "output_attentions must be restored to original"
 
-    def test_attention_strategy_sets_output_attentions(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+    def test_attention_strategy_sets_output_attentions(
+        self, tiny_bert_model, tiny_bert_teacher, tmp_path
+    ):
         """Loss strategy with requires_attentions=True sets output_attentions flag."""
         strategy = AttentionLossStrategy(
-            ce_loss_coeff=0.5, kd_loss_coeff=0.5, layer_mapping=[(0, 0), (1, 1)],
+            ce_loss_coeff=0.5,
+            kd_loss_coeff=0.5,
+            layer_mapping=[(0, 0), (1, 1)],
         )
-        trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
-                                loss_strategy=strategy, tmp_path=tmp_path)
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, loss_strategy=strategy, tmp_path=tmp_path
+        )
         assert trainer.output_attentions is True
 
         # Verify compute_loss passes output_attentions to the model
@@ -556,20 +658,25 @@ class TestEvalBehavior:
 # 4. Loss Type String Path
 # ===========================================================================
 
+
 class TestLossTypeStringPath:
     """Tests for loss_type string-based strategy creation (line 105)."""
 
     def test_loss_type_string_creates_strategy(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
         """Passing loss_type as a string should create the corresponding strategy."""
-        trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
-                                loss_type="response_kl", tmp_path=tmp_path)
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, loss_type="response_kl", tmp_path=tmp_path
+        )
         assert trainer.loss_strategy is not None
         assert trainer.loss_strategy.name == "response_kl"
 
-    def test_loss_type_string_produces_valid_loss(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+    def test_loss_type_string_produces_valid_loss(
+        self, tiny_bert_model, tiny_bert_teacher, tmp_path
+    ):
         """loss_type string path should produce a finite loss on a forward pass."""
-        trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
-                                loss_type="response_kl", tmp_path=tmp_path)
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, loss_type="response_kl", tmp_path=tmp_path
+        )
         tiny_bert_model.train()
         batch = _make_batch()
         loss = trainer.compute_loss(tiny_bert_model, batch)
@@ -580,13 +687,15 @@ class TestLossTypeStringPath:
 # 5. Teacher Label Map
 # ===========================================================================
 
+
 class TestTeacherLabelMap:
     """Tests for teacher_label_map remapping (line 238)."""
 
     def test_teacher_label_map_remaps_logits(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
         """teacher_label_map=[2,0,1] should permute teacher logit columns."""
-        trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
-                                teacher_label_map=[2, 0, 1], tmp_path=tmp_path)
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, teacher_label_map=[2, 0, 1], tmp_path=tmp_path
+        )
         tiny_bert_model.train()
         batch = _make_batch()
         loss = trainer.compute_loss(tiny_bert_model, batch)
@@ -594,9 +703,13 @@ class TestTeacherLabelMap:
 
     def test_teacher_label_map_with_co_training(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
         """Co-training + teacher_label_map should recompute teacher CE with remapped logits."""
-        trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
-                                freeze_teacher=False,
-                                teacher_label_map=[2, 0, 1], tmp_path=tmp_path)
+        trainer = _make_trainer(
+            tiny_bert_teacher,
+            tiny_bert_model,
+            freeze_teacher=False,
+            teacher_label_map=[2, 0, 1],
+            tmp_path=tmp_path,
+        )
         tiny_bert_model.train()
         batch = _make_batch()
         loss = trainer.compute_loss(tiny_bert_model, batch)
@@ -610,6 +723,7 @@ class TestTeacherLabelMap:
 # 6. Vocab Size Alignment
 # ===========================================================================
 
+
 class TestVocabAlignment:
     """Tests for vocab size alignment (lines 248-250)."""
 
@@ -620,16 +734,24 @@ class TestVocabAlignment:
         torch.manual_seed(42)
         # Model with 3 labels
         model_cfg = BertConfig(
-            hidden_size=64, num_hidden_layers=2, num_attention_heads=2,
-            intermediate_size=128, num_labels=3, vocab_size=1000,
+            hidden_size=64,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            intermediate_size=128,
+            num_labels=3,
+            vocab_size=1000,
             attn_implementation="eager",
         )
         model = BertForSequenceClassification(model_cfg)
 
         # Teacher with 5 labels (different num_labels = different logit dim)
         teacher_cfg = BertConfig(
-            hidden_size=64, num_hidden_layers=2, num_attention_heads=2,
-            intermediate_size=128, num_labels=5, vocab_size=1000,
+            hidden_size=64,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            intermediate_size=128,
+            num_labels=5,
+            vocab_size=1000,
             attn_implementation="eager",
         )
         teacher = BertForSequenceClassification(teacher_cfg)
@@ -645,14 +767,16 @@ class TestVocabAlignment:
 # 7. Training Progress and Metric Accumulation
 # ===========================================================================
 
+
 class TestTrainingProgressAndMetrics:
     """Tests for training_progress (line 271) and metric flush (lines 317-320)."""
 
     def test_training_progress_with_max_steps(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
         """When max_steps > 0, training_progress should be global_step / max_steps."""
         ds = _make_dataset()
-        trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
-                                tmp_path=tmp_path, max_steps=10, train_dataset=ds)
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, tmp_path=tmp_path, max_steps=10, train_dataset=ds
+        )
         tiny_bert_model.train()
         # create_optimizer + scheduler so state is initialized
         trainer.create_optimizer()
@@ -669,8 +793,12 @@ class TestTrainingProgressAndMetrics:
 
         torch.manual_seed(42)
         cfg = BertConfig(
-            hidden_size=64, num_hidden_layers=2, num_attention_heads=2,
-            intermediate_size=128, num_labels=3, vocab_size=1000,
+            hidden_size=64,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            intermediate_size=128,
+            num_labels=3,
+            vocab_size=1000,
             attn_implementation="eager",
         )
         model = BertForSequenceClassification(cfg)
@@ -718,13 +846,15 @@ class TestTrainingProgressAndMetrics:
 # 8. Co-training Teacher CE Loss
 # ===========================================================================
 
+
 class TestCoTrainingTeacherCE:
     """Tests for co-training teacher CE loss path (line 298)."""
 
     def test_co_training_includes_teacher_ce(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
         """Co-training total_loss should include teacher CE component."""
-        trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
-                                freeze_teacher=False, tmp_path=tmp_path)
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, freeze_teacher=False, tmp_path=tmp_path
+        )
         tiny_bert_model.train()
         batch = _make_batch()
         loss = trainer.compute_loss(tiny_bert_model, batch)
@@ -732,7 +862,9 @@ class TestCoTrainingTeacherCE:
         # Teacher branch logs strategy components with a teacher_ prefix (e.g. ce_raw).
         assert "teacher_ce_raw" in trainer._metric_accumulator
 
-    def test_co_training_loss_larger_than_frozen(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
+    def test_co_training_loss_larger_than_frozen(
+        self, tiny_bert_model, tiny_bert_teacher, tmp_path
+    ):
         """Co-training loss should differ from frozen (includes teacher CE)."""
         from transformers import BertConfig, BertForSequenceClassification
 
@@ -741,8 +873,12 @@ class TestCoTrainingTeacherCE:
         def fresh_pair():
             torch.manual_seed(42)
             cfg = BertConfig(
-                hidden_size=64, num_hidden_layers=2, num_attention_heads=2,
-                intermediate_size=128, num_labels=3, vocab_size=1000,
+                hidden_size=64,
+                num_hidden_layers=2,
+                num_attention_heads=2,
+                intermediate_size=128,
+                num_labels=3,
+                vocab_size=1000,
                 attn_implementation="eager",
             )
             return BertForSequenceClassification(cfg), BertForSequenceClassification(cfg)
@@ -762,8 +898,9 @@ class TestCoTrainingTeacherCE:
         loss_co = trainer_c.compute_loss(model_c, batch)
 
         # They should differ because co-training adds teacher CE
-        assert not torch.allclose(loss_frozen, loss_co, atol=1e-6), \
+        assert not torch.allclose(loss_frozen, loss_co, atol=1e-6), (
             "Co-training loss must differ from frozen (teacher CE added)"
+        )
 
     def test_ctcd_loss_larger_than_cotraining_only(self, tmp_path):
         """CTCD total loss must exceed pure co-training loss.
@@ -779,17 +916,28 @@ class TestCoTrainingTeacherCE:
         def fresh_pair():
             torch.manual_seed(42)
             cfg = BertConfig(
-                hidden_size=64, num_hidden_layers=2, num_attention_heads=2,
-                intermediate_size=128, num_labels=3, vocab_size=1000,
+                hidden_size=64,
+                num_hidden_layers=2,
+                num_attention_heads=2,
+                intermediate_size=128,
+                num_labels=3,
+                vocab_size=1000,
                 attn_implementation="eager",
             )
             return BertForSequenceClassification(cfg), BertForSequenceClassification(cfg)
 
         # Pure co-training: teacher CE only
         teacher_ct, model_ct = fresh_pair()
-        trainer_ct = _make_trainer(teacher_ct, model_ct, freeze_teacher=False,
-                                   alpha_h=1.0, alpha_s=1.0,
-                                   beta_h=1.0, beta_s=0.0, tmp_path=tmp_path)
+        trainer_ct = _make_trainer(
+            teacher_ct,
+            model_ct,
+            freeze_teacher=False,
+            alpha_h=1.0,
+            alpha_s=1.0,
+            beta_h=1.0,
+            beta_s=0.0,
+            tmp_path=tmp_path,
+        )
         model_ct.train()
         loss_cotrain = trainer_ct.compute_loss(model_ct, batch)
 
@@ -797,9 +945,16 @@ class TestCoTrainingTeacherCE:
         dir_ctcd = tmp_path / "ctcd"
         dir_ctcd.mkdir()
         teacher_ctcd, model_ctcd = fresh_pair()
-        trainer_ctcd = _make_trainer(teacher_ctcd, model_ctcd, freeze_teacher=False,
-                                     alpha_h=1.0, alpha_s=1.0,
-                                     beta_h=1.0, beta_s=1.0, tmp_path=dir_ctcd)
+        trainer_ctcd = _make_trainer(
+            teacher_ctcd,
+            model_ctcd,
+            freeze_teacher=False,
+            alpha_h=1.0,
+            alpha_s=1.0,
+            beta_h=1.0,
+            beta_s=1.0,
+            tmp_path=dir_ctcd,
+        )
         model_ctcd.train()
         loss_ctcd = trainer_ctcd.compute_loss(model_ctcd, batch)
 
@@ -813,13 +968,15 @@ class TestCoTrainingTeacherCE:
 # 9. create_optimizer Coverage
 # ===========================================================================
 
+
 class TestCreateOptimizer:
     """Tests covering create_optimizer paths (lines 139, 146)."""
 
     def test_frozen_optimizer_no_teacher_params(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
         """Frozen teacher: optimizer should NOT contain teacher params."""
-        trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
-                                freeze_teacher=True, tmp_path=tmp_path)
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, freeze_teacher=True, tmp_path=tmp_path
+        )
         optimizer = trainer.create_optimizer()
         teacher_ids = {id(p) for p in tiny_bert_teacher.parameters()}
         opt_ids = {id(p) for g in optimizer.param_groups for p in g["params"]}
@@ -827,8 +984,9 @@ class TestCreateOptimizer:
 
     def test_create_optimizer_idempotent(self, tiny_bert_model, tiny_bert_teacher, tmp_path):
         """Calling create_optimizer twice should return the same optimizer (line 146)."""
-        trainer = _make_trainer(tiny_bert_teacher, tiny_bert_model,
-                                freeze_teacher=False, tmp_path=tmp_path)
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, freeze_teacher=False, tmp_path=tmp_path
+        )
         opt1 = trainer.create_optimizer()
         opt2 = trainer.create_optimizer()
         assert opt1 is opt2, "create_optimizer must be idempotent"
@@ -837,6 +995,7 @@ class TestCreateOptimizer:
 # ===========================================================================
 # 10. setup_from_config
 # ===========================================================================
+
 
 class TestSetupFromConfig:
     """Tests for setup_from_config factory method (lines 361-428)."""
@@ -923,13 +1082,21 @@ class TestSetupFromConfig:
         from transformers import BertConfig, BertForSequenceClassification
 
         teacher_cfg = BertConfig(
-            hidden_size=128, num_hidden_layers=4, num_attention_heads=2,
-            intermediate_size=256, num_labels=3, vocab_size=1000,
+            hidden_size=128,
+            num_hidden_layers=4,
+            num_attention_heads=2,
+            intermediate_size=256,
+            num_labels=3,
+            vocab_size=1000,
             attn_implementation="eager",
         )
         model_cfg = BertConfig(
-            hidden_size=64, num_hidden_layers=2, num_attention_heads=2,
-            intermediate_size=128, num_labels=3, vocab_size=1000,
+            hidden_size=64,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            intermediate_size=128,
+            num_labels=3,
+            vocab_size=1000,
             attn_implementation="eager",
         )
         teacher = BertForSequenceClassification(teacher_cfg)
@@ -973,7 +1140,7 @@ class TestSetupFromConfig:
 
     def test_empty_distillation_config(self, tiny_bert_model, tiny_bert_teacher):
         """Empty distillation config should use defaults."""
-        config = {}
+        config: dict = {}
         kwargs, layer_mapping, projector = DistillationTrainer.setup_from_config(
             config, tiny_bert_teacher, tiny_bert_model
         )
@@ -997,7 +1164,9 @@ class TestSetupFromConfig:
                 "loss_type": "response_kl",
             },
         }
-        kwargs, _, _ = DistillationTrainer.setup_from_config(config, tiny_bert_teacher, tiny_bert_model)
+        kwargs, _, _ = DistillationTrainer.setup_from_config(
+            config, tiny_bert_teacher, tiny_bert_model
+        )
         assert kwargs["alpha_h"] == 0.4
         assert kwargs["alpha_s"] == 0.6
         assert kwargs["beta_h"] == 0.9
@@ -1015,7 +1184,9 @@ class TestSetupFromConfig:
                 "loss_type": "response_kl",
             },
         }
-        kwargs, _, _ = DistillationTrainer.setup_from_config(config, tiny_bert_teacher, tiny_bert_model)
+        kwargs, _, _ = DistillationTrainer.setup_from_config(
+            config, tiny_bert_teacher, tiny_bert_model
+        )
         assert kwargs["beta_h"] == 1.0
         assert kwargs["beta_s"] == 0.0
         assert "teacher_loss_strategy" in kwargs
@@ -1024,6 +1195,7 @@ class TestSetupFromConfig:
 # ===========================================================================
 # 11. TeacherEvalCallback — issue #35 regression test
 # ===========================================================================
+
 
 class TestTeacherEvalCallback:
     """Regression tests for TeacherEvalCallback (issue #35).
@@ -1037,13 +1209,18 @@ class TestTeacherEvalCallback:
 
         Regression test for issue #35, fixed in PR #36.
         """
-        from unittest.mock import MagicMock, patch as mock_patch
+        from unittest.mock import MagicMock
+        from unittest.mock import patch as mock_patch
+
         from src.training.callbacks import TeacherEvalCallback
 
         ds = _make_dataset()
         trainer = _make_trainer(
-            tiny_bert_teacher, tiny_bert_model,
-            freeze_teacher=False, tmp_path=tmp_path, train_dataset=ds,
+            tiny_bert_teacher,
+            tiny_bert_model,
+            freeze_teacher=False,
+            tmp_path=tmp_path,
+            train_dataset=ds,
         )
         trainer.eval_dataset = ds
         trainer.compute_metrics = lambda ep: {"accuracy": 0.5}
@@ -1071,12 +1248,16 @@ class TestTeacherEvalCallback:
         Regression test for issue #35, fixed in PR #36.
         """
         from unittest.mock import MagicMock
+
         from src.training.callbacks import TeacherEvalCallback
 
         ds = _make_dataset()
         trainer = _make_trainer(
-            tiny_bert_teacher, tiny_bert_model,
-            freeze_teacher=False, tmp_path=tmp_path, train_dataset=ds,
+            tiny_bert_teacher,
+            tiny_bert_model,
+            freeze_teacher=False,
+            tmp_path=tmp_path,
+            train_dataset=ds,
         )
         # Provide a processing_class so save_pretrained works
         trainer.processing_class = MagicMock()

@@ -1,13 +1,12 @@
 """Incomplete jobs registry with file locking for concurrent SLURM access."""
 
 import contextlib
+import fcntl
 import json
 import logging
 import os
 import subprocess
 from pathlib import Path
-
-import fcntl
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,7 @@ def locked_incomplete_jobs():
     """
     lock = _INCOMPLETE_JOBS.with_suffix(".lock")
     lock.touch(exist_ok=True)
-    with open(lock, "r") as lf:
+    with open(lock) as lf:
         fcntl.flock(lf, fcntl.LOCK_EX)
         try:
             if _INCOMPLETE_JOBS.exists():
@@ -55,7 +54,9 @@ def _job_is_active(job_id: str) -> bool:
     try:
         result = subprocess.run(
             ["squeue", "-j", job_id, "--noheader"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         return bool(result.stdout.strip())
     except (subprocess.TimeoutExpired, FileNotFoundError):

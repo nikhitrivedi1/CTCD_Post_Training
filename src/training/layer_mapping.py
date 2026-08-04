@@ -4,8 +4,6 @@ Maps teacher layers to model layers for feature and attention distillation.
 Used when teacher has more layers than model (e.g., BERT-12 -> DistilBERT-6).
 """
 
-from typing import List, Tuple
-
 
 class UniformMappingStrategy:
     """
@@ -16,7 +14,7 @@ class UniformMappingStrategy:
         (every 2nd teacher layer)
     """
 
-    def map(self, teacher_layers: int, model_layers: int) -> List[Tuple[int, int]]:
+    def map(self, teacher_layers: int, model_layers: int) -> list[tuple[int, int]]:
         """Return list of (teacher_idx, model_idx) pairs."""
         if model_layers == 0:
             return []
@@ -39,7 +37,7 @@ class LastNMappingStrategy:
     Rationale: Later layers often contain more task-specific information.
     """
 
-    def map(self, teacher_layers: int, model_layers: int) -> List[Tuple[int, int]]:
+    def map(self, teacher_layers: int, model_layers: int) -> list[tuple[int, int]]:
         """Return list of (teacher_idx, model_idx) pairs."""
         if model_layers == 0:
             return []
@@ -63,7 +61,7 @@ class FirstLastMappingStrategy:
     high-level semantics. Both are important for knowledge transfer.
     """
 
-    def map(self, teacher_layers: int, model_layers: int) -> List[Tuple[int, int]]:
+    def map(self, teacher_layers: int, model_layers: int) -> list[tuple[int, int]]:
         """Return list of (teacher_idx, model_idx) pairs."""
         if model_layers == 0:
             return []
@@ -101,7 +99,7 @@ class CustomMappingStrategy:
     correspond to which model layers.
     """
 
-    def __init__(self, teacher_indices: List[int], model_indices: List[int]):
+    def __init__(self, teacher_indices: list[int], model_indices: list[int]):
         """
         Initialize with explicit mapping.
 
@@ -116,18 +114,15 @@ class CustomMappingStrategy:
             )
         self.teacher_indices = teacher_indices
         self.model_indices = model_indices
-        self.mapping = list(zip(teacher_indices, model_indices))
+        self.mapping = list(zip(teacher_indices, model_indices, strict=True))
 
-    def map(self, teacher_layers: int, model_layers: int) -> List[Tuple[int, int]]:
+    def map(self, teacher_layers: int, model_layers: int) -> list[tuple[int, int]]:
         """Return the pre-configured mapping."""
         return self.mapping
 
     def validate(self, teacher_layers: int, model_layers: int) -> bool:
         """Check if all indices are within bounds."""
-        return all(
-            0 <= t < teacher_layers and 0 <= s < model_layers
-            for t, s in self.mapping
-        )
+        return all(0 <= t < teacher_layers and 0 <= s < model_layers for t, s in self.mapping)
 
 
 # Registry for factory lookup
@@ -152,8 +147,7 @@ def get_layer_mapping(name: str, **kwargs):
     """
     if name not in LAYER_MAPPING_REGISTRY:
         raise ValueError(
-            f"Unknown layer mapping: {name}. "
-            f"Available: {list(LAYER_MAPPING_REGISTRY.keys())}"
+            f"Unknown layer mapping: {name}. Available: {list(LAYER_MAPPING_REGISTRY.keys())}"
         )
 
     if name == "custom":
