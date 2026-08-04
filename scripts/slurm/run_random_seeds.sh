@@ -2,7 +2,9 @@
 # CTCD best-config random-seed sweep: every file under configs/CTCD_Experiments/<task>/best/<task>_NN_best.yaml
 # for NN in 00..05, repeated for 10 seeds (default list below; override with CTCD_SEEDS).
 #
-# Grid: 6 tasks × 6 ablations × 10 seeds = 360 runs (default TASKS and NUM_ABLATIONS).
+# Grid: 6 tasks × 1 ablation (02, hardcoded in decode_tid) × 10 seeds = 60 runs.
+# To restore the full 6-ablation sweep: set NUM_ABLATIONS=6 and revert decode_tid()'s
+# abl_idx to the commented-out computed version below.
 #
 # Worker-loop pattern: 4 SLURM array tasks (ranks 0–3) loop TIDs R, R+4, R+8, …
 #
@@ -20,8 +22,8 @@
 #
 # --- Smoke tests (repo root, conda env on) ---
 # 1) Files exist:
-#    TASKS=(mnli qqp qnli cola mrpc rte); for t in "${TASKS[@]}"; do for n in 00 01 02 03 04 05; do
-#      test -f "configs/CTCD_Experiments/${t}/best/${t}_${n}_best.yaml" || echo MISSING "$t" "$n"; done; done
+#    TASKS=(mnli qqp qnli cola mrpc rte); for t in "${TASKS[@]}"; do
+#      test -f "configs/CTCD_Experiments/${t}/best/${t}_02_best.yaml" || echo MISSING "$t"; done
 # 2) One rank: MAX_STEPS=20 DEBUG=1 CTCD_COMPLETION_DIR=completed_runs/ctcd_rs_smoke sbatch --array=0 "$0"
 
 #SBATCH --job-name=ctcd_rs
@@ -50,7 +52,7 @@ slurm_print_header
 CONFIG_ROOT="configs/CTCD_Experiments"
 TASKS=(qqp qnli cola mrpc rte mnli)
 NUM_TASKS=${#TASKS[@]}
-NUM_ABLATIONS=6
+NUM_ABLATIONS=1  # restricted to ablation 02 only; see decode_tid()
 
 if [[ -n "${CTCD_SEEDS:-}" ]]; then
     IFS=',' read -ra SEEDS <<<"${CTCD_SEEDS}"
@@ -80,11 +82,15 @@ echo "========================================="
 
 decode_tid() {
     local tid=$1
-    local per_task=$((NUM_ABLATIONS * NUM_SEEDS))
-    local task_idx=$((tid / per_task))
-    local rem=$((tid % per_task))
-    local abl_idx=$((rem / NUM_SEEDS))
-    local seed_idx=$((rem % NUM_SEEDS))
+    local task_idx=$((tid / NUM_SEEDS))
+    local seed_idx=$((tid % NUM_SEEDS))
+    local abl_idx=2  # hardcoded to ablation 02
+    # Full 6-ablation version (revert alongside NUM_ABLATIONS=6 above):
+    #   local per_task=$((NUM_ABLATIONS * NUM_SEEDS))
+    #   local task_idx=$((tid / per_task))
+    #   local rem=$((tid % per_task))
+    #   local abl_idx=$((rem / NUM_SEEDS))
+    #   local seed_idx=$((rem % NUM_SEEDS))
 
     TASK="${TASKS[$task_idx]}"
     local abl_padded
