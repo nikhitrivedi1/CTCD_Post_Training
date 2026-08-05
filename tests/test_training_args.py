@@ -3,7 +3,7 @@
 import pytest
 import yaml
 
-from forge import should_load_best_model, warmup_kwargs_for_training_args
+from forge import should_load_best_model, should_save_last_model, warmup_kwargs_for_training_args
 from src.utils.config import load_config
 
 
@@ -174,6 +174,41 @@ class TestShouldLoadBestModel:
         config = {"checkpointing": {"final_model_save": "bogus"}}
         with pytest.raises(ValueError, match="final_model_save"):
             should_load_best_model(config)
+
+    def test_final_model_save_both_explicit(self):
+        """'both' still needs load_best_model_at_end=True to select the best checkpoint."""
+        config = {
+            "evaluation": {"eval_strategy": "steps"},
+            "checkpointing": {"final_model_save": "both"},
+        }
+        assert should_load_best_model(config) is True
+
+    def test_final_model_save_both_with_eval_disabled_raises(self):
+        config = {
+            "evaluation": {"eval_strategy": "no"},
+            "checkpointing": {"final_model_save": "both"},
+        }
+        with pytest.raises(ValueError, match="final_model_save"):
+            should_load_best_model(config)
+
+
+class TestShouldSaveLastModel:
+    """The last-model export only runs when final_model_save is explicitly 'both'."""
+
+    def test_default_is_false(self):
+        assert should_save_last_model({}) is False
+
+    def test_best_is_false(self):
+        config = {"checkpointing": {"final_model_save": "best"}}
+        assert should_save_last_model(config) is False
+
+    def test_last_is_false(self):
+        config = {"checkpointing": {"final_model_save": "last"}}
+        assert should_save_last_model(config) is False
+
+    def test_both_is_true(self):
+        config = {"checkpointing": {"final_model_save": "both"}}
+        assert should_save_last_model(config) is True
 
 
 class TestKDConfigResolution:

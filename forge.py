@@ -480,19 +480,19 @@ def should_load_best_model(config: dict) -> bool:
         config: Full training config dict.
 
     Returns:
-        True when checkpointing.final_model_save is "best" (the default).
+        True when checkpointing.final_model_save is "best" (the default) or "both".
         False when it is "last" - the run keeps whatever state training ended in.
 
     Raises:
-        ValueError: If final_model_save is "best" but eval isn't actively running
-            (steps/epoch), since there are no eval metrics to pick a best checkpoint
-            from. Also raised if final_model_save is set to anything other than
-            "best" or "last".
+        ValueError: If final_model_save is "best"/"both" but eval isn't actively
+            running (steps/epoch), since there are no eval metrics to pick a best
+            checkpoint from. Also raised if final_model_save is set to anything
+            other than "best", "last", or "both".
     """
     final_model_save = config.get("checkpointing", {}).get("final_model_save", "best")
-    if final_model_save not in ("best", "last"):
+    if final_model_save not in ("best", "last", "both"):
         raise ValueError(
-            f"checkpointing.final_model_save must be 'best' or 'last', got {final_model_save!r}"
+            f"checkpointing.final_model_save must be 'best', 'last', or 'both', got {final_model_save!r}"
         )
     if final_model_save == "last":
         return False
@@ -500,11 +500,23 @@ def should_load_best_model(config: dict) -> bool:
     eval_strategy = config.get("evaluation", {}).get("eval_strategy", "steps")
     if eval_strategy not in ("steps", "epoch"):
         raise ValueError(
-            f"checkpointing.final_model_save is 'best' but evaluation.eval_strategy is {eval_strategy!r} - "
-            "no eval metrics available to select a best checkpoint. Set checkpointing.final_model_save: "
-            "last, or enable evaluation.eval_strategy: steps/epoch."
+            f"checkpointing.final_model_save is {final_model_save!r} but evaluation.eval_strategy is "
+            f"{eval_strategy!r} - no eval metrics available to select a best checkpoint. Set "
+            "checkpointing.final_model_save: last, or enable evaluation.eval_strategy: steps/epoch."
         )
     return True
+
+
+def should_save_last_model(config: dict) -> bool:
+    """Whether to additionally export the last-step model, based on final_model_save.
+
+    Args:
+        config: Full training config dict.
+
+    Returns:
+        True when checkpointing.final_model_save is "both".
+    """
+    return config.get("checkpointing", {}).get("final_model_save", "best") == "both"
 
 
 def no_weights_mode(config: dict) -> bool:
@@ -766,6 +778,39 @@ def _save_final_model(trainer, config, output_dir, processor=None, tokenizer=Non
     )
 
 
+def _save_last_model(trainer, config, output_dir, last_checkpoint, processor=None, tokenizer=None):
+    """Reload the last completed checkpoint and export it to output_dir/last.
+
+    Used when checkpointing.final_model_save is "both", after the best model has
+    already been saved to output_dir (trainer.model holds the best-checkpoint
+    weights at that point because load_best_model_at_end reloaded them at the end
+    of trainer.train()). Reloads the last on-disk checkpoint via the same internal
+    HF mechanism used for --resume, mutating trainer.model in place, then delegates
+    to _save_model for the same merged/base-ref/processor export the best model gets.
+
+    Args:
+        trainer: HF Trainer instance (model mutated in place to last-checkpoint weights)
+        config: Full config dict
+        output_dir: Run output directory (last/ subdir created under this)
+        last_checkpoint: Path to the last completed checkpoint dir, or None if none exist
+        processor: AutoProcessor for VLMs (optional)
+        tokenizer: Tokenizer for causal LMs (optional)
+    """
+    if last_checkpoint is None:
+        logger.warning("final_model_save is 'both' but no checkpoint was found to export as 'last'")
+        return
+
+    logger.info(f"Reloading last checkpoint from {last_checkpoint} for last-model export...")
+    trainer._load_from_checkpoint(last_checkpoint)
+    _save_model(
+        trainer.model,
+        Path(output_dir) / "last",
+        model_name=config["model"]["name"],
+        processor=processor,
+        tokenizer=tokenizer,
+    )
+
+
 def _remove_hf_checkpoint_dirs_after_success(output_dir: Path) -> None:
     """Remove Hugging Face ``checkpoint-*`` trees after a normal training finish.
 
@@ -802,7 +847,7 @@ def _remove_model_weights(output_dir: Path) -> None:
 
     Keeps run metadata (config.yaml, run_metadata.json, training_state.json, output.log).
     Removes weight files (*.safetensors, *.bin, *.pt), HF config/tokenizer files,
-    adapter files, and the teacher/ and base/ subdirectories.
+    adapter files, and the teacher/, base/, and last/ subdirectories.
 
     Called in no_weights mode after post-training evaluation has completed so that
     results are already logged to W&B before weights are removed.
@@ -833,7 +878,7 @@ def _remove_model_weights(output_dir: Path) -> None:
     for path in sorted(output_dir.iterdir()):
         if path.name in _KEEP:
             continue
-        if path.is_dir() and path.name in ("teacher", "base"):
+        if path.is_dir() and path.name in ("teacher", "base", "last"):
             shutil.rmtree(path)
             removed.append(path.name)
         elif path.is_file() and (path.suffix in _WEIGHT_SUFFIXES or path.name in _HF_FILES):
@@ -1139,6 +1184,13 @@ def _train(
                 processor=processor,
                 tokenizer=tokenizer,
             )
+
+        if should_save_last_model(config):
+            last_checkpoint = state.get_resume_checkpoint(output_dir)
+            _save_last_model(
+                trainer, config, output_dir, last_checkpoint, processor=processor, tokenizer=tokenizer
+            )
+
         _remove_hf_checkpoint_dirs_after_success(output_dir)
     else:
         logger.info("Training interrupted - skipping final model save (checkpoint already saved)")
@@ -1357,6 +1409,13 @@ def _train_rl(
     # Save final model (skip if training was interrupted by SLURM signal)
     if not signal_interrupted:
         _save_final_model(trainer, config, output_dir, processor=processor, tokenizer=tokenizer)
+
+        if should_save_last_model(config):
+            last_checkpoint = state.get_resume_checkpoint(output_dir)
+            _save_last_model(
+                trainer, config, output_dir, last_checkpoint, processor=processor, tokenizer=tokenizer
+            )
+
         _remove_hf_checkpoint_dirs_after_success(output_dir)
     else:
         logger.info("Training interrupted - skipping final model save (checkpoint already saved)")
