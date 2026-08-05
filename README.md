@@ -72,6 +72,8 @@ python test_setup.py   # verify the environment
 
 `init.sh` installs conda activate/deactivate hooks (`PATH`, `LD_LIBRARY_PATH`, `HF_HOME`) and Python dependencies from `requirements.txt` (a lockfile generated via `uv` from `pyproject.toml` — don't hand-edit it). Run `init.sh` once per environment creation.
 
+To regenerate the lockfile after changing `pyproject.toml`, always pass `--universal`: `uv pip compile pyproject.toml -o requirements.txt --universal`. Without it, `uv` only resolves for the machine it's run on and silently drops Linux-only CUDA runtime packages (`nvidia-*-cu12`, `triton`) that torch needs on the cluster — since `init.sh` installs with `--no-deps`, pip won't pull them in as transitive deps either.
+
 Then launch a single experiment:
 
 ```bash
