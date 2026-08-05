@@ -1,8 +1,6 @@
 #!/bin/bash
-# Part 1 CTCD grid under configs/CTCD_Experiments/: N tasks × 1 ablation (02, hardcoded
-# below) × 4 LRs × 2 batch sizes × 2 grad-clip modes. N = len(TASKS).
-# To restore the full 6-ablation sweep: set NUM_ABLATIONS=6 and revert decode_tid()'s
-# abl_idx to the commented-out computed version below.
+# Part 1 CTCD grid under configs/CTCD_Experiments/: N tasks × 6 ablations × 4 LRs ×
+# 2 batch sizes × 2 grad-clip modes. N = len(TASKS).
 #
 # Worker-loop pattern: 4 SLURM array tasks (ranks 0–3) each loop through their
 # assigned slice of the grid sequentially (rank R handles TIDs R, R+4, R+8, ...).
@@ -76,8 +74,8 @@ ablation_yaml() {
 WORKERS=4
 RANK=${SLURM_ARRAY_TASK_ID:-0}
 PER_GRID=16
-NUM_ABLATIONS=1  # restricted to ablation 02 only; see decode_tid()
-# NUM_TASKS × NUM_ABLATIONS × PER_GRID (e.g. 6×1×16 = 96)
+NUM_ABLATIONS=6
+# NUM_TASKS × NUM_ABLATIONS × PER_GRID (e.g. 6×6×16 = 576)
 TOTAL=$((NUM_TASKS * NUM_ABLATIONS * PER_GRID))
 
 COMPLETION_DIR="${CTCD_COMPLETION_DIR:-completed_runs/ctcd_part1}"
@@ -97,14 +95,10 @@ echo "========================================="
 decode_tid() {
     local tid=$1
 
-    local task_idx=$(( tid / PER_GRID ))
-    local grid_idx=$(( tid % PER_GRID ))
-    local abl_idx=2  # hardcoded to 02_kd_frozen_sft.yaml
-    # Full 6-ablation version (revert alongside NUM_ABLATIONS=6 above):
-    #   local task_idx=$(( tid / (NUM_ABLATIONS * PER_GRID) ))
-    #   local rem=$(( tid % (NUM_ABLATIONS * PER_GRID) ))
-    #   local abl_idx=$(( rem / PER_GRID ))
-    #   local grid_idx=$(( rem % PER_GRID ))
+    local task_idx=$(( tid / (NUM_ABLATIONS * PER_GRID) ))
+    local rem=$(( tid % (NUM_ABLATIONS * PER_GRID) ))
+    local abl_idx=$(( rem / PER_GRID ))
+    local grid_idx=$(( rem % PER_GRID ))
 
     local lr_idx=$(( grid_idx / 4 ))
     local rem4=$(( grid_idx % 4 ))
