@@ -1,4 +1,4 @@
-name: forge-ctcd
+name: forge
 channels:
   - conda-forge
   - defaults

@@ -63,7 +63,7 @@ The `0`/`1` values above indicate which loss terms are active, not fixed magnitu
 
 ```bash
 conda env create -f environment.yml
-conda activate forge-ctcd
+conda activate forge
 source scripts/env/init.sh
 
 cp .env.example .env   # fill in WANDB_API_KEY, HF_TOKEN, etc.

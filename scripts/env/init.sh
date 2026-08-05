@@ -1,5 +1,5 @@
 #!/bin/bash
-# One-time setup: install conda hooks so `conda activate forge-ctcd`
+# One-time setup: install conda hooks so `conda activate forge`
 # automatically configures PATH, LD_PRELOAD, and HF_HOME.
 #
 # Run this once after creating the conda environment:
