@@ -1,10 +1,10 @@
 # Best Part 1 sweep run for this ablation by student mcc (from W&B).
 # task=cola ablation_index=3 inherit=03_cotrain_base.yaml
-# metric=mcc score=0.5489250601752835
-# wandb_run=p1_cola_a03_lr2em5_b16_c1p0-20260410-1204Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Part1_Search/runs/p1_cola_a03_lr2em5_b16_c1p0-20260410-1204Z
+# metric=mcc score=0.5504031254980248
+# wandb_run=p1_cola_a03_lr2em5_b32_c1p0-20260805-2320Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Experiments/runs/p1_cola_a03_lr2em5_b32_c1p0-20260805-2320Z
 
 inherit: ../03_cotrain_base.yaml
 training:
   learning_rate: 2e-5
-  batch_size: 16
+  batch_size: 32
   max_grad_norm: 1

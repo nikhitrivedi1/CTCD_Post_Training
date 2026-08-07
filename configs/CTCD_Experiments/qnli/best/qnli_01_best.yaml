@@ -1,10 +1,10 @@
 # Best Part 1 sweep run for this ablation by student accuracy (from W&B).
 # task=qnli ablation_index=1 inherit=01_kd_frozen_base.yaml
-# metric=accuracy score=0.891085484166209
-# wandb_run=p1_qnli_a01_lr2em5_b16_c0p0-20260406-0246Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Part1_Search/runs/p1_qnli_a01_lr2em5_b16_c0p0-20260406-0246Z
+# metric=accuracy score=0.8927329306241991
+# wandb_run=p1_qnli_a01_lr3em5_b32_c0p0-20260806-0509Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Experiments/runs/p1_qnli_a01_lr3em5_b32_c0p0-20260806-0509Z
 
 inherit: ../01_kd_frozen_base.yaml
 training:
-  learning_rate: 2e-5
-  batch_size: 16
+  learning_rate: 3e-5
+  batch_size: 32
   max_grad_norm: 0
