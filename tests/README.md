@@ -2,7 +2,7 @@
 
 ## Overview
 
-Forge tests are organized into concentric rings. **Core** is tested thoroughly with property-based, parametrized tests. Extensions, compatibility, and benchmarks are added later as needed.
+Forge tests are organized into concentric rings. **Core** is tested thoroughly with property-based, parametrized tests. Extensions and compatibility are added later as needed.
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -21,12 +21,11 @@ Forge tests are organized into concentric rings. **Core** is tested thoroughly w
 │  │  │  environment                            │  │  │
 │  │  └─────────────────────────────────────────┘  │  │
 │  │                                               │  │
-│  │  handlers, rewards, callbacks,                │  │
-│  │  formatters, inference engine,                │  │
+│  │  handlers, callbacks, formatters,             │  │
 │  │  workbench (CKA, probing, etc.)               │  │
 │  └───────────────────────────────────────────────┘  │
 │                                                     │
-│  Llama, Qwen VLM, DistilBERT, LoRA adapters         │
+│  DistilBERT                                        │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -35,7 +34,7 @@ Forge tests are organized into concentric rings. **Core** is tested thoroughly w
 The 12 modules every training run touches. Tested to ~99% coverage.
 
 | Module        | Source                           | What it does                                                                            |
-|---------------|----------------------------------|-----------------------------------------------------------------------------------------|
+|---------------|-----------------------------------|-----------------------------------------------------------------------------------------|
 | Losses        | `src/training/losses.py`         | 9 distillation loss strategies (KL, MSE, cosine, feature, attention, combined, staged)  |
 | Trainer       | `src/training/trainer.py`        | DistillationTrainer: model + teacher forward, loss computation, co-training             |
 | Config        | `src/utils/config.py`            | YAML loading with inheritance and deep merge                                            |
@@ -43,7 +42,7 @@ The 12 modules every training run touches. Tested to ~99% coverage.
 | Loader        | `src/models/loader.py`           | Model loading, task routing, checkpoint resolution                                      |
 | Checkpoint    | `src/utils/checkpoint.py`        | Training state persistence, resume logic                                                |
 | Evaluate      | `src/evaluation/evaluate.py`     | Evaluation pipeline, transfer metrics                                                   |
-| Metrics       | `src/evaluation/metrics.py`      | Classification, translation, OCR metric computation                                     |
+| Metrics       | `src/evaluation/metrics.py`      | Classification metric computation                                                       |
 | Collators     | `src/data/collators.py`          | Data collation with prompt masking                                                      |
 | Layer Mapping | `src/training/layer_mapping.py`  | Teacher-to-model layer correspondence strategies                                        |
 | Projections   | `src/training/projections.py`    | Dimension alignment for feature distillation                                            |
@@ -53,19 +52,16 @@ The 12 modules every training run touches. Tested to ~99% coverage.
 
 Pluggable, task-specific modules. Tested at their boundary with one contract test per extension.
 
-- Dataset handlers (GLUE, Europarl, OCR handlers)
-- Reward functions (GRPO/RL)
+- Dataset handlers (GLUE)
 - Callbacks (SLURM signal, teacher eval, peak metrics)
-- Formatters (SFT/RL data formatting)
-- Inference engine (deployment pipeline)
+- Formatters (SFT data formatting)
 - Workbench (CKA, probing, attention analysis, disagreement)
 
 ### Compatibility (future)
 
 Validates specific model architectures against the framework. Downloads real models, requires network + GPU.
 
-- Llama, Qwen VLM, DistilBERT
-- LoRA adapter loading and merging
+- DistilBERT, BERT
 
 ---
 
@@ -113,8 +109,8 @@ tests/
     test_registry.py         # structure, mutual exclusivity, factory functions
     test_loader.py           # routing, attention config, mock model loading
     test_checkpoint.py       # round-trip, is_complete, corrupt recovery, resume
-    test_evaluate.py         # evaluate_model, transfer metrics, classification/OCR metrics
-    test_collators.py        # VLM prompt masking, padding, label creation
+    test_evaluate.py         # evaluate_model, transfer metrics, classification metrics
+    test_collators.py        # padding, label creation
     test_layer_mapping.py    # 4 strategies parametrized, bounds, validation
     test_projections.py      # 3 types parametrized, gradient flow, factories
     test_environment.py      # device detection, SLURM/Colab/local, num_workers
@@ -172,7 +168,7 @@ pytest tests/unit/ --no-cov --tb=long
 ## Markers
 
 | Marker  | Meaning                                    |
-|---------|--------------------------------------------|
+|---------|---------------------------------------------|
 | `gpu`   | Requires accelerator (CUDA or MPS)         |
 | `slow`  | Takes > 30s                                |
 | `xfail` | Known failure, tracked by issue number     |
@@ -186,7 +182,7 @@ Coverage is measured automatically via `--cov=src` in `pyproject.toml`. The cove
 ### Current Core Coverage
 
 | Module           | Coverage |
-|------------------|----------|
+|-------------------|----------|
 | losses.py        | 99%      |
 | trainer.py       | 100%     |
 | config.py        | 100%     |

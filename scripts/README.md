@@ -7,24 +7,15 @@ scripts/
   slurm/                    # SLURM job scripts + shared utilities
     slurm_essentials.sh     # Shared: SIGUSR1 trap, env setup, GPU detection, .incomplete_jobs reader
     run_training.sh         # Training with auto-resubmit
-    run_bench.sh            # Benchmark eval (olmocr/omnidoc) with auto-resubmit
     run_score.sh            # Score-only (CPU, no GPU)
-    run_data_prep.sh        # Data preparation (olmocr-mix, synthmix, omnidocbench)
+    run_ctcd_part1_sweep.sh # CTCD Part 1 grid search sweep (see CTCD_PART1_TEAM_RUNBOOK.md)
   gpu_keep-alive.py         # Prevent idle GPU timeout in OOD sessions
-  eval/
-    olmocr_bench.py         # olmOCR-Bench scoring
-    omnidoc_bench.py        # OmniDocBench formatting scoring
-  data/
-    prepare.py                  # Unified data prep CLI (all datasets)
-    olmocr_mix_pipeline.py      # Internal: olmOCR-mix download + render pipeline
-    formatting_generator.py     # Internal: synthetic formatting data generator
   models/
     push_to_hub.py          # Push trained models/checkpoints to HF Hub
     pull_from_hub.py        # Download models from HF Hub
   env/
     init.sh                 # One-time: install conda hooks for PATH/LD_LIBRARY_PATH
     activate.sh             # Per-session: set LD_LIBRARY_PATH, source .env
-  run_colab.ipynb           # Google Colab notebook
 ```
 
 ## Environment Setup
@@ -53,8 +44,8 @@ source scripts/env/activate.sh
 ### Why this is needed
 
 On HPC nodes, `import torch` loads CUDA libraries which pull in the system's
-older `libstdc++.so`. This "poisons" the process - conda packages like olmocr
-(via ICU) need `CXXABI_1.3.15` (only in conda's newer `libstdc++.so`), but the
+older `libstdc++.so`. This "poisons" the process - conda packages need
+`CXXABI_1.3.15` (only in conda's newer `libstdc++.so`), but the
 linker already loaded the old one. Setting `LD_LIBRARY_PATH=$CONDA_PREFIX/lib`
 ensures conda's libraries are found first.
 
@@ -71,20 +62,12 @@ All SLURM scripts source `scripts/slurm/slurm_essentials.sh` which provides:
 - **`slurm_read_incomplete`**: Read `.incomplete_jobs` entry for current job
 - **`slurm_is_complete`**: Check `training_state.json` for completion
 
-### Training (`slurm/run_training.sh`)
+### Training (`slurm/run_training.sh`, `slurm/run_ctcd_part1_sweep.sh`)
 
 - Signal: `SIGUSR1@120`
 - Python handles SIGUSR1 internally (SLURMSignalCallback)
 - Resume: Automatic via `.incomplete_jobs` JSON + `sbatch`
 - State: HuggingFace Trainer checkpoints + `training_state.json`
-
-### Evaluation (`slurm/run_bench.sh`)
-
-- Signal: `SIGUSR1@120`
-- Shell kills background Python on SIGUSR1 (C extensions block signal handlers)
-- Resume: Automatic via `.incomplete_jobs` JSON + `sbatch`
-- State: Per-page atomic writes (temp file + rename), skip existing on resume
-- Supports both olmOCR-Bench and OmniDocBench via first arg (`olmocr` or `omnidoc`)
 
 ### Writing New SLURM Scripts
 

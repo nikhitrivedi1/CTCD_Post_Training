@@ -123,7 +123,7 @@ Central to correctness. Since `DistillationTrainer` extends HF `Trainer` (which 
 ### 4. Registry (`src/tasks/registry.py`)
 
 - Every task has: num_labels, type, primary_metric
-- `is_classification_task` / `is_translation_task` / `is_ocr_task` are mutually exclusive
+- `is_classification_task` is mutually exclusive with other task-type categorizations
 - No task appears in multiple type categories
 - Factory functions return correct values for known tasks, None for unknown
 
@@ -133,7 +133,7 @@ Pure routing logic tested with mocks. Forward-pass correctness tested in Trainer
 
 - `needs_attention_outputs()` correctly parses config for attention/feature loss types
 - `_detect_attn_implementation()`: eager when requested, sdpa on CUDA, None otherwise
-- Task routing: classification -> `_load_classifier`, translation -> `_load_causal_lm`, ocr -> `_load_vlm`
+- Task routing: classification -> `_load_classifier`
 
 ### 6. Checkpoint (`src/utils/checkpoint.py`)
 
@@ -150,8 +150,7 @@ Uses `tiny_bert_model` + a synthetic dataset (random input_ids, attention_mask, 
 - `evaluate_model()` returns a dict with expected metric keys and finite values
 - Model restored to original training mode after eval
 - `log_transfer_metrics()` computes correct teacher advantage, model gain, transfer efficiency
-- `_edit_distance`: symmetric, zero for identical strings
-- `get_compute_metrics()` routes classification/translation/ocr to correct function
+- `get_compute_metrics()` routes to `compute_classification_metrics`
 
 ### 8. Collators (`src/data/collators.py`)
 
@@ -214,7 +213,7 @@ pytest -m "not slow"       # skip slow tests
 ## Markers
 
 | Marker   | Meaning                                    |
-|----------|--------------------------------------------|
+|----------|---------------------------------------------|
 | `gpu`    | Requires accelerator (CUDA or MPS)         |
 | `slow`   | Takes > 30s                                |
 
@@ -232,7 +231,7 @@ Target: 80%+ on Core modules.
 
 Not in scope now. Add when needed.
 
-- **Extension tests**: Dataset handlers, rewards, callbacks, formatters, inference engine, VLM collator, LoRA.
+- **Extension tests**: Dataset handlers, callbacks, formatters.
 - **Workbench tests**: CKA, probing, attention entropy, disagreement analysis.
-- **Compatibility tests** (`tests/compat/`): Validate specific architectures (Llama, Qwen VLM, DistilBERT) against the framework.
+- **Compatibility tests** (`tests/compat/`): Validate DistilBERT/BERT against the framework.
 - **Performance benchmarks**: Training step throughput, memory usage regression checks.

@@ -1,86 +1,60 @@
 # Configuration Directory Structure
 
-**116 config files** (71 runnable + 40 base.yaml + 5 meta).
-
 ```
 configs/
 ├── base.yaml                              # Root defaults (training, logging, checkpointing)
-├── TEMPLATE.yaml                          # Config parameter reference
-├── examples/                              # Example configs (4)
-├── classification/
-│   ├── base.yaml                          # Classification defaults (T=2, α=0.5)
-│   ├── mnli/
-│   │   ├── base.yaml                      # MNLI task passthrough
-│   │   └── distilbert/
-│   │       ├── 00_sft.yaml               # SFT baseline (no teacher)
-│   │       └── bert-base/
-│   │           ├── base.yaml              # Model pair: BERT→DistilBERT on MNLI
-│   │           ├── ablations/             # Teacher/training ablations (4 configs)
-│   │           ├── far/                   # FAR factorial study (8 configs)
-│   │           ├── staged/                # Staged distillation (4 configs)
-│   │           └── gpu/                   # GPU-specific batch/LR configs (10)
-│   ├── qqp/                               # QQP paraphrase detection (SFT + 4 ablations)
-│   ├── sst2/                              # SST-2 sentiment (SFT + 4 ablations)
-│   ├── cola/                              # CoLA linguistic acceptability (SFT + 4 ablations)
-│   ├── mrpc/                              # MRPC paraphrase detection (SFT + 4 ablations)
-│   ├── qnli/                              # QNLI QA entailment (SFT + 4 ablations)
-│   ├── rte/                               # RTE textual entailment (SFT + 4 ablations)
-│   ├── wnli/                              # WNLI Winograd NLI (SFT + 4 ablations)
-│   └── clinc150/                          # CLINC150 intent classification (SFT baseline)
-│       ├── base.yaml                      # CLINC150 task passthrough
-│       └── distilbert/
-│           ├── base.yaml                  # DistilBERT model defaults
-│           └── 00_sft.yaml                # SFT baseline (no teacher)
-├── translation/
-│   ├── base.yaml                          # Translation defaults (T=15, α=0.2, BLEU eval)
-│   └── europarl/
-│       └── llama32-1b/
-│           ├── 00_sft.yaml               # SFT baseline
-│           └── llama32-3b/
-│               ├── base.yaml              # Model pair: Llama 3.2 3B→1B
-│               ├── ablations/             # Teacher/training ablations (4 configs)
-│               ├── far/                   # FAR factorial study (8 configs)
-│               └── staged/                # Staged distillation (4 configs)
-└── ocr/
-    ├── base.yaml                          # OCR defaults (visual tokens, bfloat16, metrics)
-    ├── olmocr-mix/
-    │   ├── base.yaml                      # Dataset base (LoRA, training defaults)
-    │   ├── sizes/                         # Data size variants (5k, 25k, 50k, full)
-    │   ├── qwen3vl-2b/
-    │   │   ├── 00_sft.yaml               # SFT baseline
-    │   │   ├── rl/00_grpo.yaml           # GRPO on olmocr-mix data
-    │   │   └── olmocr2-7b/               # KD with olmocr2-7b teacher
-    │   └── qwen25vl-3b/                   # SFT + 2 KD configs
-    ├── synthmix/
-    │   └── qwen3vl-2b/
-    │       └── rl/00_grpo.yaml           # GRPO with unit test rewards
-    ├── omnidocbench/
-    │   └── qwen3vl-2b/
-    │       └── rl/00_grpo.yaml           # GRPO with 5 rewards
-    └── formatting/
-        └── qwen3vl-2b/
-            └── rl/00_grpo.yaml           # GRPO with inline formatting rewards
+├── CTCD_Experiments/                      # The paper's config suite — see below
+└── classification/                        # Pre-paper exploratory suite — see note below
+    ├── base.yaml                          # Classification defaults (T=2, α=0.5)
+    ├── mnli/
+    │   ├── base.yaml                      # MNLI task passthrough
+    │   └── distilbert/
+    │       ├── 00_sft.yaml               # SFT baseline (no teacher)
+    │       └── bert-base/
+    │           ├── base.yaml              # Model pair: BERT→DistilBERT on MNLI
+    │           ├── ablations/             # Teacher/training ablations (4 configs)
+    │           ├── far/                   # FAR factorial study (8 configs)
+    │           ├── staged/                # Staged distillation (4 configs)
+    │           └── gpu/                   # GPU-specific batch/LR configs (10)
+    ├── qqp/                               # QQP paraphrase detection (SFT + 4 ablations)
+    ├── sst2/                              # SST-2 sentiment (SFT + 4 ablations)
+    ├── cola/                              # CoLA linguistic acceptability (SFT + 4 ablations)
+    ├── mrpc/                              # MRPC paraphrase detection (SFT + 4 ablations)
+    ├── qnli/                              # QNLI QA entailment (SFT + 4 ablations)
+    ├── rte/                               # RTE textual entailment (SFT + 4 ablations)
+    ├── wnli/                              # WNLI Winograd NLI (SFT + 4 ablations)
+    └── clinc150/                          # CLINC150 intent classification (SFT baseline)
+        ├── base.yaml                      # CLINC150 task passthrough
+        └── distilbert/
+            ├── base.yaml                  # DistilBERT model defaults
+            └── 00_sft.yaml                # SFT baseline (no teacher)
 ```
 
-## Config Counts
+## `CTCD_Experiments/` — the paper's config suite
 
-| Category | Count |
-|----------|-------|
-| Classification SFT | 9 (1 per task) |
-| Classification Ablations | 33 (4 per task + 1 obsolete) |
-| Classification FAR | 8 (MNLI) |
-| Classification Staged | 4 (MNLI) |
-| Classification GPU | 10 (MNLI hardware variants) |
-| Translation SFT | 1 |
-| Translation Ablations | 4 |
-| Translation FAR | 8 |
-| Translation Staged | 4 |
-| OCR SFT + KD | 6 |
-| OCR GRPO | 4 (1 per dataset) |
-| Examples | 4 |
-| **Total Runnable** | **91** |
+This is the config tree that actually produced the paper's results (see root `README.md` and
+`configs/CTCD_Experiments/CTCD_PART1_TEAM_RUNBOOK.md`). Six ablations per task, across mnli, qqp, qnli, cola,
+mrpc, rte, sst2, and clinc150:
 
-Plus 40 base.yaml files + TEMPLATE.yaml = 116 total YAML files.
+| Config | Teacher | Mode | Description |
+|--------|---------|------|-------------|
+| 00 | None | – | SFT, CE only (no distillation) |
+| 01 | Base (non-SFT) | Frozen | Frozen pretrained teacher |
+| 02 | SFT | Frozen | Frozen task-fine-tuned teacher |
+| 03 | Base (non-SFT) | Co-train | Co-trained teacher, CE-only teacher loss (`beta_s=0`) |
+| 04 | SFT | Co-train | Co-trained teacher, CE-only teacher loss (`beta_s=0`) |
+| 05 | Base (non-SFT) | Co-train + co-distill | Full CTCD (`beta_h=1`, `beta_s=1`) |
+
+`_shared.yaml` holds cross-task defaults (loss type, temperature, alpha/beta weights); each task's `base.yaml`
+layers task-specific cadence/eval overrides on top. `best/` and `best_seed/` hold the winning hyperparameter
+configs from the Part 1 grid search and multi-seed replication, respectively.
+
+## `classification/` — pre-paper exploratory suite (not the paper's results)
+
+**This directory predates `CTCD_Experiments/` and is not what the paper's numbers come from.** It's a broader
+playground built while exploring the design space — more tasks (including WNLI, which isn't in the paper) and
+more experiment types (FAR factorial, staged distillation, GPU hardware variants). It's kept for reference; use
+`CTCD_Experiments/` to reproduce the paper.
 
 ## Inheritance Convention
 
@@ -90,21 +64,14 @@ Every directory has a `base.yaml` that chains to its parent:
 
 ```
 base.yaml                                    # Root defaults
-    └── {task_type}/base.yaml                # classification/ or translation/
+    └── classification/base.yaml             # Classification defaults
         └── {task}/base.yaml                 # Task passthrough (mnli, qqp, etc.)
             └── {model_pair}/base.yaml       # Model/data config
                 └── {experiment}/base.yaml   # Experiment passthrough
                     └── *.yaml               # Final configs (inherit: ../base.yaml)
 ```
 
-## Key Parameters by Task Type
-
-| Type           | Temperature | Alpha | Rationale                              |
-|----------------|-------------|-------|----------------------------------------|
-| Classification | 2.0         | 0.5   | Small output space (2-3 classes)       |
-| Translation    | 15.0        | 0.2   | Large vocab (128k tokens)              |
-
-## Experiment Types
+## Experiment Types (`classification/`)
 
 | Experiment   | Description                                           |
 |--------------|-------------------------------------------------------|
@@ -113,117 +80,25 @@ base.yaml                                    # Root defaults
 | `staged/`    | Curriculum: F→R, A→R, F→A→R progressions              |
 | `gpu/`       | Hardware-specific batch/LR scaling                    |
 
-## OCR Dataset Structure
-
-OCR configs are organized per-dataset, not per-pipeline. Each dataset that a model trains on gets its own directory, even if the RL run starts from an SFT checkpoint trained on a different dataset (e.g., olmocr-mix).
-
-```
-configs/ocr/{dataset}/{model}/
-    base.yaml         # Model config (inherits ../base.yaml)
-    rl/
-        base.yaml     # RL passthrough (inherits ../base.yaml)
-        00_grpo.yaml  # RL config (inherits base.yaml)
-```
-
-Inheritance chain (every level is `../base.yaml`):
-```
-configs/base.yaml
-    └── ocr/base.yaml                    # Visual tokens, bfloat16, OCR metrics
-        └── {dataset}/base.yaml          # Dataset data paths, LoRA, training defaults
-            └── {model}/base.yaml        # Model name/processor
-                └── rl/base.yaml         # RL passthrough
-                    └── 00_grpo.yaml     # Experiment-specific overrides
-```
-
-The SFT adapter is injected at runtime via the `ADAPTER` env var, not hardcoded in config:
-```bash
-ADAPTER=outputs/<sft_checkpoint> \
-    sbatch scripts/slurm/run_training.sh configs/ocr/formatting/qwen3vl-2b/rl/00_grpo.yaml
-```
-
-Similarly, the KD teacher checkpoint is injected via `TEACHER_ADAPTER`:
-```bash
-TEACHER_ADAPTER=outputs/<teacher_checkpoint> \
-    sbatch scripts/slurm/run_training.sh <run_name> configs/.../kd/01_response-kl.yaml
-```
-
-## FAR Factorial Design
-
-**F**eature → **A**ttention → **R**esponse ordering:
-
-| Config | F | A | R | Description |
-|--------|---|---|---|-------------|
-| 00 | 0 | 0 | 0 | CE only (baseline) |
-| 01 | 1 | 0 | 0 | Feature only |
-| 02 | 0 | 1 | 0 | Attention only |
-| 03 | 0 | 0 | 1 | Response only (classic KL) |
-| 04 | 1 | 1 | 0 | Feature + Attention |
-| 05 | 1 | 0 | 1 | Feature + Response |
-| 06 | 0 | 1 | 1 | Attention + Response |
-| 07 | 1 | 1 | 1 | Full FAR |
-
-## Ablation Study Design
-
-| Config | Teacher | Mode | Description |
-|--------|---------|------|-------------|
-| 00 | None | - | CE only (no distillation) |
-| 01 | Base | Frozen | Frozen base teacher |
-| 02 | SFT | Frozen | Frozen fine-tuned teacher |
-| 03 | Base | Co-train | Co-trained base teacher |
-| 04 | SFT | Co-train | Co-trained SFT teacher |
-
 ## Run Naming Convention
 
 Format: `{task}_{experiment}_{config}_{timestamp}`
 
-Examples:
-- `mnli_far_03-r-only_20240115-1430Z`
-- `translation_staged_02-a-r_20240115-1430Z`
+Example: `mnli_far_03-r-only_20240115-1430Z`
 
 Timestamp: `YYYYMMDD-HHMMZ` (UTC)
 
 ## Design Rationale
 
-**Path structure:** `configs/{type}/{task}/{model_pair}/{experiment}/{config}.yaml`
+**Path structure:** `configs/classification/{task}/{model_pair}/{experiment}/{config}.yaml`
 
 Two structures were considered:
 
 1. `{task}/{model_pair}/{experiment}/` (current)
 2. `{task}/{experiment}/{model_pair}/`
 
-We chose (1) because it matches our research workflow:
-
-1. **Fix model pair** → Run all experiments on BERT→DistilBERT + MNLI
-2. **Validate findings** → Same model pair on other tasks (QQP, SST-2, CoLA)
-3. **Scale model pair** → Try larger models (LLaMA 3B→1B)
-
-The alternative (2) would be better if comparing model pairs within experiments, but our research fixes the model pair first and varies experiments.
-
-## Research Workflow
-
-### Phase 1: Ablation Study (Teacher Setup)
-Establish baseline with BERT→DistilBERT on MNLI:
-- `00_sft` - Student alone (lower bound)
-- `01_kd_frozen-base` - Frozen pretrained teacher
-- `02_kd_frozen-sft` - Frozen task-trained teacher
-- `03_kd_cotrain-base` - Co-training from pretrained
-- `04_kd_cotrain-sft` - Co-training from task-trained
-
-### Phase 2: FAR Factorial Study
-8 combinations of Feature/Attention/Response signals on best teacher setup.
-
-### Phase 3: Staged Distillation
-Progressive signal introduction:
-- `00_r` - Response only
-- `01_f-r` - Feature → Response
-- `02_a-r` - Attention → Response
-- `03_f-a-r` - Feature → Attention → Response
-
-### Phase 4: Cross-Task Validation
-Replicate ablations on QQP, SST-2, CoLA to verify findings generalize.
-
-### Phase 5: Model Pair Scaling
-Apply best practices to LLaMA 3B→1B on Europarl translation.
+We chose (1) because it matches the research workflow: fix the model pair (BERT→DistilBERT), validate an
+experiment on one task (MNLI), then replicate across the other GLUE tasks (QQP, SST-2, CoLA, ...).
 
 ## W&B Organization
 
