@@ -19,6 +19,7 @@
 #   sbatch scripts/slurm/run_ctcd_part1_sweep_TASK.sh
 #
 # Optional env:
+#   CTCD_TASKS            comma-separated tasks, e.g. mnli,qqp (default: all 6 tasks)
 #   CTCD_COMPLETION_DIR   default: completed_runs/ctcd_part1_task
 #   CTCD_RUN_SUFFIX       appended to every run name (default: _TASK)
 #   SEED MAX_STEPS EPOCHS DEBUG FORCE TIMESTAMP  forwarded by run_training.sh
@@ -52,7 +53,11 @@ slurm_print_header
 export WANDB_INIT_TIMEOUT=300
 
 CONFIG_ROOT="configs/CTCD_Experiments"
-TASKS=(mnli qqp qnli cola mrpc rte)
+if [[ -n "${CTCD_TASKS:-}" ]]; then
+    IFS=',' read -ra TASKS <<<"${CTCD_TASKS}"
+else
+    TASKS=(mnli qqp qnli cola mrpc rte)
+fi
 NUM_TASKS=${#TASKS[@]}
 # shellcheck disable=SC2034
 LRS=(1e-5 2e-5 3e-5 5e-5)
