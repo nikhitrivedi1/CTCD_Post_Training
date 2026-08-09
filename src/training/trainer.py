@@ -213,39 +213,59 @@ class DistillationTrainer(FinetuningTrainer):
         if self.output_attentions:
             logger.info(f"  Output attentions: True (required by {self.loss_strategy.name})")
 
-    def _record_student_teacher_grad_norms_for_logging(self) -> None:
+    def _clip_grad_norm(self, model):
         """
-        Before the optimizer step, store L2 grad norms for student vs teacher.
-        Called from a callback at ``on_pre_optimizer_step`` (before HF Trainer's
-        own clip_grad_norm_ call); values are merged into the next training ``log()``.
+        Clip student AND teacher gradients to ``max_grad_norm`` (co-training only).
 
-        Does not call accelerator.unscale_gradients() — HF Trainer calls it
-        immediately after on_pre_optimizer_step for gradient clipping, and calling
-        unscale_() twice on the same optimizer raises a RuntimeError. Instead, raw
-        norms are read from scaled gradients and divided by the AMP scale factor to
-        recover true gradient magnitudes.
+        HF's default (``Trainer._clip_grad_norm``) only clips ``model.parameters()`` -
+        the student. The teacher's params live in a second optimizer param group
+        (added in ``create_optimizer``) that HF's own clipping call never sees, so the
+        teacher previously took unbounded gradient steps regardless of
+        ``max_grad_norm``. Called by HF's inner training loop only when
+        ``self.args.max_grad_norm > 0``, so no extra guard is needed here.
+
+        We unscale the optimizer's gradients exactly once, ourselves, then clip
+        both models directly with ``torch.nn.utils.clip_grad_norm_`` (not
+        ``accelerator.clip_grad_norm_``, which would try to unscale a second time
+        and raise under AMP). This makes correctness independent of any internal
+        ordering between HF's training loop and callback dispatch.
+
+        Args:
+            model: The student model, as passed by HF's training loop.
+
+        Returns:
+            Pre-clip L2 norm of the student's gradients (same contract as HF's
+            default ``_clip_grad_norm``).
         """
         if self.freeze_teacher:
-            return
-        student_mod = self.accelerator.unwrap_model(self.model)
-        student_params = [p for p in student_mod.parameters() if p.requires_grad]
+            return super()._clip_grad_norm(model)
+
+        student_params = [p for p in model.parameters() if p.requires_grad]
         teacher_params = [p for p in self.teacher.parameters() if p.requires_grad]
 
-        scale = self.accelerator.scaler.get_scale() if self.accelerator.scaler is not None else 1.0
+        self.accelerator.unscale_gradients()  # whole optimizer - student + teacher groups - once
+        student_norm = torch.nn.utils.clip_grad_norm_(student_params, self.args.max_grad_norm)
+        teacher_norm = torch.nn.utils.clip_grad_norm_(teacher_params, self.args.max_grad_norm)
 
-        if not student_params:
-            student_norm = 0.0
-        else:
-            sn = torch.nn.utils.clip_grad_norm_(student_params, float("inf"))
-            student_norm = float(sn.item() if torch.is_tensor(sn) else sn) / scale
+        self._last_student_teacher_grad_norms = (
+            float(student_norm.item() if torch.is_tensor(student_norm) else student_norm),
+            float(teacher_norm.item() if torch.is_tensor(teacher_norm) else teacher_norm),
+        )
+        return student_norm
 
-        if not teacher_params:
-            teacher_norm = 0.0
-        else:
-            tn = torch.nn.utils.clip_grad_norm_(teacher_params, float("inf"))
-            teacher_norm = float(tn.item() if torch.is_tensor(tn) else tn) / scale
+    def _record_student_teacher_grad_norms_for_logging(self) -> None:
+        """
+        No-op kept for backward compatibility with ``StudentTeacherGradNormCallback``,
+        which still calls this at ``on_pre_optimizer_step``.
 
-        self._last_student_teacher_grad_norms = (student_norm, teacher_norm)
+        ``_clip_grad_norm`` (called earlier in the same step, by HF's inner training
+        loop before ``on_pre_optimizer_step`` runs) now does the real clipping and
+        already populates ``self._last_student_teacher_grad_norms`` correctly. Leaving
+        this as a real computation would silently double-unscale (since
+        ``accelerator.unscale_gradients()`` already ran inside ``_clip_grad_norm``)
+        and would overwrite the correct pre-clip norms with wrong ones.
+        """
+        return
 
     def log(self, logs, start_time=None):
         """

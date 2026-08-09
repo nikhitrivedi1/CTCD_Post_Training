@@ -172,6 +172,43 @@ class TestDistillationTrainerBasics:
         opt_ids = {id(p) for g in optimizer.param_groups for p in g["params"]}
         assert teacher_ids & opt_ids, "Teacher params must be in optimizer"
 
+    def test_co_training_clips_teacher_grad_norm(
+        self, tiny_bert_model, tiny_bert_teacher, tmp_path
+    ):
+        """Teacher gradients must be bounded by max_grad_norm during co-training,
+        same as the student's. Regression test for the bug where HF's built-in
+        clipping only ever sees model.parameters() (the student) - the teacher's
+        params, added to the optimizer separately in create_optimizer(), were
+        never clipped and could take unbounded update steps.
+        """
+        trainer = _make_trainer(
+            tiny_bert_teacher, tiny_bert_model, freeze_teacher=False, tmp_path=tmp_path
+        )
+        trainer.create_optimizer()
+        max_norm = trainer.args.max_grad_norm
+
+        student_params = [p for p in tiny_bert_model.parameters() if p.requires_grad]
+        teacher_params = [p for p in tiny_bert_teacher.parameters() if p.requires_grad]
+
+        # Simulate a small, well-behaved student gradient and an exploding teacher one.
+        for p in student_params:
+            p.grad = torch.full_like(p, 1e-3)
+        for p in teacher_params:
+            p.grad = torch.full_like(p, 1e3)
+
+        trainer._clip_grad_norm(tiny_bert_model)
+
+        student_norm_after = torch.nn.utils.clip_grad_norm_(student_params, float("inf"))
+        teacher_norm_after = torch.nn.utils.clip_grad_norm_(teacher_params, float("inf"))
+
+        assert student_norm_after <= max_norm + 1e-4, (
+            f"student grad norm {student_norm_after} exceeds max_grad_norm={max_norm}"
+        )
+        assert teacher_norm_after <= max_norm + 1e-4, (
+            f"teacher grad norm {teacher_norm_after} exceeds max_grad_norm={max_norm} - "
+            "teacher gradients are not being clipped"
+        )
+
     def test_co_training_logs_student_and_teacher_grad_norms(
         self, tiny_bert_model, tiny_bert_teacher, tmp_path
     ):
