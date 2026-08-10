@@ -1,7 +1,7 @@
 # Best Part 1 sweep run for this ablation by student accuracy (from W&B).
 # task=rte ablation_index=5 inherit=05_ctcd.yaml
 # metric=accuracy score=0.6606498194945848
-# wandb_run=p1_rte_a05_lr3em5_b16_c0p0-20260806-0242Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Experiments/runs/p1_rte_a05_lr3em5_b16_c0p0-20260806-0242Z
+# wandb_run=p1_rte_a05_lr3em5_b16_c0p0_TASK-20260809-1647Z url=https://wandb.ai/Knowledge-Distillation-Framework/CTCD_Experiments/runs/p1_rte_a05_lr3em5_b16_c0p0_TASK-20260809-1647Z
 
 inherit: ../05_ctcd.yaml
 training:
