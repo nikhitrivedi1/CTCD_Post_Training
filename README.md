@@ -6,7 +6,6 @@
   </p>
   <p>
     <a href="[PASTE ARXIV LINK HERE]">arXiv</a>&nbsp;|&nbsp;
-    <a href="[PASTE PROJECT PAGE LINK HERE]">Project Page</a>&nbsp;|&nbsp;
     <a href="LICENSE">License</a>
   </p>
 </div>
