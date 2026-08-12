@@ -117,7 +117,7 @@ This is the correctness reference for the CTCD mechanism itself — dedicated te
 ```bibtex
 @inproceedings{trivedi2026ctcd,
   title     = {Beyond Frozen Teachers: Co-Training and Co-Distillation for Task-Specific Fine-Tuning},
-  author    = {Trivedi, Nikhil and Ni, Karl and Ravi, Karthik and Sehral, Mohammed Ali},
+  author    = {Trivedi, Nikhil and Ni, Karl and Ravi, Karthik and Shehral, Mohammad Ali},
   booktitle = {[PASTE VENUE HERE]},
   year      = {2026},
   note      = {[PASTE DOI/LINK HERE]}
