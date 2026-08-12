@@ -1,7 +1,7 @@
 <div align="center">
   <h1>Beyond Frozen Teachers: Co-Training and Co-Distillation for Task-Specific Fine-Tuning</h1>
   <p>
-    <strong>Nikhil Trivedi&nbsp;·&nbsp;Karl Ni&nbsp;·&nbsp;Karthik Ravi&nbsp;·&nbsp;Mohammed Ali Sehral</strong><br>
+    <strong>Nikhil Trivedi&nbsp;·&nbsp;Karl Ni&nbsp;·&nbsp;Karthik Ravi&nbsp;·&nbsp;Mohammad Ali Shehral</strong><br>
     <em>Northeastern University</em>
   </p>
   <p>
