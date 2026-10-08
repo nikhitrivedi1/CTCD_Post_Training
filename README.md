@@ -5,7 +5,6 @@
     <em>Northeastern University</em>
   </p>
   <p>
-    <a href="[PASTE ARXIV LINK HERE]">arXiv</a>&nbsp;|&nbsp;
     <a href="LICENSE">License</a>
   </p>
 </div>
@@ -115,11 +114,15 @@ This is the correctness reference for the CTCD mechanism itself — dedicated te
 
 ```bibtex
 @inproceedings{trivedi2026ctcd,
-  title     = {Beyond Frozen Teachers: Co-Training and Co-Distillation for Task-Specific Fine-Tuning},
-  author    = {Trivedi, Nikhil and Ni, Karl and Ravi, Karthik and Shehral, Mohammad Ali},
-  booktitle = {[PASTE VENUE HERE]},
-  year      = {2026},
-  note      = {[PASTE DOI/LINK HERE]}
+  title        = {Beyond Frozen Teachers: Co-Training and Co-Distillation for Task-Specific Fine-Tuning},
+  author       = {Trivedi, Nikhil and Ni, Karl and Ravi, Karthik and Shehral, Mohammad Ali},
+  booktitle    = {Applications of Machine Learning 2026},
+  series       = {Proc. SPIE},
+  organization = {SPIE},
+  address      = {San Diego, California, USA},
+  year         = {2026},
+  month        = aug,
+  note         = {SPIE Optics + Photonics 2026, San Diego Convention Center, 23--27 August 2026}
 }
 ```
 
