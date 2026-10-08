@@ -121,7 +121,7 @@ This is the correctness reference for the CTCD mechanism itself — dedicated te
   organization = {SPIE},
   address      = {San Diego, California, USA},
   year         = {2026},
-  month        = aug,
+  month        = August,
   note         = {SPIE Optics + Photonics 2026, San Diego Convention Center, 23--27 August 2026}
 }
 ```
